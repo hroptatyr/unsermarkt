@@ -10,7 +10,7 @@ moddir = $(libdir)/unserding
 
 bin_PROGRAMS =
 if BUILD_SERVER
-bin_PROGRAMS += unserdingd unsercli
+bin_PROGRAMS += unserdingd unsercli unsermarktd
 noinst_PROGRAMS = instrumenstruation uteseries
 endif
 if BUILD_LIBRARY
@@ -40,6 +40,15 @@ unserdingd_LDADD = $(LIBEV_LIBS) $(LIBLTDL) -lunserding
 
 ## server static modules
 unserdingd_SOURCES += dso-pong.c
+
+unsermarktd_SOURCES = unsermarktd.c
+unsermarktd_SOURCES += lua-config.c
+unsermarktd_SOURCES += module.c
+unsermarktd_CPPFLAGS = -DUNSERSRV $(AM_CPPFLAGS)
+unsermarktd_CPPFLAGS += $(LIBEV_CPPFLAGS)
+unsermarktd_LDFLAGS = $(AM_LDFLAGS) $(LIBEV_LDFLAGS) -lrt -lpopt
+unsermarktd_LDFLAGS += -llua ## check for me
+unsermarktd_LDADD = $(LIBEV_LIBS) $(LIBLTDL)
 
 ## server dynamic modules
 mod_LTLIBRARIES =
@@ -102,6 +111,7 @@ uteseries_LDADD = -luterus -lpopt
 instrumenstruation_CPPFLAGS = $(PFACK_CFLAGS)
 instrumenstruation_LDFLAGS = $(PFACK_LIBS)
 instrumenstruation_LDADD = $(PFACK_LIBS) libunserding.la -lpopt
+
 endif  ## BUILD_SERVER
 header_HEADERS += xdr-instr.h tseries.h
 

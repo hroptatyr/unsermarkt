@@ -55,7 +55,7 @@
 #define MOD_PRE		"mod/oq"
 
 /* some forwards */
-static void handle_data(int fd, char *msg, size_t msglen);
+static int handle_data(int fd, char *msg, size_t msglen);
 
 
 /* our connectivity cruft */
@@ -85,7 +85,10 @@ prstatus(int fd)
 	return;
 }
 
-static void
+/**
+ * Take the stuff in MSG of size MSGLEN coming from FD and process it.
+ * Return values <0 cause the handler caller to close down the socket. */
+static int
 handle_data(int fd, char *msg, size_t msglen)
 {
 #define GET_COOKIE	"GET /"
@@ -94,15 +97,17 @@ handle_data(int fd, char *msg, size_t msglen)
 		/* obviously a browser managed to connect to us,
 		 * print the current order queue and fuck off */
 		prstatus(fd);
+		return -1;
 	} else if (strncmp(msg, HEAD_COOKIE, sizeof(HEAD_COOKIE) - 1) == 0) {
 		/* obviously a browser managed to connect to us,
 		 * print the current order queue and fuck off */
 		prhttphdr(fd);
-	} else {
-		/* just print the buffer */
-		write(STDERR_FILENO, msg, msglen);
+		return -1;
 	}
-	return;
+
+	/* else just print the buffer */
+	write(STDERR_FILENO, msg, msglen);
+	return 0;
 }
 
 

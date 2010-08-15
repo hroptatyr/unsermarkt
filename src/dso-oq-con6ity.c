@@ -111,8 +111,9 @@ data_cb(EV_P_ ev_io *w, int re)
 		return;
 	}
 	UD_DEBUG(MOD_PRE ": new data in sock %d\n", w->fd);
-	handle_data(w->fd, buf, nrd);
-	clo_wio(EV_A_ w);
+	if (handle_data(w->fd, buf, nrd) < 0) {
+		clo_wio(EV_A_ w);
+	}
 	return;
 }
 

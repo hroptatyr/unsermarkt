@@ -57,6 +57,7 @@ mod_LTLIBRARIES += dso-cli.la dso-scscp.la dso-scscp2.la dso-bbdb.la dso-xbbdb.l
 mod_LTLIBRARIES += dso-xdr-instr.la
 mod_LTLIBRARIES += dso-tseries.la dso-tseries-ute.la
 mod_LTLIBRARIES += dso-itanl.la
+mod_LTLIBRARIES += dso-oq.la
 if USE_MYSQL
 mod_LTLIBRARIES += dso-tseries-mysql.la
 endif
@@ -67,6 +68,7 @@ dso_bbdb_la_LDFLAGS = -module
 ## the xml bbdb module
 dso_xbbdb_la_CPPFLAGS = $(shell pkg-config --cflags libxml-2.0)
 dso_xbbdb_la_LDFLAGS = -module $(shell pkg-config --libs libxml-2.0)
+dso_oq_la_LDFLAGS = -module
 
 ## the catalogue module
 dso_xdr_instr_la_LDFLAGS = -module $(PFACK_LIBS)

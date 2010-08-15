@@ -287,7 +287,7 @@ daemonise(void)
 			(void)close(fd);
 		}
 	}
-	logout = fopen("/tmp/unserding.log", "w");
+	logout = fopen("/tmp/unsermarkt.log", "w");
 	return 0;
 }
 
@@ -326,7 +326,7 @@ hlp(poptContext con, UNUSED(enum poptCallbackReason foo),
 	if (key->shortName == 'h') {
 		poptPrintHelp(con, stdout, 0);
 	} else if (key->shortName == 'V') {
-		fprintf(stdout, "unserdingd " UM_VERSION "\n");
+		fprintf(stdout, "unsermarktd " UM_VERSION "\n");
 	} else {
 		poptPrintUsage(con, stdout, 0);
 	}
@@ -397,7 +397,7 @@ ud_parse_cl(size_t argc, const char *argv[])
 static const char cfg_glob_prefix[] = GLOB_CFG_PRE;
 
 #if defined USE_LUA
-static const char cfg_file_name[] = "unserding.lua";
+static const char cfg_file_name[] = "unsermarkt.lua";
 
 static void
 ud_expand_user_cfg_file_name(char *tgt)
@@ -459,6 +459,20 @@ ud_free_config(ud_ctx_t ctx)
 #endif
 
 
+/* static module loader */
+static void
+ud_init_statmods(void *UNUSED(clo))
+{
+	return;
+}
+
+static void
+ud_deinit_statmods(void *UNUSED(clo))
+{
+	return;
+}
+
+
 int
 main(int argc, const char *argv[])
 {
@@ -470,13 +484,11 @@ main(int argc, const char *argv[])
 	ev_signal *sigpipe_watcher = __sigpipe_watcher;
 	ev_signal *sigusr2_watcher = __sigusr2_watcher;
 	const char *const *UNUSED(rest);
-	struct ud_ctx_s __ctx[1];
+	struct ud_ctx_s __ctx[1] = {{0}};
 	struct ud_handle_s UNUSED(__hdl[1]);
 
 	/* whither to log */
 	logout = stderr;
-	/* wipe stack pollution */
-	memset(&__ctx, 0, sizeof(__ctx));
 	/* obtain the number of cpus */
 	nworkers = get_num_proc();
 
@@ -500,6 +512,9 @@ main(int argc, const char *argv[])
 	/* initialise the main loop */
 	loop = ev_default_loop(EVFLAG_AUTO);
 	__ctx->mainloop = loop;
+
+	/* initialise modules */
+	ud_init_modules(rest, &__ctx);
 
 	/* initialise a sig C-c handler */
 	ev_signal_init(sigint_watcher, sigint_cb, SIGINT);
@@ -528,21 +543,21 @@ main(int argc, const char *argv[])
 	 * events has already been injected into our precious queue
 	 * causing the libev main loop to crash. */
 	ud_attach_mcast(EV_A_ prefer6p);
+#endif
 
 	/* static modules */
 	ud_init_statmods(__ctx);
-#endif
 
 	/* now wait for events to arrive */
 	ev_loop(EV_A_ 0);
 
-#if 0
 	/* deinitialise modules */
 	ud_deinit_modules(__ctx);
 
 	/* pong service */
 	ud_deinit_statmods(__ctx);
 
+#if 0
 	/* close the socket */
 	ud_detach_mcast(EV_A);
 #endif
@@ -560,4 +575,4 @@ main(int argc, const char *argv[])
 	return 0;
 }
 
-/* unserdingd.c ends here */
+/* unsermarktd.c ends here */

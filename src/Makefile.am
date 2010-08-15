@@ -9,9 +9,10 @@ headerdir = $(includedir)/unserding
 moddir = $(libdir)/unserding
 
 bin_PROGRAMS =
+noinst_PROGRAMS =
 if BUILD_SERVER
 bin_PROGRAMS += unserdingd unsercli unsermarktd
-noinst_PROGRAMS = instrumenstruation uteseries
+noinst_PROGRAMS += instrumenstruation uteseries
 endif
 if BUILD_LIBRARY
 lib_LTLIBRARIES = libunserding.la
@@ -69,6 +70,8 @@ dso_bbdb_la_LDFLAGS = -module
 dso_xbbdb_la_CPPFLAGS = $(shell pkg-config --cflags libxml-2.0)
 dso_xbbdb_la_LDFLAGS = -module $(shell pkg-config --libs libxml-2.0)
 dso_oq_la_LDFLAGS = -module
+
+noinst_PROGRAMS += um-order
 
 ## the catalogue module
 dso_xdr_instr_la_LDFLAGS = -module $(PFACK_LIBS)

@@ -45,7 +45,6 @@
 
 #include "module.h"
 #include "unserding.h"
-#include "protocore.h"
 #define UNSERSRV
 #include "unserding-dbg.h"
 #include "unserding-nifty.h"

@@ -59,8 +59,33 @@
 #define MOD_PRE		"mod/oq"
 #define UM_PORT		(12768)
 
-static int oqsock;
+
+/* order queue */
+static void
+prhttphdr(int fd)
+{
+	static const char httphdr[] = "\
+HTTP/1.1 200 OK\r\n\
+Content-Type: text/html; charset=ASCII\r\n\
+\r\n";
+	write(fd, httphdr, sizeof(httphdr));
+	return;
+}
 
+static void
+prstatus(int fd)
+{
+/* prints the current order queue to FD */
+	static const char nooq[] = "no orders yet\n";
+
+	prhttphdr(fd);
+	write(fd, nooq, sizeof(nooq));
+	return;
+}
+
+
+/* connection mumbo-jumbo */
+static int oqsock;
 static ev_io ALGN16(__wio)[1];
 
 /* server to client goodness */
@@ -88,7 +113,16 @@ __reuse_sock(int sock)
 	return;
 }
 
-
+static void
+clo_wio(EV_P_ ev_io *w)
+{
+	fsync(w->fd);
+	ev_io_stop(EV_A_ w);
+	__shut_sock(w->fd);
+	xfree(w);
+	return;
+}
+
 /* we could take args like listen address and port number */
 static int
 listener(void)
@@ -151,13 +185,27 @@ data_cb(EV_P_ ev_io *w, int re)
 
 	if ((nrd = read(w->fd, buf, sizeof(buf))) <= 0) {
 		UD_DEBUG(MOD_PRE ": no data, closing socket %d %d\n", w->fd, re);
-		ev_io_stop(EV_A_ w);
-		__shut_sock(w->fd);
-		xfree(w);
+		clo_wio(EV_A_ w);
 		return;
 	}
+
+#define GET_COOKIE	"GET /"
+#define HEAD_COOKIE	"HEAD /"
 	UD_DEBUG(MOD_PRE ": new data in sock %d\n", w->fd);
-	write(STDERR_FILENO, buf, nrd);
+	if (strncmp(buf, GET_COOKIE, sizeof(GET_COOKIE) - 1) == 0) {
+		/* obviously a browser managed to connect to us,
+		 * print the current order queue and fuck off */
+		prstatus(w->fd);
+		clo_wio(EV_A_ w);
+	} else if (strncmp(buf, HEAD_COOKIE, sizeof(HEAD_COOKIE) - 1) == 0) {
+		/* obviously a browser managed to connect to us,
+		 * print the current order queue and fuck off */
+		prhttphdr(w->fd);
+		clo_wio(EV_A_ w);
+	} else {
+		/* just print the buffer */
+		write(STDERR_FILENO, buf, nrd);
+	}
 	return;
 }
 

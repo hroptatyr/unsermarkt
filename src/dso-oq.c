@@ -58,6 +58,10 @@
 static int handle_data(int fd, char *msg, size_t msglen);
 
 
+/* include the order ctors and dtors */
+#include "dso-oq-order.h"
+
+
 /* our connectivity cruft */
 #include "dso-oq-con6ity.c"
 

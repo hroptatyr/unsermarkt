@@ -96,6 +96,7 @@ handle_data(int fd, char *msg, size_t msglen)
 {
 #define GET_COOKIE	"GET /"
 #define HEAD_COOKIE	"HEAD /"
+
 	if (strncmp(msg, GET_COOKIE, sizeof(GET_COOKIE) - 1) == 0) {
 		/* obviously a browser managed to connect to us,
 		 * print the current order queue and fuck off */
@@ -108,8 +109,11 @@ handle_data(int fd, char *msg, size_t msglen)
 		return -1;
 	}
 
-	/* else just print the buffer */
-	write(STDERR_FILENO, msg, msglen);
+	/* else try and get the order */
+	if (msglen == sizeof(struct umo_s)) {
+		struct umo_s o[1];
+		memcpy(o, msg, sizeof(*o));
+	}
 	return 0;
 }
 

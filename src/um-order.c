@@ -10,11 +10,24 @@
 #include <unistd.h>
 #include <errno.h>
 
+#include "dso-oq-order.h"
+
 #if defined __INTEL_COMPILER
 #pragma warning (disable:2259)
 #endif	/* __INTEL_COMPILER */
 
 #define UM_PORT		(12768)
+
+static void
+send_order(int fd)
+{
+	struct umo_s o[1];
+	m30_t p = ffff_m30_get_d(12.90);
+	m30_t q = ffff_m30_get_d(200);
+	make_order(o, 1, 1, OSIDE_SELL, p, q);
+	write(fd, o, sizeof(*o));
+	return;
+}
 
 int
 main(int argc, char *argv[])
@@ -30,8 +43,12 @@ main(int argc, char *argv[])
 	sa->sin6_port = htons(UM_PORT);
 
 	if (connect(s, (struct sockaddr*)sa, sizeof(*sa)) < 0) {
+		fprintf(stderr, "Connection failed\n");
 		return 1;
 	}
+
+	/* send an order to s */
+	send_order(s);
 
 	/* and off we go */
 	close(s);

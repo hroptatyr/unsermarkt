@@ -44,7 +44,7 @@
 #include "protocore.h"
 #include "seria.h"
 /* comes from sushi */
-#include <sushi/secu.h>
+#include "secu.h"
 #include <sushi/scommon.h>
 #include <sushi/sl1t.h>
 #include <sushi/scdl.h>

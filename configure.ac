@@ -137,90 +137,12 @@ fi
 AM_CONDITIONAL([WITH_INPUT_MULTICAST],
 	[test "$have_inputs_multicast" = "yes" -a "$with_inputs_multicast" = "yes"])
 
-## database stuff ... does not belong here
-AC_ARG_WITH([mysql], [
-AS_HELP_STRING([--with-mysql], [Which mysql to use])], [], [])
-dnl AC_ARG_WITH([pgsql], [
-dnl AS_HELP_STRING([--with-pgsql], [Which postgres to use])], [], [])
-dnl 
-if test "$with_mysql" != "no"; then
-	AC_PATH_PROG([MYSQL_CONFIG], [mysql_config], [:])
-	MYSQL_CPPFLAGS=$(${MYSQL_CONFIG} --include)
-	MYSQL_LDFLAGS=$(${MYSQL_CONFIG} --libs)
-	AC_SUBST([MYSQL_CPPFLAGS])
-	AC_SUBST([MYSQL_LDFLAGS])
-	if test "${MYSQL_CONFIG}" != ":"; then
-		AC_DEFINE([HAVE_MYSQL], [1], [Defined when mysql could be found])
-	fi
-	AC_DEFINE([WITH_MYSQL], [1], [Defined when mysql was desired])
-
-	SXE_DUMP_LIBS
-	CPPFLAGS="${CPPFLAGS} ${MYSQL_CPPFLAGS}"
-	AC_CHECK_HEADERS([mysql/mysql.h mysql.h])
-	SXE_RESTORE_LIBS
-fi
-AM_CONDITIONAL([USE_MYSQL], [test "$with_mysql" != "no" -a "${MYSQL_CONFIG}" != ":"])
-
-## check for libffff
-dnl AC_CHECK_FFFF
-dnl AC_DEFINE([WITH_FFFF], [1], [Whether ffff support library is requested.])
-dnl if test "${have_libffff}" = "yes"; then
-dnl 	AC_DEFINE([HAVE_FFFF], [1], [Whether ffff support library is usable.])
-dnl 	LDFLAGS="${LDFLAGS} ${LIBFFFF_LDFLAGS} ${LIBFFFF_LIBS}"
-dnl 	CPPFLAGS="${CPPFLAGS} ${LIBFFFF_CPPFLAGS} -DUSE_FFFF"
-dnl else
-dnl 	AC_MSG_ERROR([ffff support is mandatory.])
-dnl fi
-
-## check for libpfack
-PKG_CHECK_MODULES([PFACK], [libpfack >= 0.0.99], [:], [:])
-
-## readline and friends
-SXE_DUMP_LIBS
-VL_LIB_READLINE
-if test "${vl_cv_lib_readline}" != "no"; then
-	LIBREADLINE_LIBS=${vl_cv_lib_readline}
-fi
-SXE_RESTORE_LIBS
-AC_SUBST([LIBREADLINE_LIBS])
-AC_SUBST([LIBREADLINE_LDFLAGS])
-AC_SUBST([LIBREADLINE_CPPFLAGS])
-
-## check if we've got libedit, we don't use it though at the moment
-PKG_CHECK_MODULES([LIBEDIT], [libedit], [:], [:])
-
-## just so we know what to build
-AC_ARG_ENABLE([server], [
-AS_HELP_STRING([--enable-server], [Build the server component, default: no.])],
-	[enable_server="${enableval}"], [enable_server="no"])
-AM_CONDITIONAL([BUILD_SERVER], [test "${enable_server}" = "yes"])
-AC_ARG_ENABLE([cliapps], [
-AS_HELP_STRING([--enable-cliapps], [Build the client apps, default: yes.])],
-	[enable_cliapps="${enableval}"], [enable_cliapps="yes"])
-AM_CONDITIONAL([BUILD_CLIAPPS], [test "${enable_cliapps}" = "yes"])
-AC_ARG_ENABLE([library], [
-AS_HELP_STRING([--enable-library], [Build the library component, default: yes.])],
-	[enable_library="${enableval}"], [enable_library="yes"])
-AM_CONDITIONAL([BUILD_LIBRARY], [test "${enable_library}" = "yes"])
-
 ## check if we've got libconfig
 dnl PKG_CHECK_MODULES([LIBCONFIG], [libconfig])
 ## check for lua instead!
 
 AC_CONFIG_FILES([Makefile])
-AC_CONFIG_FILES([cli/Makefile])
 AC_CONFIG_FILES([src/Makefile])
-AC_CONFIG_FILES([unserding.pc])
 AC_OUTPUT
-
-echo
-echo
-echo "Build summary"
-echo "============="
-echo
-echo "Build server: ${BUILD_SERVER_FALSE:+yes}"
-echo "Build cliapps: ${BUILD_CLIAPPS_FALSE:+yes}"
-echo "Build library: ${BUILD_LIBRARY_FALSE:+yes}"
-echo
 
 dnl configure.ac ends here

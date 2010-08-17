@@ -39,7 +39,7 @@
 #define INCLUDED_tscube_h_
 
 #include <stdint.h>
-#include <sushi/secu.h>
+#include "secu.h"
 #include <sushi/scommon.h>
 #include <sushi/sl1t.h>
 #include <sushi/scdl.h>

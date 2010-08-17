@@ -47,7 +47,7 @@
 #include <string.h>
 #include <sys/mman.h>
 
-#include <sushi/secu.h>
+#include "secu.h"
 #include <sushi/scommon.h>
 #include "tscube.h"
 #include "unserding-nifty.h"

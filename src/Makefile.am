@@ -19,6 +19,7 @@ mod_LTLIBRARIES += dso-oq.la
 noinst_PROGRAMS += um-order
 
 dso_oq_la_LDFLAGS = -module
+dso_oq_la_CPPFLAGS = $(UNSERDING_CFLAGS)
 
 # 
 # Help the developers get nice post-processed source files

@@ -42,12 +42,6 @@ SXE_CHECK_PARSER_LEXER
 
 ## libtool goddess^Wgoodness
 SXE_CHECK_LIBTOOL
-SXE_CHECK_LIBLTDL
-
-## basic posix stuff
-SXE_CHECK_BASIC_HEADERS
-SXE_CHECK_BASIC_TYPES
-SXE_CHECK_BASIC_FUNS
 
 AC_CHECK_HEADERS([stdbool.h])
 AC_CHECK_HEADERS([fcntl.h])
@@ -140,6 +134,10 @@ AM_CONDITIONAL([WITH_INPUT_MULTICAST],
 ## check if we've got libconfig
 dnl PKG_CHECK_MODULES([LIBCONFIG], [libconfig])
 ## check for lua instead!
+
+## check for unserding
+PKG_CHECK_MODULES([UNSERDING], [unserding])
+
 
 AC_CONFIG_FILES([Makefile])
 AC_CONFIG_FILES([src/Makefile])

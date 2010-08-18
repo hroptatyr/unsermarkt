@@ -2,8 +2,8 @@
 
 ### Makefile.am
 
-AM_CPPFLAGS = -pthread -D_GNU_SOURCE -D_POSIX_C_SOURCE=201001L -D__USE_XOPEN2K8
-AM_LDFLAGS = -lpthread
+AM_CPPFLAGS = -D_GNU_SOURCE -D_POSIX_C_SOURCE=201001L -D__USE_XOPEN2K8
+AM_LDFLAGS = 
 
 headerdir = $(includedir)/unserding
 moddir = $(libdir)/unserding
@@ -19,7 +19,11 @@ mod_LTLIBRARIES += dso-oq.la
 noinst_PROGRAMS += um-order
 
 dso_oq_la_LDFLAGS = -module
-dso_oq_la_CPPFLAGS = $(UNSERDING_CFLAGS)
+dso_oq_la_LDFLAGS += $(unserding_LDFLAGS)
+dso_oq_la_CPPFLAGS = $(AM_CPPFLAGS) $(unserding_CFLAGS)
+
+um_order_LDFLAGS = $(unserding_LDFLAGS)
+um_order_CPPFLAGS = $(AM_CPPFLAGS) $(unserding_CFLAGS)
 
 # 
 # Help the developers get nice post-processed source files

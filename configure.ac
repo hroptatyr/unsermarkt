@@ -136,8 +136,7 @@ dnl PKG_CHECK_MODULES([LIBCONFIG], [libconfig])
 ## check for lua instead!
 
 ## check for unserding
-PKG_CHECK_MODULES([UNSERDING], [unserding])
-
+PKG_CHECK_MODULES([unserding], [unserding])
 
 AC_CONFIG_FILES([Makefile])
 AC_CONFIG_FILES([src/Makefile])

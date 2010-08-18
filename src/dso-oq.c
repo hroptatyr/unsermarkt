@@ -42,14 +42,11 @@
 #include <net/if.h>
 #include <arpa/inet.h>
 #include <errno.h>
+#include <string.h>
 
-#include "module.h"
-#include "unserding.h"
-#define UNSERSRV
-#include "unserding-dbg.h"
-#include "unserding-nifty.h"
-#include "unserding-ctx.h"
-#include "ud-sock.h"
+#include <unserding/unserding-ctx.h>
+#include <unserding/module.h>
+#include "nifty.h"
 
 #define MOD_PRE		"mod/oq"
 
@@ -118,24 +115,27 @@ handle_data(int fd, char *msg, size_t msglen)
 }
 
 
+/* we should think of something here */
+typedef struct ud_ctx_s *ud_ctx_t;
+
 void
 init(void *clo)
 {
 	ud_ctx_t ctx = clo;
 
-	UD_DEBUG(MOD_PRE ": loading ...");
+	UM_DEBUG(MOD_PRE ": loading ...");
 	/* connect to scscp and say ehlo */
 	oqsock = listener();
 	/* set up the IO watcher and timer */
 	init_watchers(ctx->mainloop, oqsock);
-	UD_DBGCONT("loaded\n");
+	UM_DBGCONT("loaded\n");
 	return;
 }
 
 void
 reinit(void *UNUSED(clo))
 {
-	UD_DEBUG(MOD_PRE ": reloading ...done\n");
+	UM_DEBUG(MOD_PRE ": reloading ...done\n");
 	return;
 }
 
@@ -144,10 +144,10 @@ deinit(void *clo)
 {
 	ud_ctx_t ctx = clo;
 
-	UD_DEBUG(MOD_PRE ": unloading ...");
+	UM_DEBUG(MOD_PRE ": unloading ...");
 	deinit_watchers(ctx->mainloop, oqsock);
 	oqsock = -1;
-	UD_DBGCONT("done\n");
+	UM_DBGCONT("done\n");
 	return;
 }
 

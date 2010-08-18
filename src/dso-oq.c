@@ -115,9 +115,6 @@ handle_data(int fd, char *msg, size_t msglen)
 }
 
 
-/* we should think of something here */
-typedef struct ud_ctx_s *ud_ctx_t;
-
 void
 init(void *clo)
 {

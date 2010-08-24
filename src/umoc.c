@@ -145,34 +145,75 @@ process_lines(FILE *inf, int(*cb)(char *line, void *clo), void *clo)
 	return;
 }
 
+static struct in6_addr in6_anyaddr = IN6ADDR_ANY_INIT;
+static inline int
+ipv6_addr_any(struct in6_addr *addr)
+{
+	return (memcmp(addr, &in6_anyaddr, 16) == 0);
+}
+
+static int
+umoc_connect(const char *host)
+{
+	struct addrinfo hints[1];
+	struct addrinfo *ai;
+	struct in6_addr *addr;
+	struct sockaddr_in6 firsthop[1];
+	uint32_t scope_id = 0;
+	int res = -1;
+
+	memset(hints, 0, sizeof(*hints));
+	memset(firsthop, 0, sizeof(*firsthop));
+	firsthop->sin6_family = AF_INET6;
+
+	hints->ai_family = AF_INET6;
+	if (getaddrinfo(host, NULL, hints, &ai) < 0) {
+		fprintf(stderr, "Host not found\n");
+		return -1;
+	}
+
+	addr = &((struct sockaddr_in6*)(ai->ai_addr))->sin6_addr;
+
+	if (ipv6_addr_any(&firsthop->sin6_addr)) {
+		memcpy(&firsthop->sin6_addr, addr, 16);
+
+		firsthop->sin6_scope_id =
+			((struct sockaddr_in6*)(ai->ai_addr))->sin6_scope_id;
+		/* verify scope_id is the same as previous nodes */
+		if (firsthop->sin6_scope_id && scope_id &&
+		    firsthop->sin6_scope_id != scope_id) {
+			fprintf(stderr, "Scope discrepancy among the nodes\n");
+			return -1;
+		} else if (!scope_id) {
+			scope_id = firsthop->sin6_scope_id;
+		}
+	}
+	freeaddrinfo(ai);
+
+	/* get a socket */
+	res = socket(PF_INET6, SOCK_STREAM, 0);
+
+	firsthop->sin6_port = htons(UM_PORT);
+	if (connect(res, (struct sockaddr*)firsthop, sizeof(*firsthop)) < 0) {
+		fprintf(stderr, "Connection failed\n");
+		close(res);
+		return -1;
+	}
+	return res;
+}
+
 int
 main(int argc, char *argv[])
 {
-	int s = socket(PF_INET6, SOCK_STREAM, 0);
-	struct sockaddr_in6 sa[1] = {{0}};
-	struct hostent *he;
+	int s;
 	struct po_clo_s clo[1];
 
 	if (argc != 2) {
 		usage();
 		return 1;
 	}
-	if ((he = gethostbyname2(argv[1], AF_INET6)) != NULL) {
-		sa->sin6_family = he->h_addrtype;
-		sa->sin6_addr = *(struct in6_addr*)(he->h_addr);
-		sa->sin6_port = htons(UM_PORT);
 
-	} else if (inet_pton(AF_INET6, argv[1], sa) == 0) {
-		sa->sin6_family = AF_INET6;
-		sa->sin6_port = htons(UM_PORT);
-
-	} else {
-		fprintf(stderr, "Host not found\n");
-		return 1;
-	}
-
-	if (connect(s, (struct sockaddr*)sa, sizeof(*sa)) < 0) {
-		fprintf(stderr, "Connection failed\n");
+	if ((s = umoc_connect(argv[1])) < 0) {
 		return 1;
 	}
 

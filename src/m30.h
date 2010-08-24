@@ -100,7 +100,7 @@ ffff_m30_get_d(double d);
 /**
  * Convert string S to monetary. */
 static inline m30_t __attribute__((always_inline))
-ffff_m30_get_s(const char **s);
+ffff_m30_get_s(char **s);
 
 /**
  * Represent m30 value as string. */
@@ -237,7 +237,7 @@ ffff_m30_cmp(m30_t a, m30_t b)
 
 #if !defined DEFINE_GORY_STUFF
 static inline m30_t __attribute__((unused))
-ffff_m30_get_s(const char **s __attribute__((unused)))
+ffff_m30_get_s(char **s __attribute__((unused)))
 {
 	m30_t res;
 	/* I love gcc :( */
@@ -385,10 +385,11 @@ __30_0_get_s(const char *mant, const char *f, size_t m)
 }
 
 static m30_t __attribute__((unused))
-ffff_m30_get_s(const char **nptr)
+ffff_m30_get_s(char **nptr)
 {
 	/* spray some pointers */
-	const char *mant, *mend, *frac, *p;
+	char *mant, *mend, *frac;
+	char *p;
 	bool neg = false;
 	m30_t r30;
 

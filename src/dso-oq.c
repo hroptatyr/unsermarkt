@@ -57,6 +57,7 @@
 
 /* some forwards and globals */
 static int handle_data(int fd, char *msg, size_t msglen);
+static void handle_close(int fd);
 static umoq_t q = NULL;
 static int htpush[MAX_CLIENTS];
 
@@ -83,12 +84,27 @@ memorise_htpush(int fd)
 	return;
 }
 
+static void
+forget_htpush(int fd)
+{
+	int slot;
+	for (slot = 0; slot < MAX_CLIENTS; slot++) {
+		if (htpush[slot] == fd) {
+			htpush[slot] = 0;
+			return;
+		}
+	}
+	return;
+}
+
 /* order queue */
 static void
 prhttphdr(int fd)
 {
 	static const char httphdr[] = "\
 HTTP/1.1 200 OK\r\n\
+\
+Connection: Keep-Alive\r\n\
 Content-Type: text/html; charset=ASCII\r\n\
 \r\n";
 	write(fd, httphdr, sizeof(httphdr));
@@ -108,7 +124,7 @@ prstcb(int fd, char side, uml_t l)
 
 	ffff_m30_s(pri, l->p);
 
-	tot = snprintf(tick, sizeof(tick), "%c(%s, %u),", side, pri, l->q);
+	tot = snprintf(tick, sizeof(tick), "%c(%s, %u);", side, pri, l->q);
 	write(fd, tick, tot);
 	return;
 }
@@ -130,13 +146,42 @@ prstacb(uml_t l, void *clo)
 }
 
 static void
+prscript_beg(int fd)
+{
+	static const char tag[] = "<script>";
+	write(fd, tag, sizeof(tag));
+	return;
+}
+
+static void
+prscript_end(int fd)
+{
+	static const char tag[] = "</script>\n";
+	write(fd, tag, sizeof(tag));
+	return;
+}
+
+static void
+prclear(int fd)
+{
+	static const char clr[] = "clr();";
+	write(fd, clr, sizeof(clr));
+	return;
+}
+
+static void
 prstatus(int fd)
 {
 /* prints the current order queue to FD */
 	struct prst_clo_s clo[1] = {{.fd = fd}};
+
+	/* write an initial tag and clear the hash table */
+	prscript_beg(fd);
+	prclear(fd);
 	/* go through all bids, then all asks */
 	oq_trav_bids(q, prstbcb, clo);
 	oq_trav_asks(q, prstacb, clo);
+	prscript_end(fd);
 	return;
 }
 
@@ -182,6 +227,14 @@ handle_data(int fd, char *msg, size_t msglen)
 		upstatus();
 	}
 	return 0;
+}
+
+static void
+handle_close(int fd)
+{
+	/* delete fd from our htpush cache */
+	forget_htpush(fd);
+	return;
 }
 
 

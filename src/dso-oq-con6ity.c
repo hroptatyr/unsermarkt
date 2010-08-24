@@ -59,7 +59,7 @@ listener(void)
 	}
 
 #if defined IPV6_V6ONLY
-	opt = 1;
+	opt = 0;
 	setsockopt(s, IPPROTO_IPV6, IPV6_V6ONLY, &opt, sizeof(opt));
 #endif	/* IPV6_V6ONLY */
 #if defined IPV6_USE_MIN_MTU

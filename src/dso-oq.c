@@ -135,8 +135,8 @@ prstatus(int fd)
 /* prints the current order queue to FD */
 	struct prst_clo_s clo[1] = {{.fd = fd}};
 	/* go through all bids, then all asks */
-	oq_trav_bids(q, prstacb, clo);
-	oq_trav_asks(q, prstbcb, clo);
+	oq_trav_bids(q, prstbcb, clo);
+	oq_trav_asks(q, prstacb, clo);
 	return;
 }
 

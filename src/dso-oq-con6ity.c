@@ -105,6 +105,7 @@ data_cb(EV_P_ ev_io *w, int re)
 	}
 	UM_DEBUG(MOD_PRE ": new data in sock %d\n", w->fd);
 	if (handle_data(w->fd, buf, nrd) < 0) {
+		UM_DEBUG(MOD_PRE ": negative, closing down\n");
 		clo_wio(EV_A_ w);
 	}
 	return;

@@ -170,6 +170,14 @@ prclear(int fd)
 }
 
 static void
+prpublish(int fd)
+{
+	static const char pub[] = "pub();";
+	write(fd, pub, sizeof(pub));
+	return;
+}
+
+static void
 prstatus(int fd)
 {
 /* prints the current order queue to FD */
@@ -181,6 +189,7 @@ prstatus(int fd)
 	/* go through all bids, then all asks */
 	oq_trav_bids(q, prstbcb, clo);
 	oq_trav_asks(q, prstacb, clo);
+	prpublish(fd);
 	prscript_end(fd);
 	return;
 }

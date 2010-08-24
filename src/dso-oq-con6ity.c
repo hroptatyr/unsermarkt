@@ -100,6 +100,7 @@ data_cb(EV_P_ ev_io *w, int re)
 
 	if ((nrd = read(w->fd, buf, sizeof(buf))) <= 0) {
 		UM_DEBUG(MOD_PRE ": no data, closing socket %d %d\n", w->fd, re);
+		handle_close(w->fd);
 		clo_wio(EV_A_ w);
 		return;
 	}

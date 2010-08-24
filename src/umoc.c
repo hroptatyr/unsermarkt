@@ -19,6 +19,10 @@
 
 #define UM_PORT		(12768)
 
+typedef struct po_clo_s {
+	int fd;
+} *po_clo_t;
+
 static void
 send_lmt_order(int fd, oside_t s, m30_t p, uint32_t q)
 {
@@ -51,11 +55,12 @@ send_mkt_order(int fd, oside_t s, uint32_t q)
 }
 
 static int
-proc_order(char *line, void *clo __attribute__((unused)))
+proc_order(char *line, void *clo)
 {
 /* format must be B|S QTY [PRI] */
-	oside_t side;
 	char *p = line;
+	po_clo_t poclo = clo;
+	oside_t side;
 	uint32_t qty;
 	m30_t pri;
 
@@ -87,11 +92,11 @@ proc_order(char *line, void *clo __attribute__((unused)))
 	if (*p == '\0') {
 		/* market order */
 		pri.v = 0;
-		send_mkt_order(fd, side, qty);
+		send_mkt_order(poclo->fd, side, qty);
 	} else {
 		/* limit order, p should point to the price now */
 		pri = ffff_m30_get_s(&p);
-		send_lmt_order(fd, side, pri, qty);
+		send_lmt_order(poclo->fd, side, pri, qty);
 	}
 
 	/* everything ok */
@@ -145,6 +150,7 @@ main(int argc, char *argv[])
 	int s = socket(PF_INET6, SOCK_STREAM, 0);
 	struct sockaddr_in6 sa[1] = {{0}};
 	struct hostent *he;
+	struct po_clo_s clo[1];
 
 	if (argc != 2) {
 		usage();
@@ -174,7 +180,8 @@ main(int argc, char *argv[])
 	 * where B or S indicate buy or sell orders
 	 * QTY is the quantity to obtain
 	 * and PRI is the price, if omitted a market order will be sent. */
-	process_lines(stdin, proc_order, NULL);
+	clo->fd = s;
+	process_lines(stdin, proc_order, clo);
 
 	/* and off we go */
 	close(s);

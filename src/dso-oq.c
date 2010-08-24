@@ -103,7 +103,9 @@ prhttphdr(int fd)
 {
 	static const char httphdr[] = "\
 HTTP/1.1 200 OK\r\n\
-Connection: Keep-Alive\r\n\
+Date: Tue, 24 Aug 2010 21:51:08 GMT\r\n\
+Server: unsermarkt/0.1\r\n\ 
+Transfer-Encoding: chunked\r\n\
 Content-Type: multipart/x-mixed-replace;boundary=\"umbdry\"\r\n\
 \r\n";
 	write(fd, httphdr, sizeof(httphdr));
@@ -155,7 +157,7 @@ prscript_beg(int fd)
 static void
 prscript_end(int fd)
 {
-	static const char tag[] = "</script>\r\n\r\n";
+	static const char tag[] = "</script>\n";
 	write(fd, tag, sizeof(tag));
 	return;
 }
@@ -179,7 +181,7 @@ prpublish(int fd)
 static void
 prbdry(int fd)
 {
-	static const char bdry[] = "\r\n--umbdry\r\n";
+	static const char bdry[] = "\n--umbdry\n";
 	write(fd, bdry, sizeof(bdry));
 	return;
 }
@@ -187,7 +189,8 @@ prbdry(int fd)
 static void
 prcty(int fd)
 {
-	static const char cty[] = "Content-Type: application/xml\r\n\r\n";
+	static const char cty[] = "Content-Type: application/xml\n\n\
+<?xml version='1.1'?>\n";
 	write(fd, cty, sizeof(cty));
 	return;
 }
@@ -201,13 +204,13 @@ prstatus(int fd)
 	/* write an initial tag and clear the hash table */
 	prbdry(fd);
 	prcty(fd);
-	//prscript_beg(fd);
+	prscript_beg(fd);
 	prclear(fd);
 	/* go through all bids, then all asks */
 	oq_trav_bids(q, prstbcb, clo);
 	oq_trav_asks(q, prstacb, clo);
 	prpublish(fd);
-	//prscript_end(fd);
+	prscript_end(fd);
 	prbdry(fd);
 	return;
 }
@@ -234,6 +237,7 @@ handle_data(int fd, char *msg, size_t msglen)
 #define HEAD_COOKIE	"HEAD /"
 
 	if (strncmp(msg, GET_COOKIE, sizeof(GET_COOKIE) - 1) == 0) {
+		UM_DEBUG(MOD_PRE ": http push request\n");
 		/* keep the connection open so we can push stuff */
 		memorise_htpush(fd);
 		/* obviously a browser managed to connect to us,
@@ -260,6 +264,7 @@ static void
 handle_close(int fd)
 {
 	/* delete fd from our htpush cache */
+	UM_DEBUG(MOD_PRE ": sod http push\n");
 	forget_htpush(fd);
 	return;
 }
@@ -304,7 +309,10 @@ deinit(void *clo)
 
 	UM_DEBUG(MOD_PRE ": unloading ...");
 	deinit_watchers(ctx->mainloop, oqsock);
-	oqsock = -1;
+	if (oqsock > 0) {
+		close(oqsock);
+		oqsock = -1;
+	}
 	if (q != NULL) {
 		free_oq(q);
 	}

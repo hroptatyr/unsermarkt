@@ -23,7 +23,13 @@ typedef struct po_clo_s {
 	int fd;
 } *po_clo_t;
 
-static void
+static ssize_t
+send_order(int fd, umo_t o)
+{
+	return write(fd, o, sizeof(*o));
+}
+
+static ssize_t
 send_lmt_order(int fd, oside_t s, m30_t p, uint32_t q)
 {
 	struct umo_s o = {
@@ -35,11 +41,10 @@ send_lmt_order(int fd, oside_t s, m30_t p, uint32_t q)
 		.type = OTYPE_LIM,
 		.tymod = OTYMOD_GTC,
 	};
-	write(fd, &o, sizeof(o));
-	return;
+	return send_order(fd, &o);
 }
 
-static void
+static ssize_t
 send_mkt_order(int fd, oside_t s, uint32_t q)
 {
 	struct umo_s o = {
@@ -50,8 +55,7 @@ send_mkt_order(int fd, oside_t s, uint32_t q)
 		.type = OTYPE_MKT,
 		.tymod = OTYMOD_GTC,
 	};
-	write(fd, &o, sizeof(o));
-	return;
+	return send_order(fd, &o);
 }
 
 static int
@@ -92,15 +96,12 @@ proc_order(char *line, void *clo)
 	if (*p == '\0') {
 		/* market order */
 		pri.v = 0;
-		send_mkt_order(poclo->fd, side, qty);
+		return send_mkt_order(poclo->fd, side, qty);
 	} else {
 		/* limit order, p should point to the price now */
 		pri = ffff_m30_get_s(&p);
-		send_lmt_order(poclo->fd, side, pri, qty);
+		return send_lmt_order(poclo->fd, side, pri, qty);
 	}
-
-	/* everything ok */
-	return 0;
 }
 
 
@@ -162,6 +163,7 @@ main(int argc, char *argv[])
 		sa->sin6_port = htons(UM_PORT);
 
 	} else if (inet_pton(AF_INET6, argv[1], sa) == 0) {
+		sa->sin6_family = AF_INET6;
 		sa->sin6_port = htons(UM_PORT);
 
 	} else {

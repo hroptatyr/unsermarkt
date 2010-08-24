@@ -52,16 +52,37 @@
 #include "oq.h"
 
 #define MOD_PRE		"mod/oq"
+/* maximum number of http clients */
+#define MAX_CLIENTS	(8)
 
 /* some forwards and globals */
 static int handle_data(int fd, char *msg, size_t msglen);
 static umoq_t q = NULL;
+static int htpush[MAX_CLIENTS];
 
 
 /* our connectivity cruft */
 #include "dso-oq-con6ity.c"
 
 
+/* htpush connexions */
+static void
+memorise_htpush(int fd)
+{
+	int slot;
+	for (slot = 0; slot < MAX_CLIENTS; slot++) {
+		if (htpush[slot] <= 0) {
+			break;
+		}
+	}
+	if (slot == MAX_CLIENTS) {
+		/* no more room */
+		return;
+	}
+	htpush[slot] = fd;
+	return;
+}
+
 /* order queue */
 static void
 prhttphdr(int fd)
@@ -74,17 +95,37 @@ Content-Type: text/html; charset=ASCII\r\n\
 	return;
 }
 
+typedef struct prst_clo_s {
+	int fd;
+} *prst_clo_t;
+
 static void
-prstcb(uml_t l, void *clo)
+prstcb(int fd, char side, uml_t l)
 {
-	int fd = (int)(long unsigned int)clo;
+	char pri[32];
 	char tick[64];
 	size_t tot;
 
-	tot = ffff_m30_s(tick, l->p);
-	tick[tot++] = ' ';
-	tot += snprintf(tick + tot, sizeof(tick) - tot, "%u\n", l->q);
+	ffff_m30_s(pri, l->p);
+
+	tot = snprintf(tick, sizeof(tick), "%c(%s, %u),", side, pri, l->q);
 	write(fd, tick, tot);
+	return;
+}
+
+static void
+prstbcb(uml_t l, void *clo)
+{
+	prst_clo_t prst = clo;
+	prstcb(prst->fd, 'b', l);
+	return;
+}
+
+static void
+prstacb(uml_t l, void *clo)
+{
+	prst_clo_t prst = clo;
+	prstcb(prst->fd, 'a', l);
 	return;
 }
 
@@ -92,10 +133,22 @@ static void
 prstatus(int fd)
 {
 /* prints the current order queue to FD */
-	prhttphdr(fd);
+	struct prst_clo_s clo[1] = {{.fd = fd}};
 	/* go through all bids, then all asks */
-	oq_trav_bids(q, prstcb, (void*)(long unsigned int)fd);
-	oq_trav_asks(q, prstcb, (void*)(long unsigned int)fd);
+	oq_trav_bids(q, prstacb, clo);
+	oq_trav_asks(q, prstbcb, clo);
+	return;
+}
+
+static void
+upstatus(void)
+{
+/* for all fds in the htpush queue print the status */
+	for (int i = 0; i < MAX_CLIENTS; i++) {
+		if (htpush[i] > 0) {
+			prstatus(htpush[i]);
+		}
+	}
 	return;
 }
 
@@ -109,10 +162,13 @@ handle_data(int fd, char *msg, size_t msglen)
 #define HEAD_COOKIE	"HEAD /"
 
 	if (strncmp(msg, GET_COOKIE, sizeof(GET_COOKIE) - 1) == 0) {
+		/* keep the connection open so we can push stuff */
+		memorise_htpush(fd);
 		/* obviously a browser managed to connect to us,
-		 * print the current order queue and fuck off */
+		 * print an initial status */
+		prhttphdr(fd);
 		prstatus(fd);
-		return -1;
+		return 0;
 	} else if (strncmp(msg, HEAD_COOKIE, sizeof(HEAD_COOKIE) - 1) == 0) {
 		/* obviously a browser managed to connect to us,
 		 * print the current order queue and fuck off */
@@ -123,6 +179,7 @@ handle_data(int fd, char *msg, size_t msglen)
 	/* else try and get the order */
 	if (msglen == sizeof(struct umo_s)) {
 		oq_add_order(q, (umo_t)msg);
+		upstatus();
 	}
 	return 0;
 }

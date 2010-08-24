@@ -4,7 +4,10 @@
 #define INCLUDED_dso_oq_order_h_
 
 #include <stdint.h>
-#include <sushi/m30.h>
+#define WITH_M30_CMP
+#define DEFINE_GORY_STUFF
+#include "m30.h"
+#include "um-types.h"
 
 typedef struct umo_s *umo_t;
 #define um_order_s	umo_s
@@ -14,6 +17,10 @@ typedef enum {
 	OTYPE_UNK,
 	OTYPE_MKT,
 	OTYPE_LIM,
+	/* market to limit orders, only clears the top level then takes
+	 * that price and puts a limit order at that price for the rest
+	 * of the order */
+	OTYPE_MTL,
 	NOTYPES
 } otype_t;
 
@@ -48,36 +55,38 @@ typedef enum {
 	NOTYMODS
 } otymod_t;
 
-struct um_order_s {
-	uint32_t agent_id;
-	uint32_t secu_id;
+/* public part */
+struct umo_s {
+	agtid_t agent_id;
+	secid_t secu_id;
 	/* price, 0 if MKT, otherwise limit price */
 	m30_t p;
 	/* quantity */
-	m30_t q;
+	uint32_t q;
+	/* all the rest */
+	uint32_t side:2;
+	uint32_t type:2;
+	uint32_t tymod:28;
 };
 
 
-static inline void
-make_order(umo_t o, uint32_t aid, uint32_t sid, oside_t s, m30_t p, m30_t q)
+/* getters */
+static inline m30_t
+um_order_price(umo_t o)
 {
-	o->agent_id = aid;
-	o->secu_id = sid << 1;
-	o->p = p;
-	o->q = q;
+	return o->p;
+}
 
-	switch (s) {
-	case OSIDE_UNK:
-	case NOSIDES:
-	default:
-		o->secu_id = -1;
-		return;
-	case OSIDE_BUY:
-		break;
-	case OSIDE_SELL:
-		o->secu_id |= 1;
-	}
-	return;
+static inline oside_t
+um_order_side(umo_t o)
+{
+	return (oside_t)o->side;
+}
+
+static inline otype_t
+um_order_type(umo_t o)
+{
+	return (otype_t)o->type;
 }
 
 #endif	/* INCLUDED_dso_oq_order_h_ */

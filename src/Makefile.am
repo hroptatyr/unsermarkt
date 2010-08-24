@@ -16,14 +16,18 @@ BUILT_SOURCES =
 CLEANFILES = $(BUILT_SOURCES)
 
 mod_LTLIBRARIES += dso-oq.la
-noinst_PROGRAMS += um-order
+noinst_PROGRAMS += um-order oq
 
 dso_oq_la_LDFLAGS = -module
 dso_oq_la_LDFLAGS += $(unserding_LDFLAGS)
 dso_oq_la_CPPFLAGS = $(AM_CPPFLAGS) $(unserding_CFLAGS)
+dso_oq_la_SOURCES = dso-oq.c
+dso_oq_la_SOURCES += oq.c oq.h
 
 um_order_LDFLAGS = $(unserding_LDFLAGS)
 um_order_CPPFLAGS = $(AM_CPPFLAGS) $(unserding_CFLAGS)
+
+oq_CPPFLAGS = $(AM_CPPFLAGS) $(unserding_CFLAGS) -DSTANDALONE
 
 # 
 # Help the developers get nice post-processed source files

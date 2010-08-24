@@ -45,17 +45,17 @@
 #include <string.h>
 
 #include <unserding/unserding-ctx.h>
+#include <unserding/unserding-cfg.h>
 #include <unserding/module.h>
 #include "nifty.h"
+/* order matching engine */
+#include "oq.h"
 
 #define MOD_PRE		"mod/oq"
 
-/* some forwards */
+/* some forwards and globals */
 static int handle_data(int fd, char *msg, size_t msglen);
-
-
-/* include the order ctors and dtors */
-#include "dso-oq-order.h"
+static umoq_t q = NULL;
 
 
 /* our connectivity cruft */
@@ -75,13 +75,27 @@ Content-Type: text/html; charset=ASCII\r\n\
 }
 
 static void
+prstcb(uml_t l, void *clo)
+{
+	int fd = (int)(long unsigned int)clo;
+	char tick[64];
+	size_t tot;
+
+	tot = ffff_m30_s(tick, l->p);
+	tick[tot++] = ' ';
+	tot += snprintf(tick + tot, sizeof(tick) - tot, "%u\n", l->q);
+	write(fd, tick, tot);
+	return;
+}
+
+static void
 prstatus(int fd)
 {
 /* prints the current order queue to FD */
-	static const char nooq[] = "no orders yet\n";
-
 	prhttphdr(fd);
-	write(fd, nooq, sizeof(nooq));
+	/* go through all bids, then all asks */
+	oq_trav_bids(q, prstcb, (void*)(long unsigned int)fd);
+	oq_trav_asks(q, prstcb, (void*)(long unsigned int)fd);
 	return;
 }
 
@@ -108,8 +122,7 @@ handle_data(int fd, char *msg, size_t msglen)
 
 	/* else try and get the order */
 	if (msglen == sizeof(struct umo_s)) {
-		struct umo_s o[1];
-		memcpy(o, msg, sizeof(*o));
+		oq_add_order(q, (umo_t)msg);
 	}
 	return 0;
 }
@@ -119,6 +132,7 @@ void
 init(void *clo)
 {
 	ud_ctx_t ctx = clo;
+	void *settings;
 
 	UM_DEBUG(MOD_PRE ": loading ...");
 	/* connect to scscp and say ehlo */
@@ -126,6 +140,16 @@ init(void *clo)
 	/* set up the IO watcher and timer */
 	init_watchers(ctx->mainloop, oqsock);
 	UM_DBGCONT("loaded\n");
+
+	/* initialising the order queue */
+	if ((settings = udctx_get_setting(ctx)) != NULL) {
+		int sid = udcfg_tbl_lookup_i(ctx, settings, "secu_id");
+		int fid = udcfg_tbl_lookup_i(ctx, settings, "fund_id");
+		UM_DEBUG(MOD_PRE ": found secu_id/fund_id %d/%d\n", sid, fid);
+		q = make_oq(sid, fid);
+	}
+	/* clean up */
+	udctx_set_setting(ctx, NULL);
 	return;
 }
 
@@ -144,6 +168,9 @@ deinit(void *clo)
 	UM_DEBUG(MOD_PRE ": unloading ...");
 	deinit_watchers(ctx->mainloop, oqsock);
 	oqsock = -1;
+	if (q != NULL) {
+		free_oq(q);
+	}
 	UM_DBGCONT("done\n");
 	return;
 }

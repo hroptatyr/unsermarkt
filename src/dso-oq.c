@@ -103,9 +103,8 @@ prhttphdr(int fd)
 {
 	static const char httphdr[] = "\
 HTTP/1.1 200 OK\r\n\
-\
 Connection: Keep-Alive\r\n\
-Content-Type: text/html; charset=ASCII\r\n\
+Content-Type: multipart/x-mixed-replace;boundary=\"umbdry\"\r\n\
 \r\n";
 	write(fd, httphdr, sizeof(httphdr));
 	return;
@@ -156,7 +155,7 @@ prscript_beg(int fd)
 static void
 prscript_end(int fd)
 {
-	static const char tag[] = "</script>\n";
+	static const char tag[] = "</script>\r\n\r\n";
 	write(fd, tag, sizeof(tag));
 	return;
 }
@@ -178,19 +177,38 @@ prpublish(int fd)
 }
 
 static void
+prbdry(int fd)
+{
+	static const char bdry[] = "\r\n--umbdry\r\n";
+	write(fd, bdry, sizeof(bdry));
+	return;
+}
+
+static void
+prcty(int fd)
+{
+	static const char cty[] = "Content-Type: application/xml\r\n\r\n";
+	write(fd, cty, sizeof(cty));
+	return;
+}
+
+static void
 prstatus(int fd)
 {
 /* prints the current order queue to FD */
 	struct prst_clo_s clo[1] = {{.fd = fd}};
 
 	/* write an initial tag and clear the hash table */
-	prscript_beg(fd);
+	prbdry(fd);
+	prcty(fd);
+	//prscript_beg(fd);
 	prclear(fd);
 	/* go through all bids, then all asks */
 	oq_trav_bids(q, prstbcb, clo);
 	oq_trav_asks(q, prstacb, clo);
 	prpublish(fd);
-	prscript_end(fd);
+	//prscript_end(fd);
+	prbdry(fd);
 	return;
 }
 

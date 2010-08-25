@@ -93,16 +93,19 @@ handle_data(int fd, char *msg, size_t msglen)
 		UM_DEBUG(MOD_PRE ": http HEAD request\n");
 		prhttphdr(fd);
 		return -1;
-	}
 
-	/* else try and get the order */
-	if (msglen % sizeof(struct umo_s) == 0) {
+	} else if (msglen % sizeof(struct umo_s) == 0) {
+		/* try and get a bunch of orders */
 		for (int i = 0; i < msglen / sizeof(struct umo_s); i++) {
 			oq_add_order(q, (umo_t)msg + i);
 		}
 		upstatus();
+		return 0;
+
+	} else {
+		UM_DEBUG(MOD_PRE ": unknown crap on the wire\n");
+		return -1;
 	}
-	return 0;
 }
 
 static void

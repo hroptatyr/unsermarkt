@@ -106,92 +106,109 @@ HTTP/1.1 200 OK\r\n\
 Date: Tue, 24 Aug 2010 21:51:08 GMT\r\n\
 Server: unsermarkt/0.1\r\n\ 
 Transfer-Encoding: chunked\r\n\
-Content-Type: multipart/x-mixed-replace;boundary=\"umbdry\"\r\n\
-\r\n";
+Content-Type: multipart/x-mixed-replace;boundary=\"umbdry\"\r\n";
 	write(fd, httphdr, sizeof(httphdr));
 	return;
 }
 
-typedef struct prst_clo_s {
-	int fd;
-} *prst_clo_t;
+static char mbuf[4096], *mptr;
 
 static void
-prstcb(int fd, char side, uml_t l)
+append(const char *ptr, size_t len)
+{
+	memcpy(mptr, ptr, len);
+	mptr += len - 1;
+}
+
+static void
+prstcb(char side, uml_t l)
 {
 	char pri[32];
-	char tick[64];
-	size_t tot;
 
 	ffff_m30_s(pri, l->p);
-
-	tot = snprintf(tick, sizeof(tick), "%c(%s, %u);", side, pri, l->q);
-	write(fd, tick, tot);
+	mptr += sprintf(mptr, "%c(%s, %u);", side, pri, l->q);
 	return;
 }
 
 static void
-prstbcb(uml_t l, void *clo)
+prstbcb(uml_t l, void *UNUSED(clo))
 {
-	prst_clo_t prst = clo;
-	prstcb(prst->fd, 'b', l);
+	prstcb('b', l);
 	return;
 }
 
 static void
-prstacb(uml_t l, void *clo)
+prstacb(uml_t l, void *UNUSED(clo))
 {
-	prst_clo_t prst = clo;
-	prstcb(prst->fd, 'a', l);
+	prstcb('a', l);
 	return;
 }
 
 static void
-prscript_beg(int fd)
+prscript_beg(void)
 {
 	static const char tag[] = "<script>";
-	write(fd, tag, sizeof(tag));
+	append(tag, sizeof(tag));
 	return;
 }
 
 static void
-prscript_end(int fd)
+prscript_end(void)
 {
 	static const char tag[] = "</script>\n";
-	write(fd, tag, sizeof(tag));
+	append(tag, sizeof(tag));
 	return;
 }
 
 static void
-prclear(int fd)
+prclear(void)
 {
 	static const char clr[] = "clr();";
-	write(fd, clr, sizeof(clr));
+	append(clr, sizeof(clr));
 	return;
 }
 
 static void
-prpublish(int fd)
+prpublish(void)
 {
 	static const char pub[] = "pub();";
-	write(fd, pub, sizeof(pub));
+	append(pub, sizeof(pub));
 	return;
 }
 
 static void
-prbdry(int fd)
+prbdry(void)
 {
-	static const char bdry[] = "\n--umbdry\n";
-	write(fd, bdry, sizeof(bdry));
+	static const char bdry[] = "--umbdry\n";
+	append(bdry, sizeof(bdry));
 	return;
 }
 
 static void
-prcty(int fd)
+prcty(void)
 {
 	static const char cty[] = "Content-Type: application/xml\n\n\
 <?xml version='1.1'?>\n";
-	write(fd, cty, sizeof(cty));
+	append(cty, sizeof(cty));
+	return;
+}
+
+static void
+prep_status(void)
+{
+	/* reset the buffer */
+	mptr = mbuf;
+	/* write an initial tag and clear the hash table */
+	prbdry();
+	prcty();
+	prscript_beg();
+	prclear();
+	/* go through all bids, then all asks */
+	oq_trav_bids(q, prstbcb, NULL);
+	oq_trav_asks(q, prstacb, NULL);
+	prpublish();
+	prscript_end();
+	prbdry();
 	return;
 }
 
@@ -199,19 +216,12 @@ static void
 prstatus(int fd)
 {
 /* prints the current order queue to FD */
-	struct prst_clo_s clo[1] = {{.fd = fd}};
+	char len[16];
+	size_t lenlen;
 
-	/* write an initial tag and clear the hash table */
-	prbdry(fd);
-	prcty(fd);
-	prscript_beg(fd);
-	prclear(fd);
-	/* go through all bids, then all asks */
-	oq_trav_bids(q, prstbcb, clo);
-	oq_trav_asks(q, prstacb, clo);
-	prpublish(fd);
-	prscript_end(fd);
-	prbdry(fd);
+	lenlen = snprintf(len, sizeof(len), "\r\n%zx\r\n", mptr - mbuf);
+	write(fd, len, lenlen);
+	write(fd, mbuf, mptr - mbuf);
 	return;
 }
 
@@ -219,6 +229,7 @@ static void
 upstatus(void)
 {
 /* for all fds in the htpush queue print the status */
+	prep_status();
 	for (int i = 0; i < MAX_CLIENTS; i++) {
 		if (htpush[i] > 0) {
 			prstatus(htpush[i]);
@@ -243,6 +254,7 @@ handle_data(int fd, char *msg, size_t msglen)
 		/* obviously a browser managed to connect to us,
 		 * print an initial status */
 		prhttphdr(fd);
+		prep_status();
 		prstatus(fd);
 		return 0;
 	} else if (strncmp(msg, HEAD_COOKIE, sizeof(HEAD_COOKIE) - 1) == 0) {
@@ -264,7 +276,6 @@ static void
 handle_close(int fd)
 {
 	/* delete fd from our htpush cache */
-	UM_DEBUG(MOD_PRE ": sod http push\n");
 	forget_htpush(fd);
 	return;
 }

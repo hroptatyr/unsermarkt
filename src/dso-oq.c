@@ -145,34 +145,18 @@ prstacb(uml_t l, void *UNUSED(clo))
 }
 
 static void
-prscript_beg(void)
+pr_otag(void)
 {
-	static const char tag[] = "<script>";
+	static const char tag[] = "<quotes>";
 	append(tag, sizeof(tag));
 	return;
 }
 
 static void
-prscript_end(void)
+pr_ctag(void)
 {
-	static const char tag[] = "</script>\n";
+	static const char tag[] = "</quotes>\n";
 	append(tag, sizeof(tag));
-	return;
-}
-
-static void
-prclear(void)
-{
-	static const char clr[] = "clr();";
-	append(clr, sizeof(clr));
-	return;
-}
-
-static void
-prpublish(void)
-{
-	static const char pub[] = "pub();";
-	append(pub, sizeof(pub));
 	return;
 }
 
@@ -209,13 +193,11 @@ prep_status(void)
 	/* write an initial tag and clear the hash table */
 	prbdry();
 	prcty();
-	prscript_beg();
-	prclear();
+	pr_otag();
 	/* go through all bids, then all asks */
 	oq_trav_bids(q, prstbcb, NULL);
 	oq_trav_asks(q, prstacb, NULL);
-	prpublish();
-	prscript_end();
+	pr_ctag();
 	prbdry();
 	return;
 }

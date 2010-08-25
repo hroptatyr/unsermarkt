@@ -316,11 +316,6 @@ deinit(void *clo)
 	UM_DEBUG(MOD_PRE ": unloading ...");
 	deinit_watchers(ctx->mainloop);
 	oqsock = -1;
-	/* close all sockets */
-	for (int i = getdtablesize(); i >= 0; i--) {
-		/* close all descriptors */
-		close(i);
-	}
 	if (q != NULL) {
 		free_oq(q);
 	}

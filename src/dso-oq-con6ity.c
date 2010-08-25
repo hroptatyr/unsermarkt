@@ -140,10 +140,10 @@ clo_evsock(EV_P_ int UNUSED(type), void *w)
 {
 	ev_io *wp = w;
 
-	/* properly shut the socket */
-	__shut_sock(wp->fd);
         /* deinitialise the io watcher */
         ev_io_stop(EV_A_ wp);
+	/* properly shut the socket */
+	__shut_sock(wp->fd);
 	return;
 }
 
@@ -161,7 +161,7 @@ init_watchers(EV_P_ int s)
 }
 
 static void
-deinit_watchers(EV_P_ int UNUSED(s))
+deinit_watchers(EV_P)
 {
 #if defined EV_WALK_ENABLE && EV_WALK_ENABLE
 	/* properly close all sockets */

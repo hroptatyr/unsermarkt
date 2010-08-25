@@ -106,8 +106,8 @@ HTTP/1.1 200 OK\r\n\
 Date: Tue, 24 Aug 2010 21:51:08 GMT\r\n\
 Server: unsermarkt/0.1\r\n\ 
 Transfer-Encoding: chunked\r\n\
-Content-Type: multipart/x-mixed-replace;boundary=\"umbdry\"\r\n";
-	write(fd, httphdr, sizeof(httphdr));
+Content-Type: multipart/x-mixed-replace;boundary=\"umbdry\"\r\n\r\n";
+	write(fd, httphdr, sizeof(httphdr) - 1);
 	return;
 }
 
@@ -179,7 +179,7 @@ prpublish(void)
 static void
 prbdry(void)
 {
-	static const char bdry[] = "--umbdry\n";
+	static const char bdry[] = "--umbdry\r\n";
 	append(bdry, sizeof(bdry));
 	return;
 }
@@ -190,6 +190,14 @@ prcty(void)
 	static const char cty[] = "Content-Type: application/xml\n\n\
 <?xml version='1.1'?>\n";
 	append(cty, sizeof(cty));
+	return;
+}
+
+static void
+prfinale(void)
+{
+	*mptr++ = '\r';
+	*mptr++ = '\n';
 	return;
 }
 
@@ -218,9 +226,14 @@ prstatus(int fd)
 /* prints the current order queue to FD */
 	char len[16];
 	size_t lenlen;
+	size_t chlen = mptr - mbuf;
 
-	lenlen = snprintf(len, sizeof(len), "\r\n%zx\r\n", mptr - mbuf);
+	/* compute the chunk length */
+	lenlen = snprintf(len, sizeof(len), "%zx\r\n", chlen);
 	write(fd, len, lenlen);
+
+	/* put the final \r\n */
+	prfinale();
 	write(fd, mbuf, mptr - mbuf);
 	return;
 }
@@ -319,7 +332,7 @@ deinit(void *clo)
 	ud_ctx_t ctx = clo;
 
 	UM_DEBUG(MOD_PRE ": unloading ...");
-	deinit_watchers(ctx->mainloop, oqsock);
+	deinit_watchers(ctx->mainloop);
 	oqsock = -1;
 	if (q != NULL) {
 		free_oq(q);

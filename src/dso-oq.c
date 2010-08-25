@@ -126,7 +126,7 @@ prstcb(char side, uml_t l)
 	char pri[32];
 
 	ffff_m30_s(pri, l->p);
-	mptr += sprintf(mptr, "%c(%s, %u);", side, pri, l->q);
+	mptr += sprintf(mptr, "<%c p=\"%s\" q=\"%u\"/>", side, pri, l->q);
 	return;
 }
 

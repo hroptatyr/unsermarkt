@@ -188,7 +188,7 @@ static void
 prcty(void)
 {
 	static const char cty[] = "Content-Type: application/xml\n\n\
-<?xml version='1.1'?>\n";
+<?xml version='1.0'?>\n";
 	append(cty, sizeof(cty));
 	return;
 }

@@ -136,6 +136,18 @@ inco_cb(EV_P_ ev_io *w, int UNUSED(re))
 }
 
 static void
+clo_evsock(EV_P_ int UNUSED(type), void *w)
+{
+	ev_io *wp = w;
+
+	/* properly shut the socket */
+	__shut_sock(wp->fd);
+        /* deinitialise the io watcher */
+        ev_io_stop(EV_A_ wp);
+	return;
+}
+
+static void
 init_watchers(EV_P_ int s)
 {
 	if (s < 0) {
@@ -149,17 +161,15 @@ init_watchers(EV_P_ int s)
 }
 
 static void
-deinit_watchers(EV_P_ int s)
+deinit_watchers(EV_P_ int UNUSED(s))
 {
-	if (s < 0) {
-		return;
-	}
-
-        /* initialise an io watcher, then start it */
-        ev_io_stop(EV_A_ __wio);
-
-	/* properly shut the socket */
-	__shut_sock(s);
+#if defined EV_WALK_ENABLE && EV_WALK_ENABLE
+	/* properly close all sockets */
+	ev_walk(EV_A_ EV_IO, clo_evsock);
+#else  /* !EV_WALK_ENABLE */
+	/* close the main socket at least */
+	clo_evsock(EV_A_ EV_IO, __wio);
+#endif	/* EV_WALK_ENABLE */
 	return;
 }
 

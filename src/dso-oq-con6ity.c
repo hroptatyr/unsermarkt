@@ -35,6 +35,46 @@ clo_wio(EV_P_ ev_io *w)
 	return;
 }
 
+static inline int
+getsockopt_int(int s, int level, int optname)
+{
+	int res[1];
+	socklen_t rsz = sizeof(*res);
+	if (getsockopt(s, level, optname, res, &rsz) >= 0) {
+		return *res;
+	}
+	return -1;
+}
+
+static inline int
+setsockopt_int(int s, int level, int optname, int value)
+{
+	return setsockopt(s, level, optname, &value, sizeof(value));
+}
+
+/**
+ * Mark address behind socket S as reusable. */
+static inline int
+setsock_reuseaddr(int s)
+{
+#if defined SO_REUSEADDR
+	return setsockopt_int(s, SOL_SOCKET, SO_REUSEADDR, 1);
+#else  /* !SO_REUSEADDR */
+	return 0;
+#endif	/* SO_REUSEADDR */
+}
+
+/* probably only available on BSD */
+static inline int
+setsock_reuseport(int __attribute__((unused)) s)
+{
+#if defined SO_REUSEPORT
+	return setsockopt_int(s, SOL_SOCKET, SO_REUSEPORT, 1);
+#else  /* !SO_REUSEPORT */
+	return 0;
+#endif	/* SO_REUSEPORT */
+}
+
 /* we could take args like listen address and port number */
 static int
 listener(void)
@@ -44,7 +84,6 @@ listener(void)
 		.sin6_family = AF_INET6,
 		.sin6_addr = IN6ADDR_ANY_INIT
 	};
-	int opt;
 	volatile int s;
 
 	/* non-constant slots of __sa6 */
@@ -59,24 +98,22 @@ listener(void)
 	}
 
 #if defined IPV6_V6ONLY
-	opt = 0;
-	setsockopt(s, IPPROTO_IPV6, IPV6_V6ONLY, &opt, sizeof(opt));
+	setsockopt_int(s, IPPROTO_IPV6, IPV6_V6ONLY, 0);
 #endif	/* IPV6_V6ONLY */
 #if defined IPV6_USE_MIN_MTU
 	/* use minimal mtu */
-	opt = 1;
-	setsockopt(s, IPPROTO_IPV6, IPV6_USE_MIN_MTU, &opt, sizeof(opt));
+	setsockopt_int(s, IPPROTO_IPV6, IPV6_USE_MIN_MTU, 1);
 #endif
 #if defined IPV6_DONTFRAG
 	/* rather drop a packet than to fragment it */
-	opt = 1;
-	setsockopt(s, IPPROTO_IPV6, IPV6_DONTFRAG, &opt, sizeof(opt));
+	setsockopt_int(s, IPPROTO_IPV6, IPV6_DONTFRAG, 1);
 #endif
 #if defined IPV6_RECVPATHMTU
 	/* obtain path mtu to send maximum non-fragmented packet */
-	opt = 1;
-	setsockopt(s, IPPROTO_IPV6, IPV6_RECVPATHMTU, &opt, sizeof(opt));
+	setsockopt_int(s, IPPROTO_IPV6, IPV6_RECVPATHMTU, 1);
 #endif
+	setsock_reuseaddr(s);
+	setsock_reuseport(s);
 
 	/* we used to retry upon failure, but who cares */
 	if (bind(s, (struct sockaddr*)&__sa6, sizeof(__sa6)) < 0 ||

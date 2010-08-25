@@ -320,10 +320,7 @@ deinit(void *clo)
 
 	UM_DEBUG(MOD_PRE ": unloading ...");
 	deinit_watchers(ctx->mainloop, oqsock);
-	if (oqsock > 0) {
-		close(oqsock);
-		oqsock = -1;
-	}
+	oqsock = -1;
 	if (q != NULL) {
 		free_oq(q);
 	}

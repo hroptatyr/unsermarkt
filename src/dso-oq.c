@@ -106,6 +106,7 @@ HTTP/1.1 200 OK\r\n\
 Date: Tue, 24 Aug 2010 21:51:08 GMT\r\n\
 Server: unsermarkt/0.1\r\n\ 
 Transfer-Encoding: chunked\r\n\
+Connection: Keep-Alive\r\n\
 Content-Type: multipart/x-mixed-replace;boundary=\"umbdry\"\r\n\r\n";
 	write(fd, httphdr, sizeof(httphdr) - 1);
 	return;

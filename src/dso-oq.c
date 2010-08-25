@@ -260,8 +260,10 @@ handle_data(int fd, char *msg, size_t msglen)
 	}
 
 	/* else try and get the order */
-	if (msglen == sizeof(struct umo_s)) {
-		oq_add_order(q, (umo_t)msg);
+	if (msglen % sizeof(struct umo_s) == 0) {
+		for (int i = 0; i < msglen / sizeof(struct umo_s); i++) {
+			oq_add_order(q, (umo_t)msg + i);
+		}
 		upstatus();
 	}
 	return 0;

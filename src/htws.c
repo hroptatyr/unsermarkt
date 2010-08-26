@@ -129,6 +129,14 @@ prcty(void)
 	return;
 }
 
+static void
+prxmlhdr(void)
+{
+	static const char hdr[] = "<?xml version=\"1.0\"?>\n";
+	append(hdr, sizeof(hdr) - 1);
+	return;
+}
+
 static void __attribute__((unused))
 prep_http_status(void)
 {
@@ -151,6 +159,7 @@ prep_htws_status(void)
 	/* htws mode */
 	reset();
 	*mptr++ = 0x00;
+	prxmlhdr();
 	pr_otag();
 	/* go through all bids, then all asks */
 	oq_trav_bids(q, prstbcb, NULL);

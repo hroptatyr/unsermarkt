@@ -243,6 +243,91 @@ wsget_key(char *msg, size_t UNUSED(msglen), int k)
 	return res;
 }
 
+static int
+wsget_append_challenge_response(char *msg, size_t msglen)
+{
+	/* find the keys */
+	uint32_t k1 = wsget_key(msg, msglen, 1);
+	uint32_t k2 = wsget_key(msg, msglen, 2);
+	/* buffer to store the key and the hash respectively */
+	md5_byte_t hashme[16];
+	struct md5_state_s st[1];
+	/* find the end of the header block */
+	char *challenge;
+
+	/* find the final 8 bytes of the hash info */
+	if (UNLIKELY((challenge = strstr(msg, "\r\n\r\n")) == NULL)) {
+		return -1;
+	}
+	/* zap to the content after the \r\n\r\n cookie */
+	challenge += 4;
+
+	/* populate the keys and the challenge */
+	{
+		uint32_t k1be = htonl(k1);
+		uint32_t k2be = htonl(k2);
+		memcpy(hashme + 0, &k1be, 4);
+		memcpy(hashme + 4, &k2be, 4);
+		memcpy(hashme + 8, challenge, 8);
+	}
+
+	/* grind through the md5 mill */
+	md5_init(st);
+	md5_append(st, hashme, sizeof(hashme));
+	md5_finish(st, hashme);
+
+	/* must be past the header block, so insert \r\n cookie here */
+	*mptr++ = '\r';
+	*mptr++ = '\n';
+	/* ... and finally the response */
+	append((char*)hashme, sizeof(hashme));
+	return 0;
+}
+
+static int
+wsget_append_origin(char *msg, size_t msglen)
+{
+	static char prefix[] = "Sec-WebSocket-Origin: ";
+	static char cookie[] = "\r\nOrigin:";
+	/* find the origin header */
+	char *origin;
+	char *eol_o;
+
+	if (UNLIKELY((origin = strcasestr(msg, cookie)) == NULL)) {
+		return -1;
+	}
+	/* find the value, just zap to the first char after : */
+	origin += sizeof(cookie) - (origin[sizeof(cookie) - 1] != ' ');
+	/* find the end of the line */
+	eol_o = memchr(origin, '\n', msglen - (origin - msg));
+	/* append prefix and repeat the Origin header */
+	append(prefix, sizeof(prefix) - 1);
+	append(origin, eol_o - origin + 1/*for \n*/);
+	return 0;
+}
+
+static int
+wsget_append_location(char *msg, size_t msglen)
+{
+	static char prefix[] = "Sec-WebSocket-Location: ws://";
+	static char cookie[] = "\r\nHost:";
+	/* find the origin header */
+	char *host;
+	char *eol_h;
+
+	if (UNLIKELY((host = strcasestr(msg, cookie)) == NULL)) {
+		return -1;
+	}
+	/* find the value, just zap to the first char after : */
+	host += sizeof(cookie) - (host[sizeof(cookie) - 1] != ' ');
+	/* find the end of the line */
+	eol_h = memchr(host, '\n', msglen - (host - msg));
+	/* append prefix and repeat the Origin header */
+	append(prefix, sizeof(prefix) - 1);
+	append(host, eol_h - host + 1/*for \n*/);
+	return 0;
+}
+
 /* see http://www.whatwg.org/specs/web-socket-protocol/ */
 static int
 wsget_challenge(int fd, char *msg, size_t msglen)
@@ -252,8 +337,6 @@ HTTP/1.1 101 WebSocket Protocol Handshake\r\n\
 Upgrade: WebSocket\r\n\
 Connection: Upgrade\r\n\
 ";
-	uint32_t k1, k2;
-
 
 	/* buffer reset and initialising */
 	reset();
@@ -261,41 +344,12 @@ Connection: Upgrade\r\n\
 	/* generic answer */
 	append(wsget_resp, sizeof(wsget_resp) - 1);
 	/* find the Origin header */
-	{
-		static char loca[] =
-			"Sec-WebSocket-Location: ws://www.unserding.org:12768/\r\n";
-		static char prefix[] = "Sec-WebSocket-";
-		char *o = strcasestr(msg, "Origin:");
-		char *f = rawmemchr(o, '\n');
-		append(prefix, sizeof(prefix) - 1);
-		append(o, f - o + 1);
-		append(loca, sizeof(loca) - 1);
-	}
-	/* find the keys */
-	k1 = wsget_key(msg, msglen, 1);
-	k2 = wsget_key(msg, msglen, 2);
+	wsget_append_origin(msg, msglen);
+	/* find the Host header and turn it into a Location one */
+	wsget_append_location(msg, msglen);
+	/* determine the challenge and respond */
+	wsget_append_challenge_response(msg, msglen);
 
-	/* find the final 8 bytes of the hash info */
-	{
-		char *o = strstr(msg, "\r\n\r\n");
-		char hashme[16];
-		struct md5_state_s st[1];
-		uint32_t k1be = htonl(k1);
-		uint32_t k2be = htonl(k2);
-
-		memcpy(hashme + 0, &k1be, 4);
-		memcpy(hashme + 4, &k2be, 4);
-		memcpy(hashme + 8, o, 8);
-
-		/* grind through the md5 mill */
-		md5_init(st);
-		md5_append(st, (md5_byte_t*)hashme, sizeof(hashme));
-		md5_finish(st, (md5_byte_t*)hashme);
-
-		*mptr++ = '\r';
-		*mptr++ = '\n';
-		append(hashme, sizeof(hashme));
-	}
 	/* write the challenge response */
 	write(fd, mbuf, mptr - mbuf);
 	return 0;

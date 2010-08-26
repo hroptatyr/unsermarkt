@@ -1,0 +1,16 @@
+/* just stylise the qsides a bit */
+div[class='qside'] {
+  display: inline-block;
+  margin: 1ex;
+  padding: 1ex;
+}
+
+span[class='p'] {
+  padding-left: 0ex;
+  padding-right: 0.5ex;
+}
+
+span[class='q'] {
+  padding-left: 0.5ex;
+  padding-right: 0ex;
+}

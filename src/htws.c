@@ -250,7 +250,7 @@ wsget_append_challenge_response(char *msg, size_t msglen)
 	uint32_t k1 = wsget_key(msg, msglen, 1);
 	uint32_t k2 = wsget_key(msg, msglen, 2);
 	/* buffer to store the key and the hash respectively */
-	md5_byte_t hashme[16];
+	md5_byte_t hashme[16] __attribute__((aligned(8)));
 	struct md5_state_s st[1];
 	/* find the end of the header block */
 	char *challenge;
@@ -263,13 +263,9 @@ wsget_append_challenge_response(char *msg, size_t msglen)
 	challenge += 4;
 
 	/* populate the keys and the challenge */
-	{
-		uint32_t k1be = htonl(k1);
-		uint32_t k2be = htonl(k2);
-		memcpy(hashme + 0, &k1be, 4);
-		memcpy(hashme + 4, &k2be, 4);
-		memcpy(hashme + 8, challenge, 8);
-	}
+	((uint32_t*)hashme)[0] = htonl(k1);
+	((uint32_t*)hashme)[1] = htonl(k2);
+	((uint64_t*)hashme)[1] = *(uint64_t*)challenge;
 
 	/* grind through the md5 mill */
 	md5_init(st);

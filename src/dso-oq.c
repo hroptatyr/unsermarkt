@@ -63,6 +63,9 @@ static void forget_htpush(int fd);
 static void upstatus(void);
 static void prhttphdr(int fd);
 
+static int handle_wsget(int fd, char *msg, size_t msglen);
+static int handle_wsclo(int fd, char *msg, size_t msglen);
+
 static umoq_t q = NULL;
 
 
@@ -80,19 +83,16 @@ static umoq_t q = NULL;
 static int
 handle_data(int fd, char *msg, size_t msglen)
 {
-#define GET_COOKIE	"GET /"
-#define HEAD_COOKIE	"HEAD /"
+	static const char get_cookie[] = "GET /";
 
-	if (strncmp(msg, GET_COOKIE, sizeof(GET_COOKIE) - 1) == 0) {
-		UM_DEBUG(MOD_PRE ": http push request\n");
+	if (strncmp(msg, get_cookie, sizeof(get_cookie) - 1) == 0) {
+		UM_DEBUG(MOD_PRE ": htws push request\n");
 		return handle_wsget(fd, msg, msglen);
 
-	} else if (strncmp(msg, HEAD_COOKIE, sizeof(HEAD_COOKIE) - 1) == 0) {
-		/* obviously a browser managed to connect to us,
-		 * print the current order queue and fuck off */
-		UM_DEBUG(MOD_PRE ": http HEAD request\n");
-		prhttphdr(fd);
-		return -1;
+	} else if (wsclop(msg, msglen)) {
+		/* websocket closing challenge */
+		UM_DEBUG(MOD_PRE ": htws closing request\n");
+		return handle_wsclo(fd, msg, msglen);
 
 	} else if (msglen % sizeof(struct umo_s) == 0) {
 		/* try and get a bunch of orders */

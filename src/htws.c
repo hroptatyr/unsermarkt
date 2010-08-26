@@ -41,7 +41,7 @@ forget_htpush(int fd)
 
 
 /* order queue */
-static void
+static void __attribute__((unused))
 prhttphdr(int fd)
 {
 	static const char httphdr[] = "\
@@ -378,6 +378,25 @@ upstatus(void)
 		}
 	}
 	return;
+}
+
+
+/* dealing with the closing handshake */
+static const char htws_clo_seq[9] = {
+	0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+};
+
+static int
+wsclop(const char *msg, size_t UNUSED(msglen))
+{
+	return memcmp(msg, htws_clo_seq, sizeof(htws_clo_seq)) == 0;
+}
+
+static int
+handle_wsclo(int fd, char *UNUSED(msg), size_t UNUSED(msglen))
+{
+	write(fd, htws_clo_seq, sizeof(htws_clo_seq));
+	return -1;
 }
 
 /* htws.c ends here */

@@ -88,7 +88,11 @@ handle_data(int fd, char *msg, size_t msglen)
 
 	if (strncmp(msg, get_cookie, sizeof(get_cookie) - 1) == 0) {
 		UM_DEBUG(MOD_PRE ": htws push request\n");
-		return handle_wsget(fd, msg, msglen);
+		if (handle_wsget(fd, msg, msglen) < 0) {
+			return -1;
+		}
+		prstatus(fd);
+		return 0;
 
 	} else if (wsclop(msg, msglen)) {
 		/* websocket closing challenge */

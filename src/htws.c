@@ -7,6 +7,7 @@
 #define MAX_CLIENTS	(8)
 
 static int htpush[MAX_CLIENTS];
+static int status_updated = 0;
 
 /* htpush connexions */
 static void
@@ -128,18 +129,10 @@ prcty(void)
 	return;
 }
 
-static void
-prfinale(void)
+static void __attribute__((unused))
+prep_http_status(void)
 {
-	*mptr++ = '\r';
-	*mptr++ = '\n';
-	return;
-}
-
-static void
-prep_status(void)
-{
-	/* bla */
+	/* http mode */
 	reset();
 	prbdry();
 	prcty();
@@ -153,19 +146,48 @@ prep_status(void)
 }
 
 static void
+prep_htws_status(void)
+{
+	/* htws mode */
+	reset();
+	*mptr++ = 0x00;
+	pr_otag();
+	/* go through all bids, then all asks */
+	oq_trav_bids(q, prstbcb, NULL);
+	oq_trav_asks(q, prstacb, NULL);
+	pr_ctag();
+	*mptr++ = 0xff;
+	return;
+}
+
+static void
 prstatus(int fd)
 {
 /* prints the current order queue to FD */
-	char len[16];
-	size_t lenlen;
-	size_t chlen = mptr - mbuf;
+	/* check if status needs updating */
+	if (!status_updated) {
+		prep_htws_status();
+		status_updated = 1;
+	}
 
-	/* compute the chunk length */
-	lenlen = snprintf(len, sizeof(len), "%zx\r\n", chlen);
-	write(fd, len, lenlen);
+#if 0
+/* only in http mode */
+	{
+		char len[16];
+		size_t lenlen;
+		size_t chlen = mptr - mbuf;
 
-	/* put the final \r\n */
-	prfinale();
+		/* compute the chunk length */
+		lenlen = snprintf(len, sizeof(len), "%zx\r\n", chlen);
+		write(fd, len, lenlen);
+		/* put the final \r\n */
+		*mptr++ = '\r';
+		*mptr++ = '\n';
+	}
+#else
+/* htws mode */
+	;
+#endif
 	write(fd, mbuf, mptr - mbuf);
 	return;
 }
@@ -379,7 +401,8 @@ static void
 upstatus(void)
 {
 /* for all fds in the htpush queue print the status */
-	prep_status();
+	/* flag status as outdated */
+	status_updated = 0;
 	for (int i = 0; i < MAX_CLIENTS; i++) {
 		if (htpush[i] > 0) {
 			prstatus(htpush[i]);

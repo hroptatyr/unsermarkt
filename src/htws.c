@@ -305,6 +305,7 @@ wsget_append_origin(char *msg, size_t msglen)
 static int
 wsget_append_location(char *msg, size_t msglen)
 {
+/* location apparently needs a path plus the Host component */
 	static char prefix[] = "Sec-WebSocket-Location: ws://";
 	static char cookie[] = "\r\nHost:";
 	/* find the origin header */
@@ -320,7 +321,12 @@ wsget_append_location(char *msg, size_t msglen)
 	eol_h = memchr(host, '\n', msglen - (host - msg));
 	/* append prefix and repeat the Origin header */
 	append(prefix, sizeof(prefix) - 1);
-	append(host, eol_h - host + 1/*for \n*/);
+	append(host, eol_h - host - 1/*cut off \r\n*/);
+	/* append our location */
+	*mptr++ = '/';
+	/* and the line terminator */
+	*mptr++ = '\r';
+	*mptr++ = '\n';
 	return 0;
 }
 

@@ -14,3 +14,16 @@ span[class='q'] {
   padding-left: 0.5ex;
   padding-right: 0ex;
 }
+
+div[class='success'] {
+  background-color: #00ff00;
+}
+
+div[class='fail'] {
+  background-color: #ff0000;
+}
+
+div[class='standby'] {
+  background-color: #0000ff;
+}
+

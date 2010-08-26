@@ -40,6 +40,8 @@ function a(p, q)
 
 function msg_evt(evt)
 {
+	status.className = "standby";
+	status.innerHTML = "incoming message " + ++conn.msgno;
 	if (xsl_proc) {
 		var dp = new DOMParser();
 		var evt_xml = dp.parseFromString(evt.data, "text/xml");
@@ -52,7 +54,8 @@ function msg_evt(evt)
 		adiv.innerHTML = "";
 		adiv.appendChild(afrag);
 	}
-	status.innerHTML = "processed messages: " + ++conn.msgno;
+	status.className = "success";
+	status.innerHTML = "connected";
 	return;
 }
 

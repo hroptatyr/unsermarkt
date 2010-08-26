@@ -45,14 +45,17 @@ function msg_evt(evt)
 	if (xsl_proc) {
 		var dp = new DOMParser();
 		var evt_xml = dp.parseFromString(evt.data, "text/xml");
-		var bfrag = xsl_proc.transformToFragment(evt_xml, document);
-		var afrag = xsl_proc.transformToFragment(evt_xml, document);
+		var frag;
 
+		xsl_proc.setParameter("", "side", "b");
+		frag = xsl_proc.transformToFragment(evt_xml, document);
 		bdiv.innerHTML = "";
-		bdiv.appendChild(bfrag);
+		bdiv.appendChild(frag);
 
+		xsl_proc.setParameter("", "side", "a");
+		frag = xsl_proc.transformToFragment(evt_xml, document);
 		adiv.innerHTML = "";
-		adiv.appendChild(afrag);
+		adiv.appendChild(frag);
 	}
 	status.className = "success";
 	status.innerHTML = "connected";
@@ -93,6 +96,7 @@ function get_xsl()
 {
 	var req = new XMLHttpRequest();
 	req.open("GET", "unsermarkt.xsl", false);
+	req.setRequestHeader("Content-Type","text/xml");
 	req.send(null);
 	if (req.readyState == 4 && req.status == 200) {
 		if ((xsl = req.responseXML) == null) {

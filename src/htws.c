@@ -399,6 +399,9 @@ Connection: Upgrade\r\n\
 static int
 handle_wsget(int fd, char *msg, size_t msglen)
 {
+	/* first of all render the status bit void
+	 * coz we're using the same buffer */
+	status_updated = 0;
 	/* respond to what the client wants */
 	wsget_challenge(fd, msg, msglen);
 	/* keep the connection open so we can push stuff */
@@ -422,9 +425,7 @@ upstatus(void)
 
 
 /* dealing with the closing handshake */
-static const char htws_clo_seq[9] = {
-	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
-};
+static const char htws_clo_seq[2] = {0xff, 0x00};
 
 static int
 wsclop(const char *msg, size_t UNUSED(msglen))

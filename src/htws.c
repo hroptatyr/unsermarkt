@@ -206,7 +206,7 @@ Content-Type: multipart/x-mixed-replace;boundary=\"umbdry\"\r\n\r\n";
  * then used in the server handshake, as described below.
  */
 static uint32_t
-wsget_key(char *msg, size_t UNUSED(msglen), int k)
+wsget_key(char *msg, size_t msglen, int k)
 {
 	static char cookie[] = "Sec-WebSocket-Keyx:";
 	char *key;
@@ -217,8 +217,11 @@ wsget_key(char *msg, size_t UNUSED(msglen), int k)
 
 	/* turn the cookie into Key1 or Key2 */
 	cookie[sizeof(cookie) - 3] = k + '0';
-	key = strcasestr(msg, cookie);
-	fin = rawmemchr(key, '\n');
+	if (UNLIKELY((key = strcasestr(msg, cookie)) == NULL)) {
+		/* google sends no keys */
+		return 0;
+	}
+	fin = memchr(key, '\n', msglen - (key - msg));
 	/* look for the value offset, stupid websocket protocol
 	 * makes first space optional */
 	if (LIKELY((key += sizeof(cookie) - 1)[0] == ' ')) {
@@ -255,6 +258,14 @@ wsget_append_challenge_response(char *msg, size_t msglen)
 	/* find the end of the header block */
 	char *challenge;
 
+	/* always append these */
+	*mptr++ = '\r';
+	*mptr++ = '\n';
+
+	/* check if we found the keys, chrome doesn't send keys :( */
+	if (UNLIKELY(k1 == 0 || k2 == 0)) {
+		return -1;
+	}
 	/* find the final 8 bytes of the hash info */
 	if (UNLIKELY((challenge = strstr(msg, "\r\n\r\n")) == NULL)) {
 		return -1;
@@ -272,9 +283,6 @@ wsget_append_challenge_response(char *msg, size_t msglen)
 	md5_append(st, hashme, sizeof(hashme));
 	md5_finish(st, hashme);
 
-	/* must be past the header block, so insert \r\n cookie here */
-	*mptr++ = '\r';
-	*mptr++ = '\n';
 	/* ... and finally the response */
 	append((char*)hashme, sizeof(hashme));
 	return 0;

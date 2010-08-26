@@ -64,6 +64,7 @@ static void upstatus(void);
 static void prhttphdr(int fd);
 
 static int handle_wsget(int fd, char *msg, size_t msglen);
+static int wsclop(const char *msg, size_t msglen);
 static int handle_wsclo(int fd, char *msg, size_t msglen);
 
 static umoq_t q = NULL;

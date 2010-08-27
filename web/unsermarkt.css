@@ -5,6 +5,10 @@ div[class='qside'] {
   padding: 1ex;
 }
 
+div[class='quotes'] {
+  vertical-align: top;
+}
+
 span[class='p'] {
   padding-left: 0ex;
   padding-right: 0.5ex;

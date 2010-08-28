@@ -10,14 +10,12 @@ struct umm_s {
 	oid_t ob, os;
 	/* buyer and seller agent ids */
 	agtid_t ab, as;
+	/* instr ids, buyer/seller */
+	insid_t ib, is;
 	/* agreed upon price */
 	m30_t p;
 	/* agreed upon quantity */
 	uint32_t q;
-	/* security id */
-	secid_t secu_id;
-	/* funding id */
-	secid_t fund_id;
 };
 
 #endif	/* !INCLUDED_dso_oq_match_h_ */

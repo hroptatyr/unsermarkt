@@ -34,7 +34,7 @@ send_lmt_order(int fd, oside_t s, m30_t p, uint32_t q)
 {
 	struct umo_s o = {
 		.agent_id = 1,
-		.secu_id = 2,
+		.instr_id = 2,
 		.p = p,
 		.q = q,
 		.side = s,
@@ -49,7 +49,7 @@ send_mkt_order(int fd, oside_t s, uint32_t q)
 {
 	struct umo_s o = {
 		.agent_id = 1,
-		.secu_id = 2,
+		.instr_id = 2,
 		.q = q,
 		.side = s,
 		.type = OTYPE_MKT,

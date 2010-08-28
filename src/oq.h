@@ -43,7 +43,7 @@ struct uml_s {
 /* ctor/dtor,
  * we expect one order queue per security, so the queue is completely
  * oblivious to security ids */
-extern umoq_t make_oq(secid_t secu_id, secid_t fund_id);
+extern umoq_t make_oq(insid_t secu_id, insid_t fund_id);
 extern void free_oq(umoq_t);
 
 

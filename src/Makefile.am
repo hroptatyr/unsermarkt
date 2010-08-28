@@ -16,7 +16,7 @@ BUILT_SOURCES =
 CLEANFILES = $(BUILT_SOURCES)
 
 mod_LTLIBRARIES += dso-oq.la
-noinst_PROGRAMS += umoc oq
+noinst_PROGRAMS += umoc oq uschi
 
 dso_oq_la_LDFLAGS = -module
 dso_oq_la_LDFLAGS += $(unserding_LDFLAGS)
@@ -28,6 +28,8 @@ umoc_LDFLAGS = $(unserding_LDFLAGS)
 umoc_CPPFLAGS = $(AM_CPPFLAGS) $(unserding_CFLAGS)
 
 oq_CPPFLAGS = $(AM_CPPFLAGS) $(unserding_CFLAGS) -DSTANDALONE
+
+uschi_CPPFLAGS = $(AM_CPPFLAGS) $(unserding_CFLAGS) -DSTANDALONE
 
 # 
 # Help the developers get nice post-processed source files

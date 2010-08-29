@@ -14,9 +14,6 @@
 /* more precision for the big portfolios */
 #include "m62.h"
 
-/* very abstract list provider */
-# include "mmls.c"
-
 #define USE_SQLITE	(1)
 #define INITIAL_NAGT	(256)
 #define INITIAL_NINS	(256)
@@ -24,6 +21,9 @@
 #if defined USE_SQLITE
 # include <sqlite3.h>
 # include <stdio.h>
+#else
+/* very abstract list provider */
+# include "mmls.c"
 #endif	/* USE_SQLITE */
 
 #if !defined LIKELY
@@ -49,6 +49,13 @@ typedef struct uschi_i_s *uschi_i_t;
 typedef struct uschi_a_s *uschi_a_t;
 typedef struct inv_s *inv_t;
 
+/* investments, resembles pfack investments, innit? */
+struct inv_s {
+	m62_t lpos;
+	m62_t spos;
+};
+
+#if !defined USE_SQLITE
 /* instruments */
 struct ins_s {
 	char *name;
@@ -62,12 +69,6 @@ struct uschi_i_s {
 };
 
 /* agents */
-/* investments, resembles pfack investments, innit? */
-struct inv_s {
-	m62_t lpos;
-	m62_t spos;
-};
-
 typedef struct agt_inv_s *agt_inv_t;
 
 struct agt_inv_s {
@@ -90,6 +91,7 @@ struct uschi_a_s {
 	struct agt_s a[1];
 	agtid_t id;
 };
+#endif	/* !USE_SQLITE */
 
 /**
  * The main uschi structure, it's just a set of agents atm. */
@@ -227,6 +229,14 @@ uschi_agent_get_inv(uschi_t h, agt_t a, insid_t id)
 }
 #endif	/* !USE_SQLITE */
 
+#if defined USE_SQLITE
+static void
+turn_off_synchronicity(uschi_t h)
+{
+	sqlite3_exec(h->db, "PRAGMA synchronous=0;", NULL, 0, NULL);
+	return;
+}
+#endif	/* USE_SQLITE */
 
 /* ctor/dtor */
 uschi_t
@@ -255,7 +265,8 @@ make_uschi(void)
 		"VALUES (?, ?, ?, ?);";
 
 	sqlite3_open(dbpath, &res->db);
-
+	/* turn off synchronous mode */
+	turn_off_synchronicity(res);
 	/* prepare some statements */
 	sqlite3_prepare_v2(res->db, aget, sizeof(aget), &res->agetter, NULL);
 	sqlite3_prepare_v2(res->db, iget, sizeof(iget), &res->igetter, NULL);

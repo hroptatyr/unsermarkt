@@ -50,6 +50,8 @@
 #include "nifty.h"
 /* order matching engine */
 #include "oq.h"
+/* for our websockets */
+#include "htws.h"
 
 #define MOD_PRE		"mod/oq"
 
@@ -62,10 +64,6 @@ static void forget_htpush(int fd);
 /* push new status to everyone */
 static void upstatus(void);
 static void prhttphdr(int fd);
-
-static int handle_wsget(int fd, char *msg, size_t msglen);
-static int wsclop(const char *msg, size_t msglen);
-static int handle_wsclo(int fd, char *msg, size_t msglen);
 
 static umoq_t q = NULL;
 
@@ -84,20 +82,18 @@ static umoq_t q = NULL;
 static int
 handle_data(int fd, char *msg, size_t msglen)
 {
-	static const char get_cookie[] = "GET /";
-
-	if (strncmp(msg, get_cookie, sizeof(get_cookie) - 1) == 0) {
+	if (htws_get_p(msg, msglen)) {
 		UM_DEBUG(MOD_PRE ": htws push request\n");
-		if (handle_wsget(fd, msg, msglen) < 0) {
+		if (htws_handle_get(fd, msg, msglen) < 0) {
 			return -1;
 		}
 		prstatus(fd);
 		return 0;
 
-	} else if (wsclop(msg, msglen)) {
+	} else if (htws_clo_p(msg, msglen)) {
 		/* websocket closing challenge */
 		UM_DEBUG(MOD_PRE ": htws closing request\n");
-		return handle_wsclo(fd, msg, msglen);
+		return htws_handle_clo(fd, msg, msglen);
 
 	} else if (msglen % sizeof(struct umo_s) == 0) {
 		/* try and get a bunch of orders */

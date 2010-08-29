@@ -231,9 +231,14 @@ uschi_agent_get_inv(uschi_t h, agt_t a, insid_t id)
 
 #if defined USE_SQLITE
 static void
-turn_off_synchronicity(uschi_t h)
+tune_sqlite_backend(uschi_t h)
 {
+	/* turn off synchronous mode */
 	sqlite3_exec(h->db, "PRAGMA synchronous=0;", NULL, 0, NULL);
+	/* insist on foreign keys */
+	sqlite3_exec(h->db, "PRAGMA foreign_keys=1;", NULL, 0, NULL);
+	/* turn off transactions */
+	sqlite3_exec(h->db, "PRAGMA journal_mode=MEMORY;", NULL, 0, NULL);
 	return;
 }
 #endif	/* USE_SQLITE */
@@ -265,8 +270,8 @@ make_uschi(void)
 		"VALUES (?, ?, ?, ?);";
 
 	sqlite3_open(dbpath, &res->db);
-	/* turn off synchronous mode */
-	turn_off_synchronicity(res);
+	/* turn off synchronous mode, etc. */
+	tune_sqlite_backend(res);
 	/* prepare some statements */
 	sqlite3_prepare_v2(res->db, aget, sizeof(aget), &res->agetter, NULL);
 	sqlite3_prepare_v2(res->db, iget, sizeof(iget), &res->igetter, NULL);

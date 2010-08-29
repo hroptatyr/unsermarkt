@@ -397,7 +397,14 @@ Connection: Upgrade\r\n\
 }
 
 static int
-handle_wsget(int fd, char *msg, size_t msglen)
+htws_get_p(const char *msg, size_t UNUSED(msglen))
+{
+	static const char get_cookie[] = "GET /";
+	return strncmp(msg, get_cookie, sizeof(get_cookie) - 1) == 0;
+}
+
+static int
+htws_handle_get(int fd, char *msg, size_t msglen)
 {
 	/* first of all render the status bit void
 	 * coz we're using the same buffer */
@@ -428,13 +435,13 @@ upstatus(void)
 static const char htws_clo_seq[2] = {0xff, 0x00};
 
 static int
-wsclop(const char *msg, size_t UNUSED(msglen))
+htws_clo_p(const char *msg, size_t UNUSED(msglen))
 {
 	return memcmp(msg, htws_clo_seq, sizeof(htws_clo_seq)) == 0;
 }
 
 static int
-handle_wsclo(int fd, char *UNUSED(msg), size_t UNUSED(msglen))
+htws_handle_clo(int fd, char *UNUSED(msg), size_t UNUSED(msglen))
 {
 	write(fd, htws_clo_seq, sizeof(htws_clo_seq));
 	return -1;

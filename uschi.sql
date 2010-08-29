@@ -16,8 +16,9 @@ CREATE TABLE 'instr' (
 CREATE TABLE 'agtinv' (
   agent_id INTEGER,
   instr_id INTEGER,
-  lpos NUMERIC,
-  spos NUMERIC,
+  -- denominator is 10000
+  lpos INTEGER,
+  spos INTEGER,
   PRIMARY KEY (agent_id, instr_id),
   FOREIGN KEY (agent_id) REFERENCES 'agent' (agent_id),
   FOREIGN KEY (instr_id) REFERENCES 'instr' (instr_id)

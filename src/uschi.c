@@ -15,7 +15,7 @@
 #include "m62.h"
 
 /* very abstract list provider */
-#include "mmls.c"
+# include "mmls.c"
 
 #define USE_SQLITE	(1)
 #define INITIAL_NAGT	(256)
@@ -101,6 +101,9 @@ struct uschi_s {
 	sqlite3_stmt *igetter;
 	/* match inserter */
 	sqlite3_stmt *minster;
+	/* inventory loader and inserter */
+	sqlite3_stmt *linvent;
+	sqlite3_stmt *iinvent;
 #else  /* !USE_SQLITE */
 	mmls_t als;
 	mmls_t ils;
@@ -243,6 +246,13 @@ make_uschi(void)
 		"b_agent_id, s_agent_id, b_instr_id, s_instr_id, "
 		"price, quantity) VALUES "
 		"(?, ?, ?, ?, ?, ?);";
+	static const char linv[] =
+		"SELECT lpos, spos FROM agtinv "
+		"WHERE agent_id = ? AND instr_id = ?;";
+	static const char iinv[] =
+		"INSERT OR REPLACE INTO agtinv "
+		"(agent_id, instr_id, lpos, spos) "
+		"VALUES (?, ?, ?, ?);";
 
 	sqlite3_open(dbpath, &res->db);
 
@@ -250,6 +260,8 @@ make_uschi(void)
 	sqlite3_prepare_v2(res->db, aget, sizeof(aget), &res->agetter, NULL);
 	sqlite3_prepare_v2(res->db, iget, sizeof(iget), &res->igetter, NULL);
 	sqlite3_prepare_v2(res->db, mins, sizeof(mins), &res->minster, NULL);
+	sqlite3_prepare_v2(res->db, linv, sizeof(linv), &res->linvent, NULL);
+	sqlite3_prepare_v2(res->db, iinv, sizeof(iinv), &res->iinvent, NULL);
 
 #else  /* !USE_SQLITE */
 	memset(res->a, 0, sizeof(*res->a));
@@ -268,6 +280,8 @@ free_uschi(uschi_t h)
 	sqlite3_finalize(h->agetter);
 	sqlite3_finalize(h->igetter);
 	sqlite3_finalize(h->minster);
+	sqlite3_finalize(h->linvent);
+	sqlite3_finalize(h->iinvent);
 
 	sqlite3_close(h->db);
 #else  /* !USE_SQLITE */
@@ -368,14 +382,49 @@ uschi_add_instr(uschi_t h, char *name)
 }
 
 
-#include <stdio.h>
 /* matching queue operations */
+static struct inv_s
+load_inventory(uschi_t h, agtid_t a, insid_t i)
+{
+	struct inv_s res[1] = {0};
+
+	sqlite3_bind_int(h->linvent, 1, a);
+	sqlite3_bind_int(h->linvent, 2, i);
+	switch (sqlite3_step(h->linvent)) {
+	case SQLITE_ROW:
+		res->lpos.mant = sqlite3_column_int64(h->linvent, 0);
+		res->lpos.expo = 1;
+		res->spos.mant = sqlite3_column_int64(h->linvent, 1);
+		res->spos.expo = 1;
+		break;
+	case SQLITE_MISUSE:
+		abort();
+	default:
+		break;
+	}
+	sqlite3_reset(h->linvent);
+	return *res;
+}
+
+static void
+push_inventory(uschi_t h, agtid_t a, insid_t i, inv_t pf)
+{
+	sqlite3_bind_int(h->iinvent, 1, a);
+	sqlite3_bind_int(h->iinvent, 2, i);
+	sqlite3_bind_int64(h->iinvent, 3, pf->lpos.mant);
+	sqlite3_bind_int64(h->iinvent, 4, pf->spos.mant);
+	sqlite3_step(h->iinvent);
+	sqlite3_reset(h->iinvent);
+	return;
+}
+
 mid_t
 uschi_add_match(uschi_t h, umm_t m)
 {
 /* we process buyer and seller separately */
 #if defined USE_SQLITE
 	mid_t res = 0;
+	struct inv_s bs[1], bf[1], ss[1], sf[1];
 
 	sqlite3_bind_int(h->minster, 1, m->ab);
 	sqlite3_bind_int(h->minster, 2, m->as);
@@ -386,18 +435,34 @@ uschi_add_match(uschi_t h, umm_t m)
 	if (sqlite3_step(h->minster) == SQLITE_DONE) {
 		res = sqlite3_last_insert_rowid(h->db);
 	}
-	sqlite3_reset(h->igetter);
+	sqlite3_reset(h->minster);
 
 	/* update the agents' portfolios */
+	*bs = load_inventory(h, m->ab, m->ib);
+	*bf = load_inventory(h, m->ab, m->is);
+	*ss = load_inventory(h, m->as, m->ib);
+	*sf = load_inventory(h, m->as, m->is);
+
+	/* the buyer inv is the security, the seller inv the funding side */
+	bs->lpos = ffff_m62_add_ui64(bs->lpos, m->q);
+	ss->spos = ffff_m62_add_ui64(ss->spos, m->q);
+	bf->spos = ffff_m62_add_mul_m30_ui64(bf->spos, m->p, m->q);
+	sf->lpos = ffff_m62_add_mul_m30_ui64(sf->lpos, m->p, m->q);
+
+	/* and update the goodies */
+	push_inventory(h, m->ab, m->ib, bs);
+	push_inventory(h, m->ab, m->is, bf);
+	push_inventory(h, m->as, m->ib, ss);
+	push_inventory(h, m->as, m->is, sf);
 	return res;
 #else  /* !USE_SQLITE */
 	agt_t ab = uschi_get_agent(h, m->ab);
 	inv_t ibs = uschi_agent_get_inv(h, ab, m->ib);
-	inv_t ibf = uschi_agent_get_inv(h, ab, m->ib);
+	inv_t ibf = uschi_agent_get_inv(h, ab, m->is);
 	/* find the securities in question */
 	agt_t as = uschi_get_agent(h, m->as);
-	inv_t iss = uschi_agent_get_inv(h, ab, m->is);
-	inv_t isf = uschi_agent_get_inv(h, ab, m->is);
+	inv_t iss = uschi_agent_get_inv(h, as, m->ib);
+	inv_t isf = uschi_agent_get_inv(h, as, m->is);
 
 	/* the buyer inv  is the security, the seller inv the funding side */
 	ibs->lpos = ffff_m62_add_ui64(ibs->lpos, m->q);

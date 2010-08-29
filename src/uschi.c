@@ -17,8 +17,14 @@
 /* very abstract list provider */
 #include "mmls.c"
 
+#define USE_SQLITE	(1)
 #define INITIAL_NAGT	(256)
 #define INITIAL_NINS	(256)
+
+#if defined USE_SQLITE
+# include <sqlite3.h>
+# include <stdio.h>
+#endif	/* USE_SQLITE */
 
 #if !defined LIKELY
 # define LIKELY(_x)	__builtin_expect((_x), 1)
@@ -88,6 +94,14 @@ struct uschi_a_s {
 /**
  * The main uschi structure, it's just a set of agents atm. */
 struct uschi_s {
+#if defined USE_SQLITE
+	sqlite3 *db;
+	/* prepared statements */
+	sqlite3_stmt *agetter;
+	sqlite3_stmt *igetter;
+	/* match inserter */
+	sqlite3_stmt *minster;
+#else  /* !USE_SQLITE */
 	mmls_t als;
 	mmls_t ils;
 	struct uschi_a_s a[1];
@@ -97,9 +111,11 @@ struct uschi_s {
 	uint32_t aid;
 	uint32_t iid;
 	uint32_t mid;
+#endif	/* USE_SQLITE */
 };
 
 
+#if !defined USE_SQLITE
 static uschi_a_t
 pop_a(uschi_t h)
 {
@@ -206,6 +222,7 @@ uschi_agent_get_inv(uschi_t h, agt_t a, insid_t id)
 	}
 	return ii->i;
 }
+#endif	/* !USE_SQLITE */
 
 
 /* ctor/dtor */
@@ -214,19 +231,49 @@ make_uschi(void)
 {
 	uschi_t res = xnew(*res);
 
+#if defined USE_SQLITE
+	static const char dbpath[] =
+		"/home/freundt/devel/unsermarkt/=build/uschi.sqlt3";
+	static const char aget[] =
+		"SELECT agent_id FROM agent WHERE nick = ?;";
+	static const char iget[] =
+		"SELECT instr_id FROM instr WHERE name = ?;";
+	static const char mins[] =
+		"INSERT INTO match ("
+		"b_agent_id, s_agent_id, b_instr_id, s_instr_id, "
+		"price, quantity) VALUES "
+		"(?, ?, ?, ?, ?, ?);";
+
+	sqlite3_open(dbpath, &res->db);
+
+	/* prepare some statements */
+	sqlite3_prepare_v2(res->db, aget, sizeof(aget), &res->agetter, NULL);
+	sqlite3_prepare_v2(res->db, iget, sizeof(iget), &res->igetter, NULL);
+	sqlite3_prepare_v2(res->db, mins, sizeof(mins), &res->minster, NULL);
+
+#else  /* !USE_SQLITE */
 	memset(res->a, 0, sizeof(*res->a));
 	memset(res->i, 0, sizeof(*res->i));
 	/* create an initial list of agents and instruments */
 	res->als = make_mmls(sizeof(struct uschi_a_s), INITIAL_NAGT);
 	res->ils = make_mmls(sizeof(struct uschi_i_s), INITIAL_NINS);
+#endif	/* USE_SQLITE */
 	return res;
 }
 
 void
 free_uschi(uschi_t h)
 {
+#if defined USE_SQLITE
+	sqlite3_finalize(h->agetter);
+	sqlite3_finalize(h->igetter);
+	sqlite3_finalize(h->minster);
+
+	sqlite3_close(h->db);
+#else  /* !USE_SQLITE */
 	free_mmls(h->als);
 	free_mmls(h->ils);
+#endif	/* USE_SQLITE */
 	xfree(h);
 	return;
 }
@@ -237,6 +284,16 @@ agtid_t
 uschi_add_agent(uschi_t h, char *nick)
 {
 /* new agent gets 1 million UMDs */
+#if defined USE_SQLITE
+	char qry[512];
+
+	snprintf(qry, sizeof(qry),
+		 "INSERT INTO 'agent' (nick) VALUES ('%s');", nick);
+	if (sqlite3_exec(h->db, qry, NULL, 0, NULL) != SQLITE_OK) {
+		fputs("qry failed\n", stderr);
+	}
+	return sqlite3_last_insert_rowid(h->db);
+#else  /* !USE_SQLITE */
 	uschi_a_t a = pop_a(h);
 
 	/* create the investment list */
@@ -247,6 +304,41 @@ uschi_add_agent(uschi_t h, char *nick)
 	/* append to our agent list */
 	a->next = h->a->next, h->a->next = a;
 	return a->id = ++h->aid;
+#endif	/* USE_SQLITE */
+}
+
+agtid_t
+uschi_get_agent(uschi_t h, char *nick)
+{
+	agtid_t res = 0;
+#if defined USE_SQLITE
+	size_t len = strlen(nick);
+	sqlite3_bind_text(h->agetter, 1, nick, len, SQLITE_STATIC);
+	if (sqlite3_step(h->agetter) == SQLITE_ROW) {
+		res = sqlite3_column_int(h->agetter, 0);
+	}
+	sqlite3_reset(h->agetter);
+#else
+# error implement me, uschi_get_agent()
+#endif	/* USE_SQLITE */
+	return res;
+}
+
+insid_t
+uschi_get_instr(uschi_t h, char *name)
+{
+	insid_t res = 0;
+#if defined USE_SQLITE
+	size_t len = strlen(name);
+	sqlite3_bind_text(h->igetter, 1, name, len, SQLITE_STATIC);
+	if (sqlite3_step(h->igetter) == SQLITE_ROW) {
+		res = sqlite3_column_int(h->igetter, 0);
+	}
+	sqlite3_reset(h->igetter);
+#else
+# error implement me, uschi_get_agent()
+#endif	/* USE_SQLITE */
+	return res;
 }
 
 
@@ -255,6 +347,16 @@ insid_t
 uschi_add_instr(uschi_t h, char *name)
 {
 /* new agent gets 1 million UMDs */
+#if defined USE_SQLITE
+	char qry[512];
+
+	snprintf(qry, sizeof(qry),
+		 "INSERT INTO 'instr' (name) VALUES ('%s');", name);
+	if (sqlite3_exec(h->db, qry, NULL, 0, NULL) != SQLITE_OK) {
+		fputs("qry failed\n", stderr);
+	}
+	return sqlite3_last_insert_rowid(h->db);
+#else  /* !USE_SQLITE */
 	uschi_i_t i = pop_i(h);
 
 	/* memorise the name, it's unused though */
@@ -262,6 +364,7 @@ uschi_add_instr(uschi_t h, char *name)
 	/* append to our instr list */
 	i->next = h->i->next, h->i->next = i;
 	return i->id = ++h->iid;
+#endif	/* USE_SQLITE */
 }
 
 
@@ -271,6 +374,23 @@ mid_t
 uschi_add_match(uschi_t h, umm_t m)
 {
 /* we process buyer and seller separately */
+#if defined USE_SQLITE
+	mid_t res = 0;
+
+	sqlite3_bind_int(h->minster, 1, m->ab);
+	sqlite3_bind_int(h->minster, 2, m->as);
+	sqlite3_bind_int(h->minster, 3, m->ib);
+	sqlite3_bind_int(h->minster, 4, m->is);
+	sqlite3_bind_int(h->minster, 5, m->p.mant);
+	sqlite3_bind_int(h->minster, 6, m->q * 10000);
+	if (sqlite3_step(h->minster) == SQLITE_DONE) {
+		res = sqlite3_last_insert_rowid(h->db);
+	}
+	sqlite3_reset(h->igetter);
+
+	/* update the agents' portfolios */
+	return res;
+#else  /* !USE_SQLITE */
 	agt_t ab = uschi_get_agent(h, m->ab);
 	inv_t ibs = uschi_agent_get_inv(h, ab, m->ib);
 	inv_t ibf = uschi_agent_get_inv(h, ab, m->ib);
@@ -285,6 +405,7 @@ uschi_add_match(uschi_t h, umm_t m)
 	ibf->spos = ffff_m62_add_mul_m30_ui64(ibf->spos, m->p, m->q);
 	isf->lpos = ffff_m62_add_mul_m30_ui64(isf->lpos, m->p, m->q);
 	return ++h->mid;
+#endif	/* USE_SQLITE */
 }
 
 #if defined STANDALONE
@@ -303,17 +424,19 @@ main(int argc, char *argv[])
 	h = make_uschi();
 
 	/* add dummy instruments */
-	s1 = uschi_add_instr(h, "UMD");
-	s2 = uschi_add_instr(h, "Example Security");
+	s1 = uschi_get_instr(h, "UMD");
+	s2 = uschi_get_instr(h, "Example Security");
 	/* add two dummy agents */
-	a1 = uschi_add_agent(h, "S2 MktMkr");
-	a2 = uschi_add_agent(h, "Dumb Idiot");
+	a1 = uschi_get_agent(h, "S2 MktMkr");
+	a2 = uschi_get_agent(h, "Dumb Idiot");
 
 	m->ab = a1, m->as = a2;
 	m->ib = s1, m->is = s2;
 	m->p = ffff_m30_get_d(12.50);
 	m->q = 1200;
 	mid = uschi_add_match(h, m);
+
+	fprintf(stderr, "%u\n", mid);
 
 	free_uschi(h);
 	return 0;

@@ -39,6 +39,7 @@ umoc_CPPFLAGS = $(AM_CPPFLAGS) $(unserding_CFLAGS)
 oq_CPPFLAGS = $(AM_CPPFLAGS) $(unserding_CFLAGS) -DSTANDALONE
 
 uschi_CPPFLAGS = $(AM_CPPFLAGS) $(unserding_CFLAGS) -DSTANDALONE
+uschi_LDFLAGS = $(AM_LDFLAGS) -lsqlite3
 
 # 
 # Help the developers get nice post-processed source files

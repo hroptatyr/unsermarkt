@@ -146,6 +146,11 @@ ffff_m62_f(m62_t m)
 	return (float)m.mant * ffff_m62_f_denoms[m.expo];
 }
 
+static const float ffff_m62_ui64_denoms[] = {
+	/*00->*/100000000, /*01->*/10000,
+	/*10->*/1, /*11->unsupported*/0,
+};
+
 static inline m62_t __attribute__((always_inline))
 ffff_m62_get_f(float f)
 {
@@ -311,6 +316,28 @@ ffff_m62_add(m62_t a, m62_t b)
 		res.expo = b.expo;
 	}
 	return res;
+}
+
+static inline m62_t
+ffff_m62_add_ui64(m62_t a, uint64_t b)
+{
+	m62_t res;
+
+	/* a.expo must be 1 or a.v must be 0 */
+	res.mant = a.mant + b * ffff_m62_ui64_denoms[1];
+	res.expo = 1;
+	return res;
+}
+
+static inline m62_t
+ffff_m62_add_mul_m30_ui64(m62_t a, m30_t b, uint64_t c)
+{
+/* -> a + b * c */
+	m62_t h;
+
+	h.mant = b.mant * c;
+	h.expo = b.expo;
+	return ffff_m62_add(a, h);
 }
 
 #if !defined DEFINE_GORY_STUFF

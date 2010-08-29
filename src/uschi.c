@@ -96,6 +96,7 @@ struct uschi_s {
 	/* instr and agent id counters, should be global */
 	uint32_t aid;
 	uint32_t iid;
+	uint32_t mid;
 };
 
 
@@ -150,6 +151,27 @@ uschi_get_agent(uschi_t h, agtid_t id)
 	return ia->a;
 }
 
+static uschi_i_t
+find_instr_by_id(uschi_t h, insid_t id)
+{
+	for (uschi_i_t i = h->i->next; i; i = i->next) {
+		if (i->id == id) {
+			return i;
+		}
+	}
+	return NULL;
+}
+
+static ins_t
+uschi_get_instr(uschi_t h, insid_t id)
+{
+	uschi_i_t ii;
+	if (UNLIKELY((ii = find_instr_by_id(h, id)) == NULL)) {
+		return NULL;
+	}
+	return ii->i;
+}
+
 static agt_inv_t
 find_inv_by_id(agt_t a, agtid_t id)
 {
@@ -161,12 +183,26 @@ find_inv_by_id(agt_t a, agtid_t id)
 	return NULL;
 }
 
-static inv_t
-uschi_agent_get_inv(uschi_t UNUSED(h), agt_t a, insid_t id)
+static agt_inv_t
+make_inv_for_agent(agt_t a, insid_t id)
+{
+	agt_inv_t new = mmls_pop_cell(a->ils);
+	memset(new->i, 0, sizeof(*new->i));
+	new->id = id;
+	/* append to the list */
+	new->next = a->i->next, a->i->next = new;
+	return new;
+}
+
+static inv_t __attribute__((noinline))
+uschi_agent_get_inv(uschi_t h, agt_t a, insid_t id)
 {
 	agt_inv_t ii;
 	if (UNLIKELY((ii = find_inv_by_id(a, id)) == NULL)) {
-		return NULL;
+		/* create an a/c */
+		uschi_i_t ui = find_instr_by_id(h, id);
+		ii = make_inv_for_agent(a, id);
+		ii->ins = ui;
 	}
 	return ii->i;
 }
@@ -203,12 +239,14 @@ uschi_add_agent(uschi_t h, char *nick)
 /* new agent gets 1 million UMDs */
 	uschi_a_t a = pop_a(h);
 
+	/* create the investment list */
 	memset(a, 0, sizeof(*a));
 	a->a->ils = make_mmls(sizeof(struct uschi_i_s), INITIAL_NINS);
-
 	/* store the nick name */
 	a->a->nick = strdup(nick);
-	return 0;
+	/* append to our agent list */
+	a->next = h->a->next, h->a->next = a;
+	return a->id = ++h->aid;
 }
 
 
@@ -218,22 +256,35 @@ uschi_add_instr(uschi_t h, char *name)
 {
 /* new agent gets 1 million UMDs */
 	uschi_i_t i = pop_i(h);
+
+	/* memorise the name, it's unused though */
 	i->i->name = strdup(name);
+	/* append to our instr list */
+	i->next = h->i->next, h->i->next = i;
 	return i->id = ++h->iid;
 }
 
 
+#include <stdio.h>
 /* matching queue operations */
 mid_t
 uschi_add_match(uschi_t h, umm_t m)
 {
 /* we process buyer and seller separately */
 	agt_t ab = uschi_get_agent(h, m->ab);
-	inv_t ib = uschi_agent_get_inv(h, ab, m->ib);
+	inv_t ibs = uschi_agent_get_inv(h, ab, m->ib);
+	inv_t ibf = uschi_agent_get_inv(h, ab, m->ib);
 	/* find the securities in question */
 	agt_t as = uschi_get_agent(h, m->as);
-	inv_t is = uschi_agent_get_inv(h, ab, m->is);
-	return 0;
+	inv_t iss = uschi_agent_get_inv(h, ab, m->is);
+	inv_t isf = uschi_agent_get_inv(h, ab, m->is);
+
+	/* the buyer inv  is the security, the seller inv the funding side */
+	ibs->lpos = ffff_m62_add_ui64(ibs->lpos, m->q);
+	iss->spos = ffff_m62_add_ui64(iss->spos, m->q);
+	ibf->spos = ffff_m62_add_mul_m30_ui64(ibf->spos, m->p, m->q);
+	isf->lpos = ffff_m62_add_mul_m30_ui64(isf->lpos, m->p, m->q);
+	return ++h->mid;
 }
 
 #if defined STANDALONE
@@ -246,6 +297,8 @@ main(int argc, char *argv[])
 	uschi_t h;
 	agtid_t a1, a2;
 	insid_t s1, s2;
+	struct umm_s m[1];
+	mid_t mid;
 
 	h = make_uschi();
 
@@ -255,6 +308,12 @@ main(int argc, char *argv[])
 	/* add two dummy agents */
 	a1 = uschi_add_agent(h, "S2 MktMkr");
 	a2 = uschi_add_agent(h, "Dumb Idiot");
+
+	m->ab = a1, m->as = a2;
+	m->ib = s1, m->is = s2;
+	m->p = ffff_m30_get_d(12.50);
+	m->q = 1200;
+	mid = uschi_add_match(h, m);
 
 	free_uschi(h);
 	return 0;

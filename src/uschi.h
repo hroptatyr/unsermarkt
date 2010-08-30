@@ -9,7 +9,7 @@ typedef struct uschi_s *uschi_t;
 
 
 /* ctor/dtor */
-extern uschi_t make_uschi(void);
+extern uschi_t make_uschi(const char *dbpath);
 extern void free_uschi(uschi_t);
 
 extern insid_t uschi_add_instr(uschi_t, char *name);

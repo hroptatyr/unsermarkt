@@ -190,7 +190,9 @@ init(void *clo)
 
 	/* initialising the order queue */
 	if ((settings = udctx_get_setting(ctx)) != NULL) {
-		h = make_uschi();
+		const char *dbpath = NULL;
+		udcfg_tbl_lookup_s(&dbpath, ctx, settings, "dbpath");
+		h = make_uschi(dbpath);
 	}
 	/* clean up */
 	udctx_set_setting(ctx, NULL);

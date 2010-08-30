@@ -245,13 +245,11 @@ tune_sqlite_backend(uschi_t h)
 
 /* ctor/dtor */
 uschi_t
-make_uschi(void)
+make_uschi(const char *dbpath)
 {
 	uschi_t res = xnew(*res);
 
 #if defined USE_SQLITE
-	static const char dbpath[] =
-		"/home/freundt/devel/unsermarkt/=build/uschi.sqlt3";
 	static const char aget[] =
 		"SELECT agent_id FROM agent WHERE nick = ?;";
 	static const char iget[] =
@@ -501,8 +499,10 @@ main(int argc, char *argv[])
 	insid_t s1, s2;
 	struct umm_s m[1];
 	mid_t mid;
+	static const char dbpath[] =
+		"/home/freundt/devel/unsermarkt/=build/uschi.sqlt3";
 
-	h = make_uschi();
+	h = make_uschi(dbpath);
 
 	/* add dummy instruments */
 	s1 = uschi_get_instr(h, "UMD");

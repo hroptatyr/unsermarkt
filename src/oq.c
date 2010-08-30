@@ -109,8 +109,8 @@ struct umoq_s {
 	struct umoq_m_s ms[2];
 
 	/* security id and funding id */
-	secid_t secid;
-	secid_t funid;
+	insid_t secid;
+	insid_t funid;
 };
 
 
@@ -503,7 +503,7 @@ try_match(umoq_t q, umo_t o)
 
 /* ctor/dtor */
 umoq_t
-make_oq(secid_t secu_id, secid_t fund_id)
+make_oq(insid_t secu_id, insid_t fund_id)
 {
 	umoq_t res = xnew(*res);
 
@@ -720,7 +720,7 @@ bnlot(umoq_t q, double p, size_t qty)
 
 	/* add a test order */
 	o->agent_id = 1;
-	o->secu_id = 1;
+	o->instr_id = 1;
 	o->p = ffff_m30_get_d(p);
 	o->q = qty;
 	o->side = OSIDE_BUY;
@@ -736,7 +736,7 @@ snlot(umoq_t q, double p, size_t qty)
 
 	/* add a test order */
 	o->agent_id = 1;
-	o->secu_id = 1;
+	o->instr_id = 1;
 	o->p = ffff_m30_get_d(p);
 	o->q = qty;
 	o->side = OSIDE_SELL;
@@ -764,7 +764,7 @@ s1mkt(umoq_t q)
 
 	/* add a test order */
 	o->agent_id = 1;
-	o->secu_id = 1;
+	o->instr_id = 1;
 	o->q = 2002;
 	o->side = OSIDE_SELL;
 	o->type = OTYPE_MKT;
@@ -779,7 +779,7 @@ smtl(umoq_t q, size_t qty)
 
 	/* add a test order */
 	o->agent_id = 1;
-	o->secu_id = 1;
+	o->instr_id = 1;
 	o->q = qty;
 	o->side = OSIDE_SELL;
 	o->type = OTYPE_MTL;
@@ -796,7 +796,7 @@ bmtl(umoq_t q, size_t qty)
 
 	/* add a test order */
 	o->agent_id = 1;
-	o->secu_id = 1;
+	o->instr_id = 1;
 	o->q = qty;
 	o->side = OSIDE_BUY;
 	o->type = OTYPE_MTL;

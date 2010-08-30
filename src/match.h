@@ -3,6 +3,9 @@
 #if !defined INCLUDED_dso_oq_match_h_
 #define INCLUDED_dso_oq_match_h_
 
+#include "m30.h"
+#include "um-types.h"
+
 typedef struct umm_s *umm_t;
 
 struct umm_s {
@@ -10,14 +13,12 @@ struct umm_s {
 	oid_t ob, os;
 	/* buyer and seller agent ids */
 	agtid_t ab, as;
+	/* instr ids, buyer/seller */
+	insid_t ib, is;
 	/* agreed upon price */
 	m30_t p;
 	/* agreed upon quantity */
 	uint32_t q;
-	/* security id */
-	secid_t secu_id;
-	/* funding id */
-	secid_t fund_id;
 };
 
 #endif	/* !INCLUDED_dso_oq_match_h_ */

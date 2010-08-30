@@ -58,7 +58,7 @@ typedef enum {
 /* public part */
 struct umo_s {
 	agtid_t agent_id;
-	secid_t secu_id;
+	insid_t instr_id;
 	/* price, 0 if MKT, otherwise limit price */
 	m30_t p;
 	/* quantity */

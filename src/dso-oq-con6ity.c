@@ -7,7 +7,9 @@
 #undef EV_P
 #define EV_P	struct ev_loop *loop __attribute__((unused))
 
-#define UM_PORT		(12768)
+#if !defined UM_PORT
+# define UM_PORT		(12768)
+#endif	/* !UM_PORT */
 
 #if defined __INTEL_COMPILER
 #pragma warning (disable:2259)

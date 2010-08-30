@@ -111,6 +111,10 @@ struct umoq_s {
 	/* security id and funding id */
 	insid_t secid;
 	insid_t funid;
+
+	/* match callback, other cbs could be order status changes */
+	void(*match_cb)(umm_t, void*);
+	void *match_clo;
 };
 
 
@@ -666,6 +670,14 @@ oq_trav_asks(umoq_t q, void(*cb)(uml_t, void*), void *closure)
 		cb(l->l, closure);
 	}
 	return res;
+}
+
+void
+oq_register_match_cb(umoq_t q, void(*cb)(umm_t, void*), void *clo)
+{
+	q->match_cb = cb;
+	q->match_clo = clo;
+	return;
 }
 
 

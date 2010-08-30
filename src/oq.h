@@ -77,4 +77,11 @@ extern int oq_resume_order(umoq_t, oid_t);
 extern int oq_trav_bids(umoq_t, void(*cb)(uml_t, void*), void *closure);
 extern int oq_trav_asks(umoq_t, void(*cb)(uml_t, void*), void *closure);
 
+
+#include "match.h"
+
+/**
+ * To get notified when a match occurred.  To cancel register NULL. */
+extern void oq_register_match_cb(umoq_t, void(*cb)(umm_t, void*), void *clo);
+
 #endif	/* !INCLUDED_oq_h_ */

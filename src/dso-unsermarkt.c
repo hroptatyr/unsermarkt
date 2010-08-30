@@ -124,7 +124,7 @@ prxmlhdr(void)
 static void
 pr_otag(void)
 {
-	static const char tag[] = "<uschi>";
+	static const char tag[] = "<quotes>";
 	append(tag, sizeof(tag) - 1);
 	return;
 }
@@ -132,8 +132,32 @@ pr_otag(void)
 static void
 pr_ctag(void)
 {
-	static const char tag[] = "</uschi>\n";
+	static const char tag[] = "</quotes>\n";
 	append(tag, sizeof(tag) - 1);
+	return;
+}
+
+static void
+prstcb(char side, uml_t l)
+{
+	char pri[32];
+
+	ffff_m30_s(pri, l->p);
+	mptr += sprintf(mptr, "<%c p=\"%s\" q=\"%u\"/>", side, pri, l->q);
+	return;
+}
+
+static void
+prstbcb(uml_t l, void *UNUSED(clo))
+{
+	prstcb('b', l);
+	return;
+}
+
+static void
+prstacb(uml_t l, void *UNUSED(clo))
+{
+	prstcb('a', l);
 	return;
 }
 
@@ -146,8 +170,8 @@ prep_htws_status(void)
 	prxmlhdr();
 	pr_otag();
 	/* go through all bids, then all asks */
-	//oq_trav_bids(q, prstbcb, NULL);
-	//oq_trav_asks(q, prstacb, NULL);
+	oq_trav_bids(q, prstbcb, NULL);
+	oq_trav_asks(q, prstacb, NULL);
 	pr_ctag();
 	*mptr++ = 0xff;
 	return;

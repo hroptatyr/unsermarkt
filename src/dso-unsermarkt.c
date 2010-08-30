@@ -166,6 +166,20 @@ prstatus(int fd)
 	return;
 }
 
+static void
+upstatus(void)
+{
+/* for all fds in the htpush queue print the status */
+	/* flag status as outdated */
+	status_updated = 0;
+	for (int i = 0; i < MAX_CLIENTS; i++) {
+		if (conn[i].fd > 0) {
+			prstatus(conn[i].fd);
+		}
+	}
+	return;
+}
+
 
 /* simple protocol:
  * Commands:
@@ -368,7 +382,7 @@ handle_data(int fd, char *msg, size_t msglen)
 	}
 
 	/* now following multi-command messages */
-	for (char *eom = msg + msglen, *eol; msg && msg < eom; msg = eol) {
+	for (char *eom = msg + msglen, *eol; msg < eom; msg = eol + 1) {
 		/* just make sure we know our boundaries */
 		if ((eol = memchr(msg, '\n', eom - msg)) == NULL) {
 			eol = eom;
@@ -388,6 +402,8 @@ handle_data(int fd, char *msg, size_t msglen)
 			return -1;
 		}
 	}
+	/* something must have happened to the order queue */
+	upstatus();
 	return 0;
 }
 

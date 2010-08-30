@@ -695,7 +695,13 @@ int
 oq_clear_matches(umoq_t q)
 {
 /* return the number of matches cleared */
-	return 0;
+	int res = 0;
+	for (umoq_m_t m = q->ms->next; m != q->ms + 1; res++) {
+		q->ms->next = m->next;
+		push_m(q, m);
+		m = q->ms->next;
+	}
+	return res;
 }
 
 void

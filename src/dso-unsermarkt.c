@@ -275,12 +275,14 @@ handle_LISTEN(int fd, const char *UNUSED(msg), size_t UNUSED(msglen))
 static int
 QUOTES_p(const char *msg, size_t UNUSED(msglen))
 {
-	return strncasecmp(msg, "QUOTES ", 7) == 0;
+	return strncasecmp(msg, "QUOTES", 6) == 0;
 }
 
 static int
 handle_QUOTES(int fd, const char *UNUSED(msg), size_t UNUSED(msglen))
 {
+/* actually the client can specify which instruments to quote,
+ * we don't care tho */
 	prstatus(fd);
 	return 0;
 }

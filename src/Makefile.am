@@ -28,7 +28,7 @@ dso_oq_la_SOURCES = dso-oq.c
 dso_oq_la_SOURCES += oq.c oq.h
 
 dso_uschi_la_LDFLAGS = -module
-dso_uschi_la_LDFLAGS += $(unserding_LDFLAGS)
+dso_uschi_la_LDFLAGS += $(unserding_LDFLAGS) -lsqlite3
 dso_uschi_la_CPPFLAGS = $(AM_CPPFLAGS) $(unserding_CFLAGS)
 dso_uschi_la_SOURCES = dso-uschi.c
 dso_uschi_la_SOURCES += uschi.c uschi.h

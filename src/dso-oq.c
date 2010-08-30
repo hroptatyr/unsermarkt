@@ -233,8 +233,8 @@ upstatus(void)
 	/* flag status as outdated */
 	status_updated = 0;
 	for (int i = 0; i < MAX_CLIENTS; i++) {
-		if (htpush[i] > 0) {
-			prstatus(htpush[i]);
+		if (conn[i].fd > 0) {
+			prstatus(conn[i].fd);
 		}
 	}
 	return;

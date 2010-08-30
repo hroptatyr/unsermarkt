@@ -17,6 +17,7 @@ CLEANFILES = $(BUILT_SOURCES)
 
 mod_LTLIBRARIES += dso-oq.la
 mod_LTLIBRARIES += dso-uschi.la
+mod_LTLIBRARIES += dso-unsermarkt.la
 noinst_PROGRAMS += umoc
 noinst_PROGRAMS += oq
 noinst_PROGRAMS += uschi
@@ -32,6 +33,13 @@ dso_uschi_la_LDFLAGS += $(unserding_LDFLAGS) -lsqlite3
 dso_uschi_la_CPPFLAGS = $(AM_CPPFLAGS) $(unserding_CFLAGS)
 dso_uschi_la_SOURCES = dso-uschi.c
 dso_uschi_la_SOURCES += uschi.c uschi.h
+
+dso_unsermarkt_la_LDFLAGS = -module
+dso_unsermarkt_la_LDFLAGS += $(unserding_LDFLAGS) -lsqlite3
+dso_unsermarkt_la_CPPFLAGS = $(AM_CPPFLAGS) $(unserding_CFLAGS)
+dso_unsermarkt_la_SOURCES = dso-unsermarkt.c
+dso_unsermarkt_la_SOURCES += oq.c oq.h
+dso_unsermarkt_la_SOURCES += uschi.c uschi.h
 
 umoc_LDFLAGS = $(unserding_LDFLAGS)
 umoc_CPPFLAGS = $(AM_CPPFLAGS) $(unserding_CFLAGS)

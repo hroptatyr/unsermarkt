@@ -4,9 +4,14 @@
 #include "md5.c"
 
 /* maximum number of http clients */
-#define MAX_CLIENTS	(8)
+#define MAX_CLIENTS	(1024)
 
-static int htpush[MAX_CLIENTS];
+struct conn_s {
+	int fd;
+	agtid_t agent;
+};
+
+static struct conn_s conn[MAX_CLIENTS];
 
 /* htpush connexions */
 static void
@@ -14,7 +19,7 @@ memorise_htpush(int fd)
 {
 	int slot;
 	for (slot = 0; slot < MAX_CLIENTS; slot++) {
-		if (htpush[slot] <= 0) {
+		if (conn[slot].fd <= 0) {
 			break;
 		}
 	}
@@ -22,7 +27,8 @@ memorise_htpush(int fd)
 		/* no more room */
 		return;
 	}
-	htpush[slot] = fd;
+	conn[slot].fd = fd;
+	conn[slot].agent = 0;
 	return;
 }
 
@@ -31,8 +37,8 @@ forget_htpush(int fd)
 {
 	int slot;
 	for (slot = 0; slot < MAX_CLIENTS; slot++) {
-		if (htpush[slot] == fd) {
-			htpush[slot] = 0;
+		if (conn[slot].fd == fd) {
+			conn[slot].fd = 0;
 			return;
 		}
 	}

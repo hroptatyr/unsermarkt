@@ -271,6 +271,10 @@ handle_data(int fd, char *msg, size_t msglen)
 		upstatus();
 		return 0;
 
+	} else if (strncasecmp(msg, "LISTEN", 6) == 0) {
+		memorise_htpush(fd);
+		return 0;
+
 	} else {
 		UM_DEBUG(MOD_PRE ": unknown crap on the wire\n");
 		return -1;

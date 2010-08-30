@@ -501,7 +501,16 @@ match_order(umoq_t q, umo_t o)
 static umoq_o_t
 try_match(umoq_t q, umo_t o)
 {
-	return match_order(q, o);
+	umoq_o_t res = match_order(q, o);
+	/* if there's a callback for matches, serve it */
+	if (q->match_cb != NULL) {
+		for (umoq_m_t m = (q->ms + 1)->prev; m != q->ms; m = m->prev) {
+			q->match_cb(m->m, q->match_clo);
+			/* unlink the match, DO ME PROPERLY! */
+			m->prev->next = q->ms + 1;
+		}
+	}
+	return res;
 }
 
 
@@ -670,6 +679,23 @@ oq_trav_asks(umoq_t q, void(*cb)(uml_t, void*), void *closure)
 		cb(l->l, closure);
 	}
 	return res;
+}
+
+int
+oq_trav_matches(umoq_t q, void(*cb)(umm_t, void*), void *closure)
+{
+	int res = 0;
+	for (umoq_m_t m = (q->ms + 1)->prev; m != q->ms; m = m->prev, res++) {
+		cb(m->m, closure);
+	}
+	return res;
+}
+
+int
+oq_clear_matches(umoq_t q)
+{
+/* return the number of matches cleared */
+	return 0;
 }
 
 void

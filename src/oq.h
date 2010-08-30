@@ -72,13 +72,15 @@ extern int oq_suspend_order(umoq_t, oid_t);
  * Resume the order with the order id OID. */
 extern int oq_resume_order(umoq_t, oid_t);
 
+
 /**
  * For status stuff. */
+#include "match.h"
+
 extern int oq_trav_bids(umoq_t, void(*cb)(uml_t, void*), void *closure);
 extern int oq_trav_asks(umoq_t, void(*cb)(uml_t, void*), void *closure);
-
-
-#include "match.h"
+extern int oq_trav_matches(umoq_t, void(*cb)(umm_t, void*), void *closure);
+extern int oq_clear_matches(umoq_t);
 
 /**
  * To get notified when a match occurred.  To cancel register NULL. */

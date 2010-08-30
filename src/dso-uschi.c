@@ -54,6 +54,7 @@
 #include "htws.h"
 
 #define MOD_PRE		"mod/uschi"
+#define UM_PORT		(12769)
 
 /* some forwards and globals */
 static int handle_data(int fd, char *msg, size_t msglen);
@@ -62,7 +63,6 @@ static void handle_close(int fd);
 static void memorise_htpush(int fd);
 static void forget_htpush(int fd);
 /* push new status to everyone */
-static void upstatus(void);
 static void prhttphdr(int fd);
 
 static uschi_t h = NULL;
@@ -75,6 +75,61 @@ static uschi_t h = NULL;
 /* our websocket support */
 #include "htws.c"
 
+static int status_updated = 0;
+
+static void
+prxmlhdr(void)
+{
+	static const char hdr[] = "<?xml version=\"1.0\"?>\n";
+	append(hdr, sizeof(hdr) - 1);
+	return;
+}
+
+static void
+pr_otag(void)
+{
+	static const char tag[] = "<uschi>";
+	append(tag, sizeof(tag) - 1);
+	return;
+}
+
+static void
+pr_ctag(void)
+{
+	static const char tag[] = "</uschi>\n";
+	append(tag, sizeof(tag) - 1);
+	return;
+}
+
+static void
+prep_htws_status(void)
+{
+	/* htws mode */
+	reset();
+	*mptr++ = 0x00;
+	prxmlhdr();
+	pr_otag();
+	/* go through all bids, then all asks */
+	//oq_trav_bids(q, prstbcb, NULL);
+	//oq_trav_asks(q, prstacb, NULL);
+	pr_ctag();
+	*mptr++ = 0xff;
+	return;
+}
+
+static void
+prstatus(int fd)
+{
+/* prints the current order queue to FD */
+	/* check if status needs updating */
+	if (!status_updated) {
+		prep_htws_status();
+		status_updated = 1;
+	}
+	write(fd, mbuf, mptr - mbuf);
+	return;
+}
+
 
 /**
  * Take the stuff in MSG of size MSGLEN coming from FD and process it.
@@ -84,10 +139,11 @@ handle_data(int fd, char *msg, size_t msglen)
 {
 	if (htws_get_p(msg, msglen)) {
 		UM_DEBUG(MOD_PRE ": htws push request\n");
+		status_updated = 0;
 		if (htws_handle_get(fd, msg, msglen) < 0) {
 			return -1;
 		}
-		//prstatus(fd);
+		prstatus(fd);
 		return 0;
 
 	} else if (htws_clo_p(msg, msglen)) {

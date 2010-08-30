@@ -212,6 +212,7 @@ upstatus(void)
  * ORDER <instr> B|S <qty> [<pri>|MTL]
  * KTHX close connection
  * CANCEL <order_id> cancel order by oid
+ * QUOTES <instr> get the quotes for INSTR
  **/
 static int
 EHLO_p(const char *msg, size_t UNUSED(msglen))
@@ -268,6 +269,19 @@ static int
 handle_LISTEN(int fd, const char *UNUSED(msg), size_t UNUSED(msglen))
 {
 	memorise_htpush(fd);
+	return 0;
+}
+
+static int
+QUOTES_p(const char *msg, size_t UNUSED(msglen))
+{
+	return strncasecmp(msg, "QUOTES ", 7) == 0;
+}
+
+static int
+handle_QUOTES(int fd, const char *UNUSED(msg), size_t UNUSED(msglen))
+{
+	prstatus(fd);
 	return 0;
 }
 
@@ -400,9 +414,15 @@ handle_data(int fd, char *msg, size_t msglen)
 		UM_DEBUG(MOD_PRE ": agent says goodbye\n");
 		return handle_KTHX(fd, msg, msglen);
 
+	} else if (aid && QUOTES_p(msg, msglen)) {
+		return handle_QUOTES(fd, msg, msglen);
+
 	} else if (!aid && LISTEN_p(msg, msglen)) {
 		return handle_LISTEN(fd, msg, msglen);
 
+	} else if (!aid) {
+		/* just ignore the bollocks */
+		return 0;
 	}
 
 	/* now following multi-command messages */

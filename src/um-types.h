@@ -6,10 +6,13 @@
 /* agent id */
 typedef uint32_t agtid_t;
 
-/* security id */
-typedef uint32_t secid_t;
+/* instr id */
+typedef uint32_t insid_t;
 
 /* order id */
 typedef uint32_t oid_t;
+
+/* match id */
+typedef uint32_t mid_t;
 
 #endif	/* INCLUDED_um_types_h_ */

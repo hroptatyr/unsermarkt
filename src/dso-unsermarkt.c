@@ -335,7 +335,12 @@ handle_data(int fd, char *msg, size_t msglen)
 {
 	agtid_t aid;
 
-	if (htws_get_p(msg, msglen)) {
+	/* certain commands are available to registered agents only,
+	 * means we look for the agent id now and pass it along
+	 * to the handlers */
+	aid = find_agent_by_fd(fd);
+
+	if (!aid && htws_get_p(msg, msglen)) {
 		UM_DEBUG(MOD_PRE ": htws push request\n");
 		status_updated = 0;
 		if (htws_handle_get(fd, msg, msglen) < 0) {
@@ -344,12 +349,12 @@ handle_data(int fd, char *msg, size_t msglen)
 		prstatus(fd);
 		return 0;
 
-	} else if (htws_clo_p(msg, msglen)) {
+	} else if (!aid && htws_clo_p(msg, msglen)) {
 		/* websocket closing challenge */
 		UM_DEBUG(MOD_PRE ": htws closing request\n");
 		return htws_handle_clo(fd, msg, msglen);
 
-	} else if (EHLO_p(msg, msglen)) {
+	} else if (!aid && EHLO_p(msg, msglen)) {
 		return handle_EHLO(fd, msg, msglen);
 
 	} else if (KTHX_p(msg, msglen)) {
@@ -357,16 +362,12 @@ handle_data(int fd, char *msg, size_t msglen)
 		UM_DEBUG(MOD_PRE ": agent says goodbye\n");
 		return handle_KTHX(fd, msg, msglen);
 
-	} else if (LISTEN_p(msg, msglen)) {
+	} else if (!aid && LISTEN_p(msg, msglen)) {
 		return handle_LISTEN(fd, msg, msglen);
 
 	}
 
-	/* now following multi-command messages, however only registered
-	 * agents are allowed to issue these, means we look for the
-	 * agent id now and pass it along to the handlers */
-	aid = find_agent_by_fd(fd);
-
+	/* now following multi-command messages */
 	for (char *eom = msg + msglen, *eol; msg && msg < eom; msg = eol) {
 		/* just make sure we know our boundaries */
 		if ((eol = memchr(msg, '\n', eom - msg)) == NULL) {

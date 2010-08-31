@@ -1,11 +1,11 @@
 var bids;
 var asks;
-var status;
 var bdiv;
 var adiv;
 var conn;
-var xsl;
-var xsl_proc;
+var div_status;
+var div_unsermarkt;
+var dom_parser;
 
 function clr()
 {
@@ -38,36 +38,83 @@ function a(p, q)
 	asks[p] = q;
 }
 
+function crea_div(instr)
+{
+	var res;
+	var sym = instr.getAttribute("sym");
+	var descr = instr.getAttribute("descr");
+	var child_q;
+	var child_t;
+
+	res = document.createElement("div");
+	res.id = sym;
+	res.innerHTML += "<span class='sym'>" + sym + "</span>";
+	res.innerHTML += "<span class='descr'>" + descr + "</span>";
+
+	child_q = document.createElement("div");
+	child_q.className = "quo_list";
+	child_t = document.createElement("div");
+	child_t.className = "tra_list";
+
+	res.appendChild(child_q);
+	res.appendChild(child_t);
+	return res;
+}
+
+function trav_quotes(snip, xp, node)
+{
+	var xpres = XPathResult.ANY_TYPE;
+	var iter_bids = snip.evaluate("quotes/b", snip, null, xpres, xp);
+	var iter_asks = snip.evaluate("quotes/a", snip, null, xpres, xp);
+}
+
+function trav_trades(snip, xp, div)
+{
+	var xpres = XPathResult.ANY_TYPE;
+	var iter_bids = snip.evaluate("trades/t", snip, null, xpres, xp);
+}
+
+function trav_instrs(snip)
+{
+	var xpres = XPathResult.ANY_TYPE;
+	var iter = snip.evaluate("//instr", snip, null, xpres, null);
+
+	for (var i = iter.iterateNext(); i; i = iter.iterateNext()) {
+		var sym = i.getAttribute("sym");
+		var div_sym = document.getElementById(sym);
+		// append the fucker if not already
+		if (div_sym == null) {
+			div_sym = crea_div(i);
+			div_unsermarkt.appendChild(div_sym);
+		}
+		trav_quotes(snip, i, div_sym);
+		trav_trades(snip, i, div_sym);
+	}
+	return;
+}
+
 function msg_evt(evt)
 {
-	status.className = "standby";
-	status.innerHTML = "incoming message " + ++conn.msgno;
-	if (xsl_proc) {
-		var dp = new DOMParser();
-		var evt_xml = dp.parseFromString(evt.data, "text/xml");
-		var frag;
+	var evt_xml;
 
-		xsl_proc.setParameter("", "side", "b");
-		frag = xsl_proc.transformToFragment(evt_xml, document);
-		bdiv.innerHTML = "";
-		bdiv.appendChild(frag);
+	div_status.className = "standby";
+	div_status.innerHTML = "incoming message " + ++conn.msgno;
 
-		xsl_proc.setParameter("", "side", "a");
-		frag = xsl_proc.transformToFragment(evt_xml, document);
-		adiv.innerHTML = "";
-		adiv.appendChild(frag);
-	}
-	status.className = "success";
-	status.innerHTML = "connected";
+	evt_xml = dom_parser.parseFromString(evt.data, "text/xml");
+	trav_instrs(evt_xml);
+
+	div_status.className = "success";
+	div_status.innerHTML = "connected";
 	return;
 }
 
 function blub_ws(ws_svc)
 {
-	status = document.getElementById("status");
+	div_status = document.getElementById("status");
+	div_unsermarkt = document.getElementById("unsermarkt");
 	if (window.WebSocket === undefined) {
-		status.innerHTML = 'Sockets not supported';
-		status.className = 'fail';
+		div_status.innerHTML = 'Sockets not supported';
+		div_status.className = 'fail';
 		return;
 	}
 	// open a new conn, uses global 'conn' object
@@ -76,17 +123,19 @@ function blub_ws(ws_svc)
 
 		// callbacks
 		conn.onopen = function(evt) {
-			status.className = 'success';
-			status.innerHTML = 'connected';
+			div_status.className = 'success';
+			div_status.innerHTML = 'connected';
 			conn.msgno = 0;
 		};
 
 		conn.onmessage = msg_evt;    
 
 		conn.onclose = function(evt) {
-			status.className = 'fail';
-			status.innerHTML = 'disconnected';
+			div_status.className = 'fail';
+			div_status.innerHTML = 'disconnected';
 		};
+		// create our global dom parser
+		dom_parser = new DOMParser();
 	}
 	return;
 }
@@ -116,9 +165,6 @@ function blub(ws_svc)
 	conn = {};
 	bids = {};
 	asks = {};
-
-	// obtain the xsl synchronously
-	get_xsl();
 
 	// call the actual initialiser
 	blub_ws(ws_svc);

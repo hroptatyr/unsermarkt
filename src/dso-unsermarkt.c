@@ -284,15 +284,27 @@ static int
 handle_ORDER(int fd, agtid_t a, char *msg, size_t msglen)
 {
 	char *cursor;
+	char *tmp;
 	struct umo_s o[1] = {0};
 	oid_t oid;
 
 	/* start off with the instr id, later we may allow symbols as well */
 	cursor = msg + 6;
-	o->instr_id = strtoul(cursor, &cursor, 10);
+	if ((tmp = memchr(cursor, ' ', msglen - (cursor - msg))) == NULL) {
+		return -1;
+	} else {
+		/* finish the string thereafter */
+		*tmp = '\0';
+	}
 
-	/* cursor should now be ' ' */
-	if (o->instr_id == 0 || *cursor++ != ' ') {
+	if ((o->instr_id = strtoul(cursor, &cursor, 10)) != 0 ||
+	    (o->instr_id = uschi_get_instr(h, cursor)) != 0) {
+		/* position the cursor correctly */
+		cursor = tmp + 1;
+
+	} else {
+		/* just fuck off */
+		UM_DEBUG("don't know what to order, idiot speaking gibblish \"%s\"\n", cursor);
 		return -1;
 	}
 

@@ -77,13 +77,17 @@ function make_tick_div(tnode)
 	return res;
 }
 
-function make_tick_list(snip, cwd, expr)
+function make_tick_list(snip, cwd, expr, class)
 {
 	var xpres = XPathResult.ANY_TYPE;
 	var iter = snip.evaluate(expr, cwd, null, xpres, null);
 	var res = document.createElement("div");
 
+	// this multi-class approach blows big donkey dong
 	res.className = "tick_list";
+	if (class) {
+		res.className += " " + class;
+	}
 	for (var i = iter.iterateNext(); i; i = iter.iterateNext()) {
 		var tdiv = make_tick_div(i);
 		res.appendChild(tdiv);
@@ -105,9 +109,9 @@ function trav_instrs(snip)
 		// append the fucker if not already
 		div_sym = make_instr_div(i);
 		// create the tick lists
-		btl = make_tick_list(snip, i, "quotes/b");
-		atl = make_tick_list(snip, i, "quotes/a");
-		ttl = make_tick_list(snip, i, "trades/t");
+		btl = make_tick_list(snip, i, "quotes/b", "bid_list");
+		atl = make_tick_list(snip, i, "quotes/a", "ask_list");
+		ttl = make_tick_list(snip, i, "trades/t", "tra_list");
 		// and glue them together
 		div_sym.appendChild(btl);
 		div_sym.appendChild(atl);

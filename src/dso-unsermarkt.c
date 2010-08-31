@@ -280,6 +280,15 @@ ORDER_p(const char *msg, size_t UNUSED(msglen))
 	return strncasecmp(msg, "ORDER ", 6) == 0;
 }
 
+static void
+UM_DEBUG_ORDER(umo_t o)
+{
+	UM_DEBUG("a:%u i:%u p:%u q:%u s:%u t:%u\n",
+		 o->agent_id, o->instr_id,
+		 o->p.mant, o->q, o->side, o->type);
+	return;
+}
+
 static int
 handle_ORDER(int fd, agtid_t a, char *msg, size_t msglen)
 {
@@ -304,7 +313,7 @@ handle_ORDER(int fd, agtid_t a, char *msg, size_t msglen)
 
 	} else {
 		/* just fuck off */
-		UM_DEBUG("don't know what to order, idiot speaking gibblish \"%s\"\n", cursor);
+		UM_DEBUG("don't know what to order, idiot speaking gibblish\n");
 		return -1;
 	}
 
@@ -356,6 +365,7 @@ handle_ORDER(int fd, agtid_t a, char *msg, size_t msglen)
 	/* finally set order modifier, only one we support atm is GTC */
 	o->tymod = OTYMOD_GTC;
 
+	UM_DEBUG_ORDER(o);
 	/* everything seems in order, just send the fucker off and pray */
 	oid = oq_add_order(q, o);
 	/* we bluntly reuse the msg buffer */
@@ -473,6 +483,7 @@ static void
 handle_close(int fd)
 {
 	/* delete fd from our htpush cache */
+	UM_DEBUG("forgetting about %d\n", fd);
 	forget_htpush(fd);
 	return;
 }

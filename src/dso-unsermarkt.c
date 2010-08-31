@@ -428,6 +428,13 @@ errout:
 	return 0;
 }
 
+static void
+handle_match(umm_t m, void *UNUSED(clo))
+{
+	uschi_add_match(h, m);
+	return;
+}
+
 
 /**
  * Take the stuff in MSG of size MSGLEN coming from FD and process it.
@@ -496,6 +503,8 @@ handle_data(int fd, char *msg, size_t msglen)
 			return -1;
 		}
 	}
+	/* settle any matches, we should clear the list afterwards :| */
+	oq_trav_matches(q, handle_match, NULL);
 	/* something must have happened to the order queue */
 	upstatus();
 	return 0;

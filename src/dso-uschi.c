@@ -50,6 +50,8 @@
 #include "nifty.h"
 /* settlement and clearing */
 #include "uschi.h"
+/* connexion tracking */
+#include "um-conn.h"
 /* websockets */
 #include "htws.h"
 
@@ -59,9 +61,6 @@
 /* some forwards and globals */
 static int handle_data(int fd, char *msg, size_t msglen);
 static void handle_close(int fd);
-/* push register */
-static void memorise_htpush(int fd);
-static void forget_htpush(int fd);
 /* push new status to everyone */
 static void prhttphdr(int fd);
 

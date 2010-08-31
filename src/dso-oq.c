@@ -50,6 +50,8 @@
 #include "nifty.h"
 /* order matching engine */
 #include "oq.h"
+/* to track connections */
+#include "um-conn.h"
 /* for our websockets */
 #include "htws.h"
 
@@ -58,9 +60,6 @@
 /* some forwards and globals */
 static int handle_data(int fd, char *msg, size_t msglen);
 static void handle_close(int fd);
-/* push register */
-static void memorise_htpush(int fd);
-static void forget_htpush(int fd);
 /* push new status to everyone */
 static void upstatus(void);
 static void prhttphdr(int fd);
@@ -232,10 +231,8 @@ upstatus(void)
 /* for all fds in the htpush queue print the status */
 	/* flag status as outdated */
 	status_updated = 0;
-	for (int i = 0; i < MAX_CLIENTS; i++) {
-		if (conn[i].fd > 0) {
-			prstatus(conn[i].fd);
-		}
+	FOR_EACH_CONN(c) {
+		prstatus(c->fd);
 	}
 	return;
 }

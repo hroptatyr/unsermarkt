@@ -52,6 +52,8 @@
 #include "oq.h"
 /* settlement and clearing */
 #include "uschi.h"
+/* for connexion tracking */
+#include "um-conn.h"
 /* websockets */
 #include "htws.h"
 
@@ -61,9 +63,6 @@
 /* some forwards and globals */
 static int handle_data(int fd, char *msg, size_t msglen);
 static void handle_close(int fd);
-/* push register */
-static void memorise_htpush(int fd);
-static void forget_htpush(int fd);
 /* push new status to everyone */
 static void prhttphdr(int fd);
 
@@ -74,43 +73,29 @@ static umoq_t q = NULL;
 /* our connectivity cruft */
 #include "dso-oq-con6ity.c"
 
-
-/* our websocket support */
-#include "htws.c"
-
-static int status_updated = 0;
-
 static void
 memorise_agent(int fd, agtid_t a)
 {
-	int slot;
-	for (slot = 0; slot < MAX_CLIENTS; slot++) {
-		if (conn[slot].fd <= 0) {
-			break;
-		}
-	}
-	if (slot == MAX_CLIENTS) {
-		/* no more room */
-		return;
-	}
-	conn[slot].fd = fd;
-	conn[slot].agent = a;
+	um_conn_t slot = um_conn_memorise(fd, a);
+	slot->agent = a;
+	slot->flags = 1;
 	return;
 }
 
 static agtid_t
 find_agent_by_fd(int fd)
 {
-	int slot;
-	for (slot = 0; slot < MAX_CLIENTS; slot++) {
-		if (conn[slot].fd == fd) {
-			return conn[slot].agent;
-		}
-	}
-	return 0;
+	um_conn_t slot = um_conn_find_by_fd(fd);
+	return slot ? slot->agent : 0;
 }
 
-#define forget_agent	forget_htpush
+#define forget_agent	um_conn_forget
+
+
+/* our websocket support */
+#include "htws.c"
+
+static int status_updated = 0;
 
 
 static void
@@ -196,10 +181,8 @@ upstatus(void)
 /* for all fds in the htpush queue print the status */
 	/* flag status as outdated */
 	status_updated = 0;
-	for (int i = 0; i < MAX_CLIENTS; i++) {
-		if (conn[i].fd > 0) {
-			prstatus(conn[i].fd);
-		}
+	FOR_EACH_CONN(c) {
+		prstatus(c->fd);
 	}
 	return;
 }

@@ -3,47 +3,17 @@
 #include "md5.h"
 #include "md5.c"
 
-/* maximum number of http clients */
-#define MAX_CLIENTS	(1024)
+#include "um-conn.h"
 
-struct conn_s {
-	int fd;
-	agtid_t agent;
-};
-
-static struct conn_s conn[MAX_CLIENTS];
-
-/* htpush connexions */
 static void
 memorise_htpush(int fd)
 {
-	int slot;
-	for (slot = 0; slot < MAX_CLIENTS; slot++) {
-		if (conn[slot].fd <= 0) {
-			break;
-		}
-	}
-	if (slot == MAX_CLIENTS) {
-		/* no more room */
-		return;
-	}
-	conn[slot].fd = fd;
-	conn[slot].agent = 0;
+	um_conn_t slot = um_conn_memorise(fd, 0);
+	slot->flags = 0;
 	return;
 }
 
-static void
-forget_htpush(int fd)
-{
-	int slot;
-	for (slot = 0; slot < MAX_CLIENTS; slot++) {
-		if (conn[slot].fd == fd) {
-			conn[slot].fd = 0;
-			return;
-		}
-	}
-	return;
-}
+#define forget_htpush	um_conn_forget
 
 
 /* order queue */

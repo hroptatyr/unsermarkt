@@ -13,6 +13,8 @@
 #include "uschi.h"
 /* more precision for the big portfolios */
 #include "m62.h"
+/* very abstract list provider */
+#include "mmls.c"
 
 #define USE_SQLITE	(1)
 #define INITIAL_NAGT	(256)
@@ -21,9 +23,6 @@
 #if defined USE_SQLITE
 # include <sqlite3.h>
 # include <stdio.h>
-#else
-/* very abstract list provider */
-# include "mmls.c"
 #endif	/* USE_SQLITE */
 
 #if !defined LIKELY
@@ -41,8 +40,6 @@
 
 /* agent structure within uschi */
 typedef struct agt_s *agt_t;
-/* instr structure within uschi */
-typedef struct ins_s *ins_t;
 
 /* local helpers */
 typedef struct uschi_i_s *uschi_i_t;
@@ -55,19 +52,14 @@ struct inv_s {
 	m62_t spos;
 };
 
-#if !defined USE_SQLITE
-/* instruments */
-struct ins_s {
-	char *name;
-};
-
-/* like ins_s but with nav pointers */
+/* instruments, like ins_s but with nav pointers */
 struct uschi_i_s {
 	uschi_i_t next;
 	struct ins_s i[1];
 	insid_t id;
 };
 
+#if !defined USE_SQLITE
 /* agents */
 typedef struct agt_inv_s *agt_inv_t;
 
@@ -106,9 +98,13 @@ struct uschi_s {
 	/* inventory loader and inserter */
 	sqlite3_stmt *linvent;
 	sqlite3_stmt *iinvent;
+
+	/* used as caches */
+	mmls_t ils;
+	struct uschi_i_s i[1];
+
 #else  /* !USE_SQLITE */
 	mmls_t als;
-	mmls_t ils;
 	struct uschi_a_s a[1];
 	struct uschi_i_s i[1];
 
@@ -120,6 +116,43 @@ struct uschi_s {
 };
 
 
+static uschi_i_t
+find_instr_by_id(uschi_t h, insid_t id)
+{
+	for (uschi_i_t i = h->i->next; i; i = i->next) {
+		if (i->id == id) {
+			return i;
+		}
+	}
+	return NULL;
+}
+
+static uschi_i_t
+find_instr_by_sym(uschi_t h, char *sym)
+{
+	for (uschi_i_t i = h->i->next; i; i = i->next) {
+		if (strcmp(i->i->sym, sym) == 0) {
+			return i;
+		}
+	}
+	return NULL;
+}
+
+static uschi_i_t
+pop_i(uschi_t h)
+{
+	uschi_i_t res = mmls_pop_cell(h->ils);
+	return res;
+}
+
+static void __attribute__((unused))
+push_i(uschi_t h, uschi_i_t i)
+{
+	i->next = (void*)0xdeadbeef;
+	mmls_push_cell(h->ils, i);
+	return;
+}
+
 #if !defined USE_SQLITE
 static uschi_a_t
 pop_a(uschi_t h)
@@ -133,21 +166,6 @@ push_a(uschi_t h, uschi_a_t a)
 {
 	a->next = (void*)0xdeadbeef;
 	mmls_push_cell(h->als, a);
-	return;
-}
-
-static uschi_i_t
-pop_i(uschi_t h)
-{
-	uschi_i_t res = mmls_pop_cell(h->ils);
-	return res;
-}
-
-static void
-push_i(uschi_t h, uschi_i_t i)
-{
-	i->next = (void*)0xdeadbeef;
-	mmls_push_cell(h->ils, i);
 	return;
 }
 
@@ -170,27 +188,6 @@ uschi_get_agent(uschi_t h, agtid_t id)
 		return NULL;
 	}
 	return ia->a;
-}
-
-static uschi_i_t
-find_instr_by_id(uschi_t h, insid_t id)
-{
-	for (uschi_i_t i = h->i->next; i; i = i->next) {
-		if (i->id == id) {
-			return i;
-		}
-	}
-	return NULL;
-}
-
-static ins_t
-uschi_get_instr(uschi_t h, insid_t id)
-{
-	uschi_i_t ii;
-	if (UNLIKELY((ii = find_instr_by_id(h, id)) == NULL)) {
-		return NULL;
-	}
-	return ii->i;
 }
 
 static agt_inv_t
@@ -242,6 +239,20 @@ tune_sqlite_backend(uschi_t h)
 	return;
 }
 #endif	/* USE_SQLITE */
+
+static uschi_i_t
+add_instr(uschi_t h, insid_t id, const char *sym, const char *descr)
+{
+	uschi_i_t i = pop_i(h);
+
+	i->i->sym = strdup(sym);
+	i->i->descr = strdup(descr);
+	/* append to our instr list */
+	i->next = h->i->next, h->i->next = i;
+	i->id = id;
+	return i;
+}
+
 
 /* ctor/dtor */
 uschi_t
@@ -279,11 +290,12 @@ make_uschi(const char *dbpath)
 
 #else  /* !USE_SQLITE */
 	memset(res->a, 0, sizeof(*res->a));
-	memset(res->i, 0, sizeof(*res->i));
 	/* create an initial list of agents and instruments */
 	res->als = make_mmls(sizeof(struct uschi_a_s), INITIAL_NAGT);
-	res->ils = make_mmls(sizeof(struct uschi_i_s), INITIAL_NINS);
 #endif	/* USE_SQLITE */
+	/* create a maplist for agents */
+	memset(res->i, 0, sizeof(*res->i));
+	res->ils = make_mmls(sizeof(struct uschi_i_s), INITIAL_NINS);
 	return res;
 }
 
@@ -300,8 +312,8 @@ free_uschi(uschi_t h)
 	sqlite3_close(h->db);
 #else  /* !USE_SQLITE */
 	free_mmls(h->als);
-	free_mmls(h->ils);
 #endif	/* USE_SQLITE */
+	free_mmls(h->ils);
 	xfree(h);
 	return;
 }
@@ -353,26 +365,52 @@ uschi_get_agent(uschi_t h, char *nick)
 }
 
 insid_t
-uschi_get_instr(uschi_t h, char *name)
+uschi_get_instr(uschi_t h, char *sym)
 {
+	uschi_i_t i;
 	insid_t res = 0;
+
+	/* try the cache before bothering the database */
+	if (LIKELY((i = find_instr_by_sym(h, sym)) != NULL)) {
+		/* bingo */
+		return i->id;
+	}
 #if defined USE_SQLITE
-	size_t len = strlen(name);
-	sqlite3_bind_text(h->igetter, 1, name, len, SQLITE_STATIC);
+	sqlite3_bind_text(h->igetter, 1, sym, -1, SQLITE_STATIC);
 	if (sqlite3_step(h->igetter) == SQLITE_ROW) {
+		const char *descr;
 		res = sqlite3_column_int(h->igetter, 0);
+		descr = (const char*)sqlite3_column_text(h->igetter, 2);
+		/* place into cache */
+		add_instr(h, res, sym, descr);
 	}
 	sqlite3_reset(h->igetter);
 #else
-# error implement me, uschi_get_agent()
+	/* we're puzzled in this mode */
+	;
 #endif	/* USE_SQLITE */
 	return res;
+}
+
+ins_t
+uschi_get_instr_ins(uschi_t h, insid_t id)
+{
+	uschi_i_t ii;
+	if (UNLIKELY((ii = find_instr_by_id(h, id)) == NULL)) {
+#if defined USE_SQLITE
+		/* actually the instr MUST be there, or we're fucked */
+		abort();
+#else  /* !USE_SQLITE */
+		return NULL;
+#endif	/* USE_SQLITE */
+	}
+	return ii->i;
 }
 
 
 /* instr opers */
 insid_t
-uschi_add_instr(uschi_t h, const char *sym, const char *descr)
+uschi_add_instr(uschi_t h, char *sym, char *descr)
 {
 /* new agent gets 1 million UMDs */
 #if defined USE_SQLITE
@@ -386,13 +424,8 @@ uschi_add_instr(uschi_t h, const char *sym, const char *descr)
 	}
 	return sqlite3_last_insert_rowid(h->db);
 #else  /* !USE_SQLITE */
-	uschi_i_t i = pop_i(h);
-
-	/* memorise the name, it's unused though */
-	i->i->name = strdup(name);
-	/* append to our instr list */
-	i->next = h->i->next, h->i->next = i;
-	return i->id = ++h->iid;
+	uschi_i_t i = add_instr(++h->iid, sym, descr);
+	return i->id;
 #endif	/* USE_SQLITE */
 }
 
@@ -488,6 +521,7 @@ uschi_add_match(uschi_t h, umm_t m)
 #endif	/* USE_SQLITE */
 }
 
+
 #if defined STANDALONE
 /* for debugging output */
 #include <stdio.h>

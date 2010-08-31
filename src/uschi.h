@@ -15,7 +15,7 @@ extern void free_uschi(uschi_t);
 extern insid_t uschi_add_instr(uschi_t, char *name);
 extern agtid_t uschi_add_agent(uschi_t, char *nick);
 
-extern insid_t uschi_get_instr(uschi_t, char *name);
+extern insid_t uschi_get_instr(uschi_t, const char *sym, const char *descr);
 extern agtid_t uschi_get_agent(uschi_t, char *nick);
 
 extern mid_t uschi_add_match(uschi_t, umm_t match);

@@ -251,9 +251,9 @@ make_uschi(const char *dbpath)
 
 #if defined USE_SQLITE
 	static const char aget[] =
-		"SELECT agent_id FROM agent WHERE nick = ?;";
+		"SELECT agent_id, name FROM agent WHERE nick = ?;";
 	static const char iget[] =
-		"SELECT instr_id FROM instr WHERE name = ?;";
+		"SELECT instr_id, sym, descr FROM instr WHERE name = ?;";
 	static const char mins[] =
 		"INSERT INTO match ("
 		"b_agent_id, s_agent_id, b_instr_id, s_instr_id, "
@@ -372,14 +372,15 @@ uschi_get_instr(uschi_t h, char *name)
 
 /* instr opers */
 insid_t
-uschi_add_instr(uschi_t h, char *name)
+uschi_add_instr(uschi_t h, const char *sym, const char *descr)
 {
 /* new agent gets 1 million UMDs */
 #if defined USE_SQLITE
 	char qry[512];
 
 	snprintf(qry, sizeof(qry),
-		 "INSERT INTO 'instr' (name) VALUES ('%s');", name);
+		 "INSERT INTO 'instr' (sym, descr) VALUES ('%s', '%s');",
+		 sym, descr);
 	if (sqlite3_exec(h->db, qry, NULL, 0, NULL) != SQLITE_OK) {
 		fputs("qry failed\n", stderr);
 	}

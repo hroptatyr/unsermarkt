@@ -373,9 +373,26 @@ CANCEL_p(const char *msg, size_t UNUSED(msglen))
 }
 
 static int
-handle_CANCEL(int fd, agtid_t UNUSED(a), char *UNUSED(msg), size_t UNUSED(len))
+handle_CANCEL(int fd, agtid_t agt, char *msg, size_t UNUSED(msglen))
 {
 	static const char err[] = "nothing cancelled because you blow\n";
+	static const char suc[] = "order cancelled\n";
+	struct umo_s o[1];
+	oid_t id;
+
+	if ((id = strtoul(msg + 7, NULL, 10)) == 0) {
+		goto errout;
+	}
+	*o = oq_get_order(q, id);
+	if (o->agent_id == agt) {
+		/* only cancel stuff that belongs to the agent */
+		if (UNLIKELY(oq_cancel_order(q, id) < 0)) {
+			goto errout;
+		}
+	}
+	write(fd, suc, sizeof(suc) - 1);
+	return 0;
+errout:
 	write(fd, err, sizeof(err) - 1);
 	return 0;
 }

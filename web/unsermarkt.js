@@ -62,7 +62,7 @@ function msg_evt(evt)
 	return;
 }
 
-function blub_ws()
+function blub_ws(ws_svc)
 {
 	status = document.getElementById("status");
 	if (window.WebSocket === undefined) {
@@ -72,8 +72,7 @@ function blub_ws()
 	}
 	// open a new conn, uses global 'conn' object
 	if (conn.readyState === undefined || conn.readyState > 1) {
-		var src = 'ws://www.unserding.org:8787'
-		conn = new WebSocket(src);
+		conn = new WebSocket(ws_svc);
 
 		// callbacks
 		conn.onopen = function(evt) {
@@ -109,7 +108,7 @@ function get_xsl()
 	return;
 }
 
-function blub()
+function blub(ws_svc)
 {
 	status = document.getElementById("status");
 	bdiv = document.getElementById("s1b");
@@ -122,6 +121,6 @@ function blub()
 	get_xsl();
 
 	// call the actual initialiser
-	blub_ws();
+	blub_ws(ws_svc);
 	return;
 }

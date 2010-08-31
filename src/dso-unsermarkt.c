@@ -107,7 +107,7 @@ prxmlhdr(void)
 }
 
 static void
-pr_otag(void)
+pr_qotag(void)
 {
 	static const char tag[] = "<quotes>";
 	append(tag, sizeof(tag) - 1);
@@ -115,9 +115,25 @@ pr_otag(void)
 }
 
 static void
-pr_ctag(void)
+pr_qctag(void)
 {
 	static const char tag[] = "</quotes>\n";
+	append(tag, sizeof(tag) - 1);
+	return;
+}
+
+static void
+pr_totag(void)
+{
+	static const char tag[] = "<trades>";
+	append(tag, sizeof(tag) - 1);
+	return;
+}
+
+static void
+pr_tctag(void)
+{
+	static const char tag[] = "</trades>\n";
 	append(tag, sizeof(tag) - 1);
 	return;
 }
@@ -147,17 +163,34 @@ prstacb(uml_t l, void *UNUSED(clo))
 }
 
 static void
+prstmcb(umm_t l, void *UNUSED(clo))
+{
+	char pri[32];
+
+	ffff_m30_s(pri, l->p);
+	mptr += sprintf(mptr, "<t p=\"%s\" q=\"%u\"/>", pri, l->q);
+	return;
+}
+
+static void
 prep_htws_status(void)
 {
 	/* htws mode */
 	reset();
 	*mptr++ = 0x00;
 	prxmlhdr();
-	pr_otag();
+
+	/* quotes */
+	pr_qotag();
 	/* go through all bids, then all asks */
 	oq_trav_bids(q, prstbcb, NULL);
 	oq_trav_asks(q, prstacb, NULL);
-	pr_ctag();
+	pr_qctag();
+
+	/* trades */
+	pr_totag();
+	oq_trav_matches(q, prstmcb, NULL);
+	pr_tctag();
 	*mptr++ = 0xff;
 	return;
 }

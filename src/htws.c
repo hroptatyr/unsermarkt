@@ -31,7 +31,7 @@ Content-Type: multipart/x-mixed-replace;boundary=\"umbdry\"\r\n\r\n";
 	return;
 }
 
-static char mbuf[4096], *mptr;
+static char mbuf[1048576], *mptr;
 
 static void
 reset(void)

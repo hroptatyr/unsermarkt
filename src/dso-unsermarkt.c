@@ -107,9 +107,24 @@ prxmlhdr(void)
 }
 
 static void
+pr_sotag(char *name)
+{
+	mptr += sprintf(mptr, "<instr sym=\"%s\">\n", name);
+	return;
+}
+
+static void
+pr_sctag(void)
+{
+	static const char tag[] = "</instr>\n";
+	append(tag, sizeof(tag) - 1);
+	return;
+}
+
+static void
 pr_qotag(void)
 {
-	static const char tag[] = "<quotes>";
+	static const char tag[] = "  <quotes>";
 	append(tag, sizeof(tag) - 1);
 	return;
 }
@@ -125,7 +140,7 @@ pr_qctag(void)
 static void
 pr_totag(void)
 {
-	static const char tag[] = "<trades>";
+	static const char tag[] = "  <trades>";
 	append(tag, sizeof(tag) - 1);
 	return;
 }
@@ -180,6 +195,9 @@ prep_htws_status(void)
 	*mptr++ = 0x00;
 	prxmlhdr();
 
+	/* embracing super tag */
+	pr_sotag("AB-BLUT");
+
 	/* quotes */
 	pr_qotag();
 	/* go through all bids, then all asks */
@@ -191,6 +209,9 @@ prep_htws_status(void)
 	pr_totag();
 	oq_trav_matches(q, prstmcb, NULL);
 	pr_tctag();
+
+	/* supertag */
+	pr_sctag();
 	*mptr++ = 0xff;
 	return;
 }
@@ -314,11 +335,8 @@ ORDER_p(const char *msg, size_t UNUSED(msglen))
 }
 
 static void
-UM_DEBUG_ORDER(umo_t o)
+UM_DEBUG_ORDER(umo_t UNUSED(o))
 {
-	UM_DEBUG("a:%u i:%u p:%u q:%u s:%u t:%u\n",
-		 o->agent_id, o->instr_id,
-		 o->p.mant, o->q, o->side, o->type);
 	return;
 }
 

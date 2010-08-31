@@ -3,6 +3,7 @@
 #define INCLUDED_uschi_h_
 
 #include "match.h"
+#include "instr.h"
 
 /* main uschi structure */
 typedef struct uschi_s *uschi_t;
@@ -12,12 +13,16 @@ typedef struct uschi_s *uschi_t;
 extern uschi_t make_uschi(const char *dbpath);
 extern void free_uschi(uschi_t);
 
-extern insid_t uschi_add_instr(uschi_t, char *name);
+extern insid_t uschi_add_instr(uschi_t, char *sym, char *descr);
 extern agtid_t uschi_add_agent(uschi_t, char *nick);
 
-extern insid_t uschi_get_instr(uschi_t, char *name);
+extern insid_t uschi_get_instr(uschi_t, char *sym);
 extern agtid_t uschi_get_agent(uschi_t, char *nick);
 
 extern mid_t uschi_add_match(uschi_t, umm_t match);
+
+
+/* still uschi's task? */
+extern ins_t uschi_get_instr_ins(uschi_t, insid_t id);
 
 #endif	/* !INCLUDED_uschi_h_ */

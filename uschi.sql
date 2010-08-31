@@ -9,7 +9,8 @@ CREATE TABLE 'agent' (
 
 CREATE TABLE 'instr' (
   instr_id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name VARCHAR(64) UNIQUE
+  sym VARCHAR(16) UNIQUE,
+  descr VARCHAR(64)
 );
 
 -- agent portfolio, fact

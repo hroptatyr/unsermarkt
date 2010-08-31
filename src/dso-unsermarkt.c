@@ -182,6 +182,8 @@ prep_htws_status(void)
 	/* serialise the xml document */
 	mptr += mxmlSaveString(root, mptr, sizeof(mbuf) - 2, MXML_NO_CALLBACK);
 	*mptr++ = 0xff;
+	/* free the mxml resources */
+	mxmlDelete(root);
 	return;
 }
 

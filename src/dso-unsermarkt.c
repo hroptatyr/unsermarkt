@@ -180,7 +180,7 @@ prep_htws_status(void)
 	reset();
 	*mptr++ = 0x00;
 	/* serialise the xml document */
-	mptr += mxmlSaveString(root, mptr, 4096, MXML_NO_CALLBACK);
+	mptr += mxmlSaveString(root, mptr, sizeof(mbuf) - 2, MXML_NO_CALLBACK);
 	*mptr++ = 0xff;
 	return;
 }

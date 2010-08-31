@@ -98,120 +98,89 @@ find_agent_by_fd(int fd)
 static int status_updated = 0;
 
 
+/* check for me */
+#include <mxml.h>
+
 static void
-prxmlhdr(void)
+attach_level(mxml_node_t *nd, m30_t p, uint32_t q)
 {
-	static const char hdr[] = "<?xml version=\"1.0\"?>\n";
-	append(hdr, sizeof(hdr) - 1);
+	char pri[32], qty[32];
+
+	ffff_m30_s(pri, p);
+	sprintf(qty, "%u", q);
+
+	mxmlElementSetAttr(nd, "p", pri);
+	mxmlElementSetAttr(nd, "q", qty);
 	return;
 }
 
 static void
-pr_sotag(char *name)
+add_b(uml_t l, void *clo)
 {
-	mptr += sprintf(mptr, "<instr sym=\"%s\">\n", name);
+	mxml_node_t *b = mxmlNewElement(clo, "b");
+	attach_level(b, l->p, l->q);
 	return;
 }
 
 static void
-pr_sctag(void)
+add_a(uml_t l, void *clo)
 {
-	static const char tag[] = "</instr>\n";
-	append(tag, sizeof(tag) - 1);
+	mxml_node_t *a = mxmlNewElement(clo, "a");
+	attach_level(a, l->p, l->q);
 	return;
 }
 
 static void
-pr_qotag(void)
+add_t(umm_t l, void *clo)
 {
-	static const char tag[] = "  <quotes>";
-	append(tag, sizeof(tag) - 1);
+	mxml_node_t *t = mxmlNewElement(clo, "t");
+	attach_level(t, l->p, l->q);
 	return;
 }
 
-static void
-pr_qctag(void)
+static mxml_node_t*
+add_instr(mxml_node_t *nd, ins_t i)
 {
-	static const char tag[] = "</quotes>\n";
-	append(tag, sizeof(tag) - 1);
-	return;
-}
-
-static void
-pr_totag(void)
-{
-	static const char tag[] = "  <trades>";
-	append(tag, sizeof(tag) - 1);
-	return;
-}
-
-static void
-pr_tctag(void)
-{
-	static const char tag[] = "</trades>\n";
-	append(tag, sizeof(tag) - 1);
-	return;
-}
-
-static void
-prstcb(char side, uml_t l)
-{
-	char pri[32];
-
-	ffff_m30_s(pri, l->p);
-	mptr += sprintf(mptr, "<%c p=\"%s\" q=\"%u\"/>", side, pri, l->q);
-	return;
-}
-
-static void
-prstbcb(uml_t l, void *UNUSED(clo))
-{
-	prstcb('b', l);
-	return;
-}
-
-static void
-prstacb(uml_t l, void *UNUSED(clo))
-{
-	prstcb('a', l);
-	return;
-}
-
-static void
-prstmcb(umm_t l, void *UNUSED(clo))
-{
-	char pri[32];
-
-	ffff_m30_s(pri, l->p);
-	mptr += sprintf(mptr, "<t p=\"%s\" q=\"%u\"/>", pri, l->q);
-	return;
+	mxml_node_t *res = mxmlNewElement(nd, "instr");
+	mxmlElementSetAttr(res, "sym", i->sym);
+	mxmlElementSetAttr(res, "descr", i->descr);
+	return res;
 }
 
 static void
 prep_htws_status(void)
 {
+	mxml_node_t *root, *head;
+#if 0
+/* will go bonkers */
+	ins_t i = uschi_get_instr_ins(h, 2);
+#else
+	struct ins_s i[1] = {{.sym = "BAB", .descr = "Blood AB"}};
+#endif
+
+	/* build xml tree now */
+	root = mxmlNewXML("1.0");
+	head = mxmlNewElement(root, "unsermarkt");
+
+	{
+		/* for each instr */
+		mxml_node_t *ix = add_instr(head, i);
+		mxml_node_t *qx = mxmlNewElement(ix, "quotes");
+		mxml_node_t *tx = mxmlNewElement(ix, "trades");
+
+		/* go through all bids, then all asks */
+		oq_trav_bids(q, add_b, qx);
+		oq_trav_asks(q, add_a, qx);
+		/* go over all trades, then clear the list */
+		oq_trav_matches(q, add_t, tx);
+		oq_clear_matches(q);
+	}
+
 	/* htws mode */
 	reset();
 	*mptr++ = 0x00;
-	prxmlhdr();
-
-	/* embracing super tag */
-	pr_sotag("AB-BLUT");
-
-	/* quotes */
-	pr_qotag();
-	/* go through all bids, then all asks */
-	oq_trav_bids(q, prstbcb, NULL);
-	oq_trav_asks(q, prstacb, NULL);
-	pr_qctag();
-
-	/* trades */
-	pr_totag();
-	oq_trav_matches(q, prstmcb, NULL);
-	pr_tctag();
-
-	/* supertag */
-	pr_sctag();
+	/* serialise the xml document */
+	mptr += mxmlSaveString(root, mptr, 4096, MXML_NO_CALLBACK);
 	*mptr++ = 0xff;
 	return;
 }

@@ -35,7 +35,7 @@ dso_uschi_la_SOURCES = dso-uschi.c
 dso_uschi_la_SOURCES += uschi.c uschi.h
 
 dso_unsermarkt_la_LDFLAGS = -module
-dso_unsermarkt_la_LDFLAGS += $(unserding_LDFLAGS) -lsqlite3
+dso_unsermarkt_la_LDFLAGS += $(unserding_LDFLAGS) -lsqlite3 -lmxml
 dso_unsermarkt_la_CPPFLAGS = $(AM_CPPFLAGS) $(unserding_CFLAGS)
 dso_unsermarkt_la_SOURCES = dso-unsermarkt.c
 dso_unsermarkt_la_SOURCES += oq.c oq.h

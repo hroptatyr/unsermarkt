@@ -163,7 +163,7 @@ prep_htws_status(void)
 }
 
 static void
-prstatus(int fd)
+prstatus(int fd, int ws)
 {
 /* prints the current order queue to FD */
 	/* check if status needs updating */
@@ -171,7 +171,11 @@ prstatus(int fd)
 		prep_htws_status();
 		status_updated = 1;
 	}
-	write(fd, mbuf, mptr - mbuf);
+	if (ws == 0) {
+		write(fd, mbuf, mptr - mbuf);
+	} else {
+		write(fd, mbuf + 1, mptr - mbuf - 2);
+	}
 	return;
 }
 
@@ -182,7 +186,7 @@ upstatus(void)
 	/* flag status as outdated */
 	status_updated = 0;
 	FOR_EACH_CONN(c) {
-		prstatus(c->fd);
+		prstatus(c->fd, c->flags);
 	}
 	return;
 }
@@ -266,7 +270,7 @@ handle_QUOTES(int fd, const char *UNUSED(msg), size_t UNUSED(msglen))
 {
 /* actually the client can specify which instruments to quote,
  * we don't care tho */
-	prstatus(fd);
+	prstatus(fd, 1);
 	return 0;
 }
 
@@ -400,7 +404,7 @@ handle_data(int fd, char *msg, size_t msglen)
 		if (htws_handle_get(fd, msg, msglen) < 0) {
 			return -1;
 		}
-		prstatus(fd);
+		prstatus(fd, 0);
 		return 0;
 
 	} else if (!aid && htws_clo_p(msg, msglen)) {

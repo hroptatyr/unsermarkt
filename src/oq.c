@@ -553,6 +553,10 @@ make_oq(insid_t secu_id, insid_t fund_id)
 	/* finally keep track of what we are */
 	res->secid = secu_id;
 	res->funid = fund_id;
+
+	/* set match_cb and match_clo */
+	res->match_cb = NULL;
+	res->match_clo = NULL;
 	return res;
 }
 

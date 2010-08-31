@@ -38,40 +38,57 @@ function a(p, q)
 	asks[p] = q;
 }
 
-function crea_div(instr)
+function make_instr_div(instr)
 {
-	var res;
 	var sym = instr.getAttribute("sym");
 	var descr = instr.getAttribute("descr");
-	var child_q;
-	var child_t;
+	var symsp = document.createElement("span");
+	var descrsp = document.createElement("span");
+	var res = document.createElement("div");
 
-	res = document.createElement("div");
 	res.id = sym;
-	res.innerHTML += "<span class='sym'>" + sym + "</span>";
-	res.innerHTML += "<span class='descr'>" + descr + "</span>";
+	res.className = "instr";
+	symsp.className = "sym";
+	symsp.textContent = sym;
+	descrsp.className = "descr";
+	descrsp.textContent = descr;
 
-	child_q = document.createElement("div");
-	child_q.className = "quo_list";
-	child_t = document.createElement("div");
-	child_t.className = "tra_list";
-
-	res.appendChild(child_q);
-	res.appendChild(child_t);
+	res.appendChild(symsp);
+	res.appendChild(descrsp);
 	return res;
 }
 
-function trav_quotes(snip, xp, node)
+function make_tick_div(tnode)
 {
-	var xpres = XPathResult.ANY_TYPE;
-	var iter_bids = snip.evaluate("quotes/b", snip, null, xpres, xp);
-	var iter_asks = snip.evaluate("quotes/a", snip, null, xpres, xp);
+	var p = tnode.getAttribute("p");
+	var q = tnode.getAttribute("q");
+	var res = document.createElement("div");
+	var ps = document.createElement("span");
+	var qs = document.createElement("span");
+
+	ps.className = "p";
+	qs.className = "q";
+	ps.textContent = p;
+	qs.textContent = q;
+
+	res.className = "tick";
+	res.appendChild(ps);
+	res.appendChild(qs);
+	return res;
 }
 
-function trav_trades(snip, xp, div)
+function make_tick_list(snip, cwd, expr)
 {
 	var xpres = XPathResult.ANY_TYPE;
-	var iter_bids = snip.evaluate("trades/t", snip, null, xpres, xp);
+	var iter = snip.evaluate(expr, cwd, null, xpres, null);
+	var res = document.createElement("div");
+
+	res.className = "tick_list";
+	for (var i = iter.iterateNext(); i; i = iter.iterateNext()) {
+		var tdiv = make_tick_div(i);
+		res.appendChild(tdiv);
+	}
+	return res;
 }
 
 function trav_instrs(snip)
@@ -81,14 +98,26 @@ function trav_instrs(snip)
 
 	for (var i = iter.iterateNext(); i; i = iter.iterateNext()) {
 		var sym = i.getAttribute("sym");
-		var div_sym = document.getElementById(sym);
+		var old_sym = document.getElementById(sym);
+		var btl, atl, ttl;
+		var div_sym;
+
 		// append the fucker if not already
-		if (div_sym == null) {
-			div_sym = crea_div(i);
+		div_sym = make_instr_div(i);
+		// create the tick lists
+		btl = make_tick_list(snip, i, "quotes/b");
+		atl = make_tick_list(snip, i, "quotes/a");
+		ttl = make_tick_list(snip, i, "trades/t");
+		// and glue them together
+		div_sym.appendChild(btl);
+		div_sym.appendChild(atl);
+		div_sym.appendChild(ttl);
+		// now replace old node
+		if (old_sym) {
+			div_unsermarkt.replaceChild(div_sym, old_sym);
+		} else {
 			div_unsermarkt.appendChild(div_sym);
 		}
-		trav_quotes(snip, i, div_sym);
-		trav_trades(snip, i, div_sym);
 	}
 	return;
 }

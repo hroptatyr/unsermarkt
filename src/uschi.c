@@ -181,7 +181,7 @@ find_agent_by_id(uschi_t h, agtid_t id)
 }
 
 static agt_t
-uschi_get_agent(uschi_t h, agtid_t id)
+uschi_get_agent_agt(uschi_t h, agtid_t id)
 {
 	uschi_a_t ia;
 	if (UNLIKELY((ia = find_agent_by_id(h, id)) == NULL)) {
@@ -262,9 +262,9 @@ make_uschi(const char *dbpath)
 
 #if defined USE_SQLITE
 	static const char aget[] =
-		"SELECT agent_id, name FROM agent WHERE nick = ?;";
+		"SELECT agent_id, nick FROM agent WHERE nick = ?;";
 	static const char iget[] =
-		"SELECT instr_id, sym, descr FROM instr WHERE name = ?;";
+		"SELECT instr_id, sym, descr FROM instr WHERE sym = ?;";
 	static const char mins[] =
 		"INSERT INTO match ("
 		"b_agent_id, s_agent_id, b_instr_id, s_instr_id, "

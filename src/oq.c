@@ -360,38 +360,48 @@ add_match(umoq_t q, umoq_m_t im)
 }
 
 static umoq_m_t
-add_match_immediate_pfill(umoq_t q, umoq_o_t o, uint32_t qty)
+add_match_immediate_pfill(umoq_t q, umoq_o_t qo, umo_t new_o)
 {
 /* assume the counterparty has the same quantity and no order id yet */
 	umoq_m_t im = pop_m(q);
 
-	/*  */
-	switch (um_order_side(o->o)) {
+	/* sort of inverts the meaning */
+	switch (um_order_side(qo->o)) {
 	case OSIDE_BUY:
-		im->m->ob = o->oid;
+		im->m->ob = qo->oid;
 		im->m->os = ++q->oid;
+		/* agent tracking */
+		im->m->ab = qo->o->agent_id;
+		im->m->as = new_o->agent_id;
 		break;
 	case OSIDE_SELL:
 		im->m->ob = ++q->oid;
-		im->m->os = o->oid;
+		im->m->os = qo->oid;
+		/* agent tracking */
+		im->m->ab = new_o->agent_id;
+		im->m->as = qo->o->agent_id;
 		break;
 	case OSIDE_UNK:
 	case NOSIDES:
 	default:
 		abort();
 	}
-	im->m->p = o->o->p;
-	im->m->q = qty;
+	/* make sure we keep track of the instruments traded */
+	im->m->ib = q->secid;
+	im->m->is = q->funid;
+	/* stipulate the price and quantity here */
+	im->m->p = qo->o->p;
+	im->m->q = new_o->q;
 	/* insert into our list */
 	add_match(q, im);
 	return im;
 }
 
 static umoq_m_t
-add_match_immediate(umoq_t q, umoq_o_t o)
+add_match_immediate(umoq_t q, umoq_o_t o, umo_t new_o)
 {
 /* assume the counterparty has the same quantity and no order id yet */
-	return add_match_immediate_pfill(q, o, o->o->q);
+	return add_match_immediate_pfill(q, o, new_o);
 }
 
 static inline int
@@ -460,7 +470,7 @@ match_order(umoq_t q, umo_t o)
 		rem_order_from_level(q, fro);
 
 		/* record the matches */
-		add_match_immediate(q, fro);
+		add_match_immediate(q, fro, o);
 
 		/* we can make a match, but we'd have to fiddle
 		 * with the queue */
@@ -481,7 +491,7 @@ match_order(umoq_t q, umo_t o)
 		sta->next->o->q -= o->q;
 
 		/* record the matches */
-		add_match_immediate_pfill(q, sta->next, o->q);
+		add_match_immediate_pfill(q, sta->next, o);
 
 		assert(sta->lev->next->l->q > o->q);
 		/* adapt the levels as well */

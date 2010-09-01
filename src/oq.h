@@ -79,7 +79,14 @@ extern int oq_resume_order(umoq_t, oid_t);
 
 extern int oq_trav_bids(umoq_t, void(*cb)(uml_t, void*), void *closure);
 extern int oq_trav_asks(umoq_t, void(*cb)(uml_t, void*), void *closure);
+/**
+ * Traverse matches, least recent one first. */
 extern int oq_trav_matches(umoq_t, void(*cb)(umm_t, void*), void *closure);
+/**
+ * Traverse matches, most recent one first. */
+extern int oq_trav_matches_rev(umoq_t, void(*cb)(umm_t, void*), void *closure);
+/**
+ * Clear the list of matches. */
 extern int oq_clear_matches(umoq_t);
 
 /**

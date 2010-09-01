@@ -695,6 +695,17 @@ oq_trav_matches(umoq_t q, void(*cb)(umm_t, void*), void *closure)
 	return res;
 }
 
+/* like oq_trav_matches() but the most recent ones first. */
+int
+oq_trav_matches_rev(umoq_t q, void(*cb)(umm_t, void*), void *closure)
+{
+	int res = 0;
+	for (umoq_m_t m = q->ms->next; m != q->ms + 1; m = m->next, res++) {
+		cb(m->m, closure);
+	}
+	return res;
+}
+
 int
 oq_clear_matches(umoq_t q)
 {

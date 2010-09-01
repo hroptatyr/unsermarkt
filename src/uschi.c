@@ -466,6 +466,17 @@ push_inventory(uschi_t h, agtid_t a, insid_t i, inv_t pf)
 	return;
 }
 
+#if defined DEBUG_FLAG
+static void
+pr_match(FILE *fp, umm_t m)
+{
+	fprintf(fp, "%u v %u %u<->%u\n", m->ab, m->as, m->ib, m->is);
+	return;
+}
+#else  /* !DEBUG_FLAG */
+# define pr_match(args...)
+#endif	/* DEBUG_FLAG */
+
 mid_t
 uschi_add_match(uschi_t h, umm_t m)
 {
@@ -473,6 +484,7 @@ uschi_add_match(uschi_t h, umm_t m)
 #if defined USE_SQLITE
 	mid_t res = 0;
 	struct inv_s bs[1], bf[1], ss[1], sf[1];
+	int UNUSED(rc);
 
 	sqlite3_bind_int(h->minster, 1, m->ab);
 	sqlite3_bind_int(h->minster, 2, m->as);
@@ -480,7 +492,8 @@ uschi_add_match(uschi_t h, umm_t m)
 	sqlite3_bind_int(h->minster, 4, m->is);
 	sqlite3_bind_int(h->minster, 5, m->p.mant);
 	sqlite3_bind_int(h->minster, 6, m->q * 10000);
-	if (sqlite3_step(h->minster) == SQLITE_DONE) {
+	pr_match(stderr, m);
+	if ((rc = sqlite3_step(h->minster)) == SQLITE_DONE) {
 		res = sqlite3_last_insert_rowid(h->db);
 	}
 	sqlite3_reset(h->minster);

@@ -1,33 +1,69 @@
 /* just stylise the qsides a bit */
-div[class='qside'] {
-  display: inline-block;
-  margin: 1ex;
-  padding: 1ex;
+
+div[class="success"] {
+	background-color: #00ff00;
 }
 
-div[class='quotes'] {
-  vertical-align: top;
+div[class="fail"] {
+	background-color: #ff0000;
 }
 
-span[class='p'] {
-  padding-left: 0ex;
-  padding-right: 0.5ex;
+div[class="standby"] {
+	background-color: #0000ff;
 }
 
-span[class='q'] {
-  padding-left: 0.5ex;
-  padding-right: 0ex;
+div[class="instr"] {
+	padding-top: 1ex;
+	padding-bottom: 1ex;
 }
 
-div[class='success'] {
-  background-color: #00ff00;
+div[class="head"] {
+	display: block;
+	padding-top: 0.3em;
+	padding-bottom: 0.2em;
 }
 
-div[class='fail'] {
-  background-color: #ff0000;
+span[class="sym"] {
+	padding-right: 0.5em;
+	font-weight: bold;
 }
 
-div[class='standby'] {
-  background-color: #0000ff;
+span[class="descr"] {
+	padding-left: 0.5em;
+	font-size: small;
+}
+
+span[class="p"], span[class="q"] {
+	padding-left: 0.5ex;
+	padding-right: 0.5ex;
+}
+
+span[class="q"] {
+	font-size: small;
+}
+
+div[class~="tick_list"] {
+	display: inline-block;
+	vertical-align: top;
+}
+
+div[class~="tick"] {
+	vertical-align: text-bottom;
+}
+
+div[class~="bid_list"] span[class="p"] {
+	float: right;
+}
+
+div[class~="bid_list"] span[class="q"] {
+	float: left;
+}
+
+div[class="ask_list"] span[class="p"] {
+	float: left;
+}
+
+div[class="ask_list"] span[class="q"] {
+	float: right;
 }
 

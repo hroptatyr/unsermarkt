@@ -69,6 +69,54 @@ static void prhttphdr(int fd);
 static uschi_t h = NULL;
 static umoq_t q = NULL;
 
+/* ring buffer with the last RINGSZ trades */
+typedef struct ring_s *ring_t;
+typedef struct ring_item_s *ring_item_t;
+
+struct ring_item_s {
+	m30_t p;
+	uint32_t q;
+};
+
+struct ring_s {
+#define RINGSZ		(20)
+	size_t idx;
+	struct ring_item_s ring[RINGSZ];
+};
+static struct ring_s ltra_ring[1] = {0};
+
+static void
+ring_add(ring_t r, struct ring_item_s i)
+{
+	r->ring[r->idx] = i;
+	r->idx = (r->idx + 1) % (RINGSZ);
+	return;
+}
+
+static void __attribute__((unused))
+ring_trav(ring_t r, void(*cb)(struct ring_item_s, void*), void *clo)
+{
+	size_t idx = r->idx;
+	do {
+		if (LIKELY(r->ring[idx].q)) {
+			cb(r->ring[idx], clo);
+		}
+	} while (++idx % (RINGSZ) != r->idx);
+	return;
+}
+
+static void __attribute__((unused))
+ring_trav_rev(ring_t r, void(*cb)(struct ring_item_s, void*), void *clo)
+{
+	size_t idx = r->idx - 1;
+	do {
+		if (LIKELY(r->ring[idx].q)) {
+			cb(r->ring[idx], clo);
+		}
+	} while (idx-- % (RINGSZ) != r->idx);
+	return;
+}
+
 
 /* our connectivity cruft */
 #include "dso-oq-con6ity.c"
@@ -131,10 +179,10 @@ add_a(uml_t l, void *clo)
 }
 
 static void
-add_t(umm_t l, void *clo)
+add_t(struct ring_item_s ri, void *clo)
 {
 	mxml_node_t *t = mxmlNewElement(clo, "t");
-	attach_level(t, l->p, l->q);
+	attach_level(t, ri.p, ri.q);
 	return;
 }
 
@@ -172,8 +220,7 @@ prep_htws_status(void)
 		oq_trav_bids(q, add_b, qx);
 		oq_trav_asks(q, add_a, qx);
 		/* go over all trades, then clear the list */
-		oq_trav_matches(q, add_t, tx);
-		oq_clear_matches(q);
+		ring_trav_rev(ltra_ring, add_t, tx);
 	}
 
 	/* htws mode */
@@ -432,6 +479,8 @@ static void
 handle_match(umm_t m, void *UNUSED(clo))
 {
 	uschi_add_match(h, m);
+	/* also make a note on our ltra ring */
+	ring_add(ltra_ring, (struct ring_item_s){m->p, m->q});
 	return;
 }
 
@@ -503,8 +552,9 @@ handle_data(int fd, char *msg, size_t msglen)
 			return -1;
 		}
 	}
-	/* settle any matches, we should clear the list afterwards :| */
+	/* settle any matches and clear the list afterwards */
 	oq_trav_matches(q, handle_match, NULL);
+	oq_clear_matches(q);
 	/* something must have happened to the order queue */
 	upstatus();
 	return 0;

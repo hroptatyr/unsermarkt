@@ -5,8 +5,8 @@
 typedef struct ins_s *ins_t;
 
 struct ins_s {
-	char *sym;
-	char *descr;
+	const char *sym;
+	const char *descr;
 };
 
 #endif	/* INCLUDED_instr_h_ */

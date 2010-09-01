@@ -25,4 +25,10 @@ extern mid_t uschi_add_match(uschi_t, umm_t match);
 /* still uschi's task? */
 extern ins_t uschi_get_instr_ins(uschi_t, insid_t id);
 
+/**
+ * Traverse all currently registered instruments.
+ * Callback is called with the instrument identifier and its guts. */
+extern int
+uschi_trav_instr(uschi_t, void(*cb)(insid_t, ins_t, void*), void *clo);
+
 #endif	/* !INCLUDED_uschi_h_ */

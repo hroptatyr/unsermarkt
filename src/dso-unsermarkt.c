@@ -67,7 +67,9 @@ static void handle_close(int fd);
 static void prhttphdr(int fd);
 
 static uschi_t h = NULL;
-static umoq_t q = NULL;
+#define MAX_INSTR	(32)
+static umoq_t q[MAX_INSTR] = {0};
+static size_t nq;
 
 /* ring buffer with the last RINGSZ trades */
 typedef struct ring_s *ring_t;
@@ -195,30 +197,33 @@ add_instr(mxml_node_t *nd, ins_t i)
 	return res;
 }
 
-static void
+static void __attribute__((noinline))
 prep_htws_status(void)
 {
 	mxml_node_t *root, *head;
-#if 0
-/* will go bonkers */
-	ins_t i = uschi_get_instr_ins(h, 2);
-#else
-	struct ins_s i[1] = {{.sym = "BAB", .descr = "Blood AB"}};
-#endif
 
 	/* build xml tree now */
 	root = mxmlNewXML("1.0");
 	head = mxmlNewElement(root, "unsermarkt");
 
-	{
+	for (int j = 1; j < nq; j++) {
 		/* for each instr */
-		mxml_node_t *ix = add_instr(head, i);
-		mxml_node_t *qx = mxmlNewElement(ix, "quotes");
-		mxml_node_t *tx = mxmlNewElement(ix, "trades");
+		mxml_node_t *ix;
+		mxml_node_t *qx;
+		mxml_node_t *tx;
+		ins_t i;
+
+		if (UNLIKELY((i = uschi_get_instr_ins(h, j)) == NULL)) {
+			continue;
+		}
+
+		ix = add_instr(head, i);
+		qx = mxmlNewElement(ix, "quotes");
+		tx = mxmlNewElement(ix, "trades");
 
 		/* go through all bids, then all asks */
-		oq_trav_bids(q, add_b, qx);
-		oq_trav_asks(q, add_a, qx);
+		oq_trav_bids(q[j], add_b, qx);
+		oq_trav_asks(q[j], add_a, qx);
 		/* go over all trades, then clear the list */
 		ring_trav_rev(ltra_ring, add_t, tx);
 	}
@@ -436,7 +441,7 @@ handle_ORDER(int fd, agtid_t a, char *msg, size_t msglen)
 
 	UM_DEBUG_ORDER(o);
 	/* everything seems in order, just send the fucker off and pray */
-	oid = oq_add_order(q, o);
+	oid = oq_add_order(q[o->instr_id], o);
 	/* we bluntly reuse the msg buffer */
 	msglen = snprintf(msg, msglen, "%u\n", oid);
 	/* give a bit of feedback */
@@ -461,10 +466,10 @@ handle_CANCEL(int fd, agtid_t agt, char *msg, size_t UNUSED(msglen))
 	if ((id = strtoul(msg + 7, NULL, 10)) == 0) {
 		goto errout;
 	}
-	*o = oq_get_order(q, id);
+	*o = oq_get_order(q[2], id);
 	if (o->agent_id == agt) {
 		/* only cancel stuff that belongs to the agent */
-		if (UNLIKELY(oq_cancel_order(q, id) < 0)) {
+		if (UNLIKELY(oq_cancel_order(q[2], id) < 0)) {
 			goto errout;
 		}
 	}
@@ -552,9 +557,11 @@ handle_data(int fd, char *msg, size_t msglen)
 			return -1;
 		}
 	}
-	/* settle any matches and clear the list afterwards */
-	oq_trav_matches(q, handle_match, NULL);
-	oq_clear_matches(q);
+	for (int j = 1; j < nq; j++) {
+		/* settle any matches and clear the list afterwards */
+		oq_trav_matches(q[j], handle_match, NULL);
+		oq_clear_matches(q[j]);
+	}
 	/* something must have happened to the order queue */
 	upstatus();
 	return 0;
@@ -570,6 +577,18 @@ handle_close(int fd)
 }
 
 
+static void
+um_make_oq(insid_t id, ins_t UNUSED(i), void *clo)
+{
+	umoq_t *queue = clo;
+
+	if (UNLIKELY(id >= MAX_INSTR)) {
+		return;
+	}
+	queue[id] = make_oq(id, 1);
+	return;
+}
+
 void
 init(void *clo)
 {
@@ -588,8 +607,10 @@ init(void *clo)
 		const char *dbpath = NULL;
 		udcfg_tbl_lookup_s(&dbpath, ctx, settings, "dbpath");
 		h = make_uschi(dbpath);
-		/* hardcoded securities */
-		q = make_oq(2, 1);
+		/* hardcoded securities, lazy eval that one? */
+		if ((nq = uschi_trav_instr(h, um_make_oq, q) + 1) > MAX_INSTR) {
+			nq = MAX_INSTR;
+		}
 	}
 	/* clean up */
 	udctx_set_setting(ctx, NULL);

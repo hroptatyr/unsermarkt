@@ -399,7 +399,25 @@ uschi_get_instr_ins(uschi_t h, insid_t id)
 	if (UNLIKELY((ii = find_instr_by_id(h, id)) == NULL)) {
 #if defined USE_SQLITE
 		/* actually the instr MUST be there, or we're fucked */
-		abort();
+		static const char iget[] =
+			"SELECT sym, descr FROM instr WHERE instr_id = ?;";
+		sqlite3_stmt *stmt;
+
+		sqlite3_prepare_v2(h->db, iget, sizeof(iget) - 1, &stmt, NULL);
+		sqlite3_bind_int(stmt, 1, id);
+		if (sqlite3_step(stmt) == SQLITE_ROW) {
+			const char *sym =
+				(const char*)sqlite3_column_text(stmt, 0);
+			const char *descr =
+				(const char*)sqlite3_column_text(stmt, 1);
+			ii = pop_i(h);
+			ii->id = id;
+			ii->i->sym = strdup(sym);
+			ii->i->descr = strdup(descr);
+			/* append ii */
+			ii->next = h->i->next, h->i->next = ii;
+		}
+		sqlite3_finalize(stmt);
 #else  /* !USE_SQLITE */
 		return NULL;
 #endif	/* USE_SQLITE */
@@ -427,6 +445,31 @@ uschi_add_instr(uschi_t h, char *sym, char *descr)
 	uschi_i_t i = add_instr(++h->iid, sym, descr);
 	return i->id;
 #endif	/* USE_SQLITE */
+}
+
+int
+uschi_trav_instr(uschi_t h, void(*cb)(insid_t, ins_t, void*), void *clo)
+{
+	int res = 0;
+#if USE_SQLITE
+	static const char trav[] =
+		"SELECT instr_id, sym, descr FROM instr;";
+	sqlite3_stmt *stmt;
+
+	sqlite3_prepare_v2(h->db, trav, sizeof(trav) - 1, &stmt, NULL);
+	while (sqlite3_step(stmt) == SQLITE_ROW) {
+		struct ins_s i[1];
+		insid_t id = sqlite3_column_int(stmt, 0);
+		i->sym = (const char*)sqlite3_column_text(stmt, 1);
+		i->descr = (const char*)sqlite3_column_text(stmt, 2);
+		cb(id, i, clo);
+		res++;
+	}
+	sqlite3_finalize(stmt);
+#else
+# error implement me
+#endif	/* !USE_SQLITE */
+	return res;
 }
 
 

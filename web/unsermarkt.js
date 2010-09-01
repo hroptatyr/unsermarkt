@@ -38,7 +38,7 @@ function a(p, q)
 	asks[p] = q;
 }
 
-function make_instr_div(instr)
+function make_instr_head(instr)
 {
 	var sym = instr.getAttribute("sym");
 	var descr = instr.getAttribute("descr");
@@ -46,8 +46,7 @@ function make_instr_div(instr)
 	var descrsp = document.createElement("span");
 	var res = document.createElement("div");
 
-	res.id = sym;
-	res.className = "instr";
+	res.className = "head";
 	symsp.className = "sym";
 	symsp.textContent = sym;
 	descrsp.className = "descr";
@@ -103,19 +102,26 @@ function trav_instrs(snip)
 	for (var i = iter.iterateNext(); i; i = iter.iterateNext()) {
 		var sym = i.getAttribute("sym");
 		var old_sym = document.getElementById(sym);
-		var btl, atl, ttl;
+		var btl, atl, ttl, head;
 		var div_sym;
 
 		// append the fucker if not already
-		div_sym = make_instr_div(i);
+		head = make_instr_head(i);
 		// create the tick lists
 		btl = make_tick_list(snip, i, "quotes/b", "bid_list");
 		atl = make_tick_list(snip, i, "quotes/a", "ask_list");
 		ttl = make_tick_list(snip, i, "trades/t", "tra_list");
+
+		// assign class name and id
+		div_sym = document.createElement("div");
+		div_sym.id = sym;
+		div_sym.className = "instr";
 		// and glue them together
+		div_sym.appendChild(head);
 		div_sym.appendChild(btl);
 		div_sym.appendChild(atl);
 		div_sym.appendChild(ttl);
+
 		// now replace old node
 		if (old_sym) {
 			div_unsermarkt.replaceChild(div_sym, old_sym);

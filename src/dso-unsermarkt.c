@@ -217,7 +217,24 @@ add_instr(mxml_node_t *nd, ins_t i)
 	return res;
 }
 
-static void __attribute__((noinline))
+static void
+prep_oq_status(mxml_node_t *pnd, insid_t qid)
+{
+	mxml_node_t *qx;
+	mxml_node_t *tx;
+
+	qx = mxmlNewElement(pnd, "quotes");
+	tx = mxmlNewElement(pnd, "trades");
+
+	/* go through all bids, then all asks */
+	oq_trav_bids(q[qid], add_b, qx);
+	oq_trav_asks(q[qid], add_a, qx);
+	/* go over all trades, then clear the list */
+	ring_trav_rev(ltra_ring, add_t, tx);
+	return;
+}
+
+static void
 prep_htws_status(void)
 {
 	mxml_node_t *root, *head;
@@ -227,25 +244,14 @@ prep_htws_status(void)
 	head = mxmlNewElement(root, "unsermarkt");
 
 	for (int j = 1; j < nq; j++) {
-		/* for each instr */
 		mxml_node_t *ix;
-		mxml_node_t *qx;
-		mxml_node_t *tx;
 		ins_t i;
 
 		if (UNLIKELY((i = uschi_get_instr_ins(h, j)) == NULL)) {
 			continue;
 		}
-
 		ix = add_instr(head, i);
-		qx = mxmlNewElement(ix, "quotes");
-		tx = mxmlNewElement(ix, "trades");
-
-		/* go through all bids, then all asks */
-		oq_trav_bids(q[j], add_b, qx);
-		oq_trav_asks(q[j], add_a, qx);
-		/* go over all trades, then clear the list */
-		ring_trav_rev(ltra_ring, add_t, tx);
+		prep_oq_status(ix, j);
 	}
 
 	/* htws mode */

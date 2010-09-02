@@ -168,26 +168,25 @@ find_agent_by_fd(int fd)
 static int status_updated = 0;
 
 
-/* check for me */
-#include <mxml.h>
+#include "um-xml.h"
 
 static void
-attach_level(mxml_node_t *nd, m30_t p, uint32_t q)
+attach_level(umx_node_t nd, m30_t p, uint32_t q)
 {
 	char pri[32], qty[32];
 
 	ffff_m30_s(pri, p);
 	sprintf(qty, "%u", q);
 
-	mxmlElementSetAttr(nd, "p", pri);
-	mxmlElementSetAttr(nd, "q", qty);
+	umx_add_attr(nd, "p", pri);
+	umx_add_attr(nd, "q", qty);
 	return;
 }
 
 static void
 add_b(uml_t l, void *clo)
 {
-	mxml_node_t *b = mxmlNewElement(clo, "b");
+	umx_node_t b = umx_add_node(clo, "b");
 	attach_level(b, l->p, l->q);
 	return;
 }
@@ -195,7 +194,7 @@ add_b(uml_t l, void *clo)
 static void
 add_a(uml_t l, void *clo)
 {
-	mxml_node_t *a = mxmlNewElement(clo, "a");
+	umx_node_t a = umx_add_node(clo, "a");
 	attach_level(a, l->p, l->q);
 	return;
 }
@@ -203,28 +202,28 @@ add_a(uml_t l, void *clo)
 static void
 add_t(struct ring_item_s ri, void *clo)
 {
-	mxml_node_t *t = mxmlNewElement(clo, "t");
+	umx_node_t t = umx_add_node(clo, "t");
 	attach_level(t, ri.p, ri.q);
 	return;
 }
 
-static mxml_node_t*
-add_instr(mxml_node_t *nd, ins_t i)
+static umx_node_t
+add_instr(umx_node_t nd, ins_t i)
 {
-	mxml_node_t *res = mxmlNewElement(nd, "instr");
-	mxmlElementSetAttr(res, "sym", i->sym);
-	mxmlElementSetAttr(res, "descr", i->descr);
+	umx_node_t res = umx_add_node(nd, "instr");
+	umx_add_attr(res, "sym", i->sym);
+	umx_add_attr(res, "descr", i->descr);
 	return res;
 }
 
 static void
-prep_oq_status(mxml_node_t *pnd, insid_t qid)
+prep_oq_status(umx_node_t pnd, insid_t qid)
 {
-	mxml_node_t *qx;
-	mxml_node_t *tx;
+	umx_node_t qx;
+	umx_node_t tx;
 
-	qx = mxmlNewElement(pnd, "quotes");
-	tx = mxmlNewElement(pnd, "trades");
+	qx = umx_add_node(pnd, "quotes");
+	tx = umx_add_node(pnd, "trades");
 
 	/* go through all bids, then all asks */
 	oq_trav_bids(q[qid], add_b, qx);
@@ -237,14 +236,12 @@ prep_oq_status(mxml_node_t *pnd, insid_t qid)
 static void
 prep_htws_status(void)
 {
-	mxml_node_t *root, *head;
-
 	/* build xml tree now */
-	root = mxmlNewXML("1.0");
-	head = mxmlNewElement(root, "unsermarkt");
+	umx_node_t root = umx_make_doc("1.0");
+	umx_node_t head = umx_add_node(root, "unsermarkt");
 
 	for (int j = 1; j < nq; j++) {
-		mxml_node_t *ix;
+		umx_node_t ix;
 		ins_t i;
 
 		if (UNLIKELY((i = uschi_get_instr_ins(h, j)) == NULL)) {
@@ -258,10 +255,10 @@ prep_htws_status(void)
 	reset();
 	*mptr++ = 0x00;
 	/* serialise the xml document */
-	mptr += mxmlSaveString(root, mptr, sizeof(mbuf) - 2, MXML_NO_CALLBACK);
+	mptr += umx_seria(root, mptr, sizeof(mbuf) - 2);
 	*mptr++ = 0xff;
-	/* free the mxml resources */
-	mxmlDelete(root);
+	/* free xml resources */
+	umx_free_doc(root);
 	return;
 }
 

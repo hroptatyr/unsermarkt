@@ -67,7 +67,3 @@ div[class="ask_list"] span[class="q"] {
 	float: right;
 }
 
-div[class~="tick_list"] div[class="tick"]:first-child {
-	color: #000080;
-}
-

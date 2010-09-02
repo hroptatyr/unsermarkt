@@ -120,6 +120,26 @@ ring_trav_rev(ring_t r, void(*cb)(struct ring_item_s, void*), void *clo)
 }
 
 
+/* our order id system that keeps track of instrs and agents too */
+struct oaiid_s {
+	uint64_t a:20;
+	uint64_t i:16;
+	uint64_t o:28;
+};
+
+typedef union {
+	uint64_t v;
+	struct oaiid_s c;
+} oaiid_t;
+
+static oaiid_t
+massage_oid(agtid_t aid, insid_t iid, oid_t oid)
+{
+	oaiid_t res = {.c = {.a = aid, .i = iid, .o = oid}};
+	return res;
+}
+
+
 /* our connectivity cruft */
 #include "dso-oq-con6ity.c"
 
@@ -370,6 +390,7 @@ handle_ORDER(int fd, agtid_t a, char *msg, size_t msglen)
 	char *tmp;
 	struct umo_s o[1] = {0};
 	oid_t oid;
+	oaiid_t rid;
 
 	/* start off with the instr id, later we may allow symbols as well */
 	cursor = msg + 6;
@@ -442,8 +463,11 @@ handle_ORDER(int fd, agtid_t a, char *msg, size_t msglen)
 	UM_DEBUG_ORDER(o);
 	/* everything seems in order, just send the fucker off and pray */
 	oid = oq_add_order(q[o->instr_id], o);
+	/* we cant use the order id as is, we encode the market in there
+	 * as well, so we spare us maintaining another queue */
+	rid = massage_oid(o->agent_id, o->instr_id, oid);
 	/* we bluntly reuse the msg buffer */
-	msglen = snprintf(msg, msglen, "%u\n", oid);
+	msglen = snprintf(msg, msglen, "%lu\n", rid.v);
 	/* give a bit of feedback */
 	write(fd, msg, msglen);
 	return 0;
@@ -460,18 +484,25 @@ handle_CANCEL(int fd, agtid_t agt, char *msg, size_t UNUSED(msglen))
 {
 	static const char err[] = "nothing cancelled because you blow\n";
 	static const char suc[] = "order cancelled\n";
-	struct umo_s o[1];
-	oid_t id;
+	oaiid_t id;
 
-	if ((id = strtoul(msg + 7, NULL, 10)) == 0) {
+	if ((id.v = strtoul(msg + 7, NULL, 10)) == 0) {
 		goto errout;
 	}
-	*o = oq_get_order(q[2], id);
-	if (o->agent_id == agt) {
-		/* only cancel stuff that belongs to the agent */
-		if (UNLIKELY(oq_cancel_order(q[2], id) < 0)) {
-			goto errout;
-		}
+	/* check if the agent is who he says */
+	if (UNLIKELY(id.c.a != agt)) {
+		goto errout;
+	}
+	/* check instr queue for order */
+	if (UNLIKELY(id.c.i >= MAX_INSTR || q[id.c.i] == NULL)) {
+		goto errout;
+	}
+	/* check agent again, only cancel stuff that belongs to the agent */
+	if (UNLIKELY(oq_get_order(q[id.c.i], id.c.o).agent_id != agt)) {
+		goto errout;
+	}
+	if (UNLIKELY(oq_cancel_order(q[id.c.i], id.c.o) < 0)) {
+		goto errout;
 	}
 	write(fd, suc, sizeof(suc) - 1);
 	return 0;

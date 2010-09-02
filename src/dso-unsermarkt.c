@@ -67,9 +67,13 @@ static void handle_close(int fd);
 static void prhttphdr(int fd);
 
 static uschi_t h = NULL;
+
+
 #define MAX_INSTR	(32)
-static umoq_t q[MAX_INSTR] = {0};
-static size_t nq;
+#define RINGSZ		(20)
+
+/* internal museum struct to handle multiple securities */
+typedef struct museum_s *museum_t;
 
 /* ring buffer with the last RINGSZ trades */
 typedef struct ring_s *ring_t;
@@ -81,12 +85,19 @@ struct ring_item_s {
 };
 
 struct ring_s {
-#define RINGSZ		(20)
 	size_t idx;
 	struct ring_item_s ring[RINGSZ];
 };
-static struct ring_s ltra_ring[1] = {0};
 
+struct museum_s {
+	umoq_t oq;
+	struct ring_s ltra[1];
+};
+
+static struct museum_s museum[MAX_INSTR] = {0};
+static size_t nq;
+
+/* ring funs */
 static void
 ring_add(ring_t r, struct ring_item_s i)
 {
@@ -226,15 +237,15 @@ prep_oq_status(umx_node_t pnd, insid_t qid)
 	tx = umx_add_node(pnd, "trades");
 
 	/* go through all bids, then all asks */
-	oq_trav_bids(q[qid], add_b, qx);
-	oq_trav_asks(q[qid], add_a, qx);
+	oq_trav_bids(museum[qid].oq, add_b, qx);
+	oq_trav_asks(museum[qid].oq, add_a, qx);
 	/* go over all trades, then clear the list */
-	ring_trav_rev(ltra_ring, add_t, tx);
+	ring_trav_rev(museum[qid].ltra, add_t, tx);
 	return;
 }
 
 static void
-prep_htws_status(void)
+prep_htws_status(uint64_t ichanges)
 {
 	/* build xml tree now */
 	umx_node_t root = umx_make_doc("1.0");
@@ -244,6 +255,11 @@ prep_htws_status(void)
 		umx_node_t ix;
 		ins_t i;
 
+		/* check if we need to consider this one */
+		if ((ichanges & (1UL << j)) == 0) {
+			continue;
+		}
+		/* check if that instrument even exists */
 		if (UNLIKELY((i = uschi_get_instr_ins(h, j)) == NULL)) {
 			continue;
 		}
@@ -263,12 +279,12 @@ prep_htws_status(void)
 }
 
 static void
-prstatus(int fd, int ws)
+prstatus(int fd, int ws, uint64_t ichanges)
 {
 /* prints the current order queue to FD */
 	/* check if status needs updating */
 	if (!status_updated) {
-		prep_htws_status();
+		prep_htws_status(ichanges);
 		status_updated = 1;
 	}
 	if (ws == 0) {
@@ -280,13 +296,13 @@ prstatus(int fd, int ws)
 }
 
 static void
-upstatus(void)
+upstatus(uint64_t ichanges)
 {
 /* for all fds in the htpush queue print the status */
 	/* flag status as outdated */
 	status_updated = 0;
 	FOR_EACH_CONN(c) {
-		prstatus(c->fd, c->flags);
+		prstatus(c->fd, c->flags, ichanges);
 	}
 	return;
 }
@@ -301,6 +317,8 @@ upstatus(void)
  * CANCEL <order_id> cancel order by oid
  * QUOTES <instr> get the quotes for INSTR
  **/
+static uint64_t ichanges;
+
 static int
 EHLO_p(const char *msg, size_t UNUSED(msglen))
 {
@@ -370,7 +388,8 @@ handle_QUOTES(int fd, const char *UNUSED(msg), size_t UNUSED(msglen))
 {
 /* actually the client can specify which instruments to quote,
  * we don't care tho */
-	prstatus(fd, 1);
+	status_updated = 0;
+	prstatus(fd, 1, -1UL);
 	return 0;
 }
 
@@ -465,7 +484,7 @@ handle_ORDER(int fd, agtid_t a, char *msg, size_t msglen)
 
 	UM_DEBUG_ORDER(o);
 	/* everything seems in order, just send the fucker off and pray */
-	oid = oq_add_order(q[o->instr_id], o);
+	oid = oq_add_order(museum[o->instr_id].oq, o);
 	/* we cant use the order id as is, we encode the market in there
 	 * as well, so we spare us maintaining another queue */
 	rid = massage_oid(o->agent_id, o->instr_id, oid);
@@ -473,6 +492,8 @@ handle_ORDER(int fd, agtid_t a, char *msg, size_t msglen)
 	msglen = snprintf(msg, msglen, "%lu\n", rid.v);
 	/* give a bit of feedback */
 	write(fd, msg, msglen);
+	/* leave a note about a changed status */
+	ichanges |= 1UL << o->instr_id;
 	return 0;
 }
 
@@ -497,16 +518,18 @@ handle_CANCEL(int fd, agtid_t agt, char *msg, size_t UNUSED(msglen))
 		goto errout;
 	}
 	/* check instr queue for order */
-	if (UNLIKELY(id.c.i >= MAX_INSTR || q[id.c.i] == NULL)) {
+	if (UNLIKELY(id.c.i >= MAX_INSTR || museum[id.c.i].oq == NULL)) {
 		goto errout;
 	}
 	/* check agent again, only cancel stuff that belongs to the agent */
-	if (UNLIKELY(oq_get_order(q[id.c.i], id.c.o).agent_id != agt)) {
+	if (UNLIKELY(oq_get_order(museum[id.c.i].oq, id.c.o).agent_id != agt)) {
 		goto errout;
 	}
-	if (UNLIKELY(oq_cancel_order(q[id.c.i], id.c.o) < 0)) {
+	if (UNLIKELY(oq_cancel_order(museum[id.c.i].oq, id.c.o) < 0)) {
 		goto errout;
 	}
+	/* leava a note about changes */
+	ichanges |= 1UL << id.c.i;
 	write(fd, suc, sizeof(suc) - 1);
 	return 0;
 errout:
@@ -515,8 +538,9 @@ errout:
 }
 
 static void
-handle_match(umm_t m, void *UNUSED(clo))
+handle_match(umm_t m, void *clo)
 {
+	ring_t ltra_ring = clo;
 	uschi_add_match(h, m);
 	/* also make a note on our ltra ring */
 	ring_add(ltra_ring, (struct ring_item_s){m->p, m->q});
@@ -543,7 +567,7 @@ handle_data(int fd, char *msg, size_t msglen)
 		if (htws_handle_get(fd, msg, msglen) < 0) {
 			return -1;
 		}
-		prstatus(fd, 0);
+		prstatus(fd, 0, -1UL);
 		return 0;
 
 	} else if (!aid && htws_clo_p(msg, msglen)) {
@@ -571,6 +595,7 @@ handle_data(int fd, char *msg, size_t msglen)
 	}
 
 	/* now following multi-command messages */
+	ichanges = 0;
 	for (char *eom = msg + msglen, *eol; msg < eom; msg = eol + 1) {
 		/* just make sure we know our boundaries */
 		if ((eol = memchr(msg, '\n', eom - msg)) == NULL) {
@@ -592,12 +617,16 @@ handle_data(int fd, char *msg, size_t msglen)
 		}
 	}
 	for (int j = 1; j < nq; j++) {
+		/* no changes for this instr? skip it */
+		if ((ichanges & (1UL << j)) == 0) {
+			continue;
+		}
 		/* settle any matches and clear the list afterwards */
-		oq_trav_matches(q[j], handle_match, NULL);
-		oq_clear_matches(q[j]);
+		oq_trav_matches(museum[j].oq, handle_match, museum[j].ltra);
+		oq_clear_matches(museum[j].oq);
 	}
 	/* something must have happened to the order queue */
-	upstatus();
+	upstatus(ichanges);
 	return 0;
 }
 
@@ -614,12 +643,12 @@ handle_close(int fd)
 static void
 um_make_oq(insid_t id, ins_t UNUSED(i), void *clo)
 {
-	umoq_t *queue = clo;
+	museum_t queue = clo;
 
 	if (UNLIKELY(id >= MAX_INSTR)) {
 		return;
 	}
-	queue[id] = make_oq(id, 1);
+	queue[id].oq = make_oq(id, 1);
 	return;
 }
 
@@ -642,7 +671,8 @@ init(void *clo)
 		udcfg_tbl_lookup_s(&dbpath, ctx, settings, "dbpath");
 		h = make_uschi(dbpath);
 		/* hardcoded securities, lazy eval that one? */
-		if ((nq = uschi_trav_instr(h, um_make_oq, q) + 1) > MAX_INSTR) {
+		nq = uschi_trav_instr(h, um_make_oq, museum) + 1;
+		if (nq > MAX_INSTR) {
 			nq = MAX_INSTR;
 		}
 	}

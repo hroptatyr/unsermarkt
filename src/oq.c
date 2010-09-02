@@ -726,6 +726,8 @@ oq_clear_matches(umoq_t q)
 		push_m(q, m);
 		m = q->ms->next;
 	}
+	/* make sure the back ptrs are in place */
+	(q->ms + 1)->prev = q->ms;
 	return res;
 }
 

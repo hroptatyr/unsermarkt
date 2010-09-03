@@ -21,6 +21,7 @@ mod_LTLIBRARIES += dso-unsermarkt.la
 noinst_PROGRAMS += umoc
 noinst_PROGRAMS += oq
 noinst_PROGRAMS += uschi
+noinst_PROGRAMS += blood-mm
 
 dso_oq_la_LDFLAGS = -module
 dso_oq_la_LDFLAGS += $(unserding_LDFLAGS)

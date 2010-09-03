@@ -14,6 +14,23 @@
 #include "order.h"
 
 
+/* XML mumbo jumbo */
+#include <mxml.h>
+
+static void
+bla(const char *buf, size_t bsz)
+{
+	mxml_node_t *bla;
+
+	if ((bla = mxmlLoadString(NULL, buf, MXML_NO_CALLBACK)) == NULL) {
+		return;
+	}
+	mxmlSaveFd(bla, STDERR_FILENO, MXML_NO_CALLBACK);
+	mxmlDelete(bla);
+	return;
+}
+
+
 /* the supply process:
  * - donors must pause for 12 weeks
  * - typical donation is 1 unit
@@ -123,17 +140,27 @@ static char buf[4096];
 static void
 send_cancel(int fd, uint64_t oid)
 {
-	size_t bsz = snprintf(buf, sizeof(buf), "CANCEL %lu\n", oid);
+	char *p;
+	ssize_t bsz;
+
+	bsz = snprintf(buf, sizeof(buf), "CANCEL %lu\n", oid);
 	write(fd, buf, bsz);
 	/* do we need the confirmation? */
-	read(fd, buf, bsz);
+	if ((bsz = read(fd, buf, bsz)) < 0) {
+		return;
+	}
+	if (p = strstr(buf, "<?xml")) {
+		bla(p, bsz - (p - buf));
+	}
 	return;
 }
 
 static uint64_t
 send_order(int fd, umo_t o)
 {
-	size_t bsz;
+	ssize_t bsz;
+	uint64_t res;
+	char *p;
 
 	ffff_m30_s(buf + 4096 - 32, o->p);
 	bsz = snprintf(
@@ -142,10 +169,12 @@ send_order(int fd, umo_t o)
 		o->q, buf + 4096 - 32);
 	write(fd, buf, bsz);
 	/* there should be a reply now */
-	if (read(fd, buf, sizeof(buf)) <= 0) {
+	if ((bsz = read(fd, buf, sizeof(buf))) <= 0) {
 		return 0;
 	}
-	return strtoul(buf, NULL, 10);
+	res = strtoul(buf, &p, 10);
+	bla(p, bsz - (p - buf));
+	return res;
 }
 
 static void
@@ -170,20 +199,20 @@ make_market(int fd, fund_state_t st)
 		o[i][1].q = (uint32_t)(st->s[i] / 100.0);
 	}
 
-	sleep(10);
+	sleep(3);
 
 	for (int i = BG_UNK + 1; i < NBGS; i++) {
 		oid[i][0] = send_order(fd, &o[i][0]);
 		oid[i][1] = send_order(fd, &o[i][1]);
 	}
 
-	sleep(10);
+	sleep(3);
 
 	for (int i = BG_UNK + 1; i < NBGS; i++) {
 		send_cancel(fd, oid[i][0]);
 		send_cancel(fd, oid[i][1]);
 	}
-	sleep(10);
+	sleep(3);
 	return;
 }
 

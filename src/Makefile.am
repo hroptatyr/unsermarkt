@@ -50,6 +50,9 @@ oq_CPPFLAGS = $(AM_CPPFLAGS) $(unserding_CFLAGS) -DSTANDALONE
 uschi_CPPFLAGS = $(AM_CPPFLAGS) $(unserding_CFLAGS) -DSTANDALONE
 uschi_LDFLAGS = $(AM_LDFLAGS) -lsqlite3
 
+blood_mm_LDFLAGS = $(unserding_LDFLAGS) -lmxml -lpthread
+blood_mm_CPPFLAGS = $(AM_CPPFLAGS) $(unserding_CFLAGS)
+
 # 
 # Help the developers get nice post-processed source files
 

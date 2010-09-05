@@ -59,15 +59,24 @@ div[class~="bid_list"] span[class="q"] {
 	float: left;
 }
 
-div[class="ask_list"] span[class="p"] {
+div[class~="ask_list"] span[class="p"] {
 	float: left;
 }
 
-div[class="ask_list"] span[class="q"] {
+div[class~="ask_list"] span[class="q"] {
 	float: right;
 }
 
-div[class~="tick_list"] div[class="tick"]:first-child {
-	color: #000080;
+div[class~="tick_list"] div[class="tick"] {
+	color: #6060a0;
 }
 
+div[class~="tick_list"] div[class="tick"]:first-child {
+	color: #0000c0;
+}
+
+div[class~="tra_list"] {
+	padding-top: 1ex;
+	float: none;
+	display: block;
+}

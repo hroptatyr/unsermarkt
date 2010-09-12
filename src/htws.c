@@ -1,7 +1,6 @@
 /* expected to be included in dso-oq.c */
 
 #include "md5.h"
-#include "md5.c"
 
 #include "um-conn.h"
 

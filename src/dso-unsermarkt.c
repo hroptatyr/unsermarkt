@@ -152,7 +152,7 @@ massage_oid(agtid_t aid, insid_t iid, oid_t oid)
 
 
 /* our connectivity cruft */
-#include "dso-oq-con6ity.c"
+#include "con6ity.c"
 
 static void
 memorise_agent(int fd, agtid_t a)

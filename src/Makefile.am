@@ -25,6 +25,7 @@ dso_unsermarkt_la_LDFLAGS += $(unserding_LDFLAGS) -lsqlite3 -lmxml
 dso_unsermarkt_la_CPPFLAGS = $(AM_CPPFLAGS) $(unserding_CFLAGS)
 dso_unsermarkt_la_SOURCES = dso-unsermarkt.c
 dso_unsermarkt_la_SOURCES += md5.c md5.h
+dso_unsermarkt_la_SOURCES += htws.c htws.h
 dso_unsermarkt_la_SOURCES += oq.c oq.h
 dso_unsermarkt_la_SOURCES += uschi.c uschi.h
 

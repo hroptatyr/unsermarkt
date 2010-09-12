@@ -1,6 +1,8 @@
 #if !defined INCLUDED_um_conn_h_
 #define INCLUDED_um_conn_h_
 
+#include "um-types.h"
+
 /* maximum number of http clients */
 #if !defined MAX_CLIENTS
 # define MAX_CLIENTS	(1024)

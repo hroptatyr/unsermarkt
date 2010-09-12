@@ -1,37 +1,22 @@
-/* expected to be included in dso-oq.c */
+/*** htws.c -- websocket handshake
+ *
+ **/
+
+#include <stdlib.h>
+#include <stdint.h>
+#include <string.h>
+/* for *to* macroes */
+#include <netinet/in.h>
 
 #include "md5.h"
+#include "nifty.h"
+#include "htws.h"
 
-#include "um-conn.h"
-
-static void
-memorise_htpush(int fd)
-{
-	um_conn_t slot = um_conn_memorise(fd, 0);
-	slot->flags = 0;
-	return;
-}
-
-#define forget_htpush	um_conn_forget
+/* should be enough for a websocket handshake */
+static char mbuf[4096], *mptr;
 
 
 /* order queue */
-static void __attribute__((unused))
-prhttphdr(int fd)
-{
-	static const char httphdr[] = "\
-HTTP/1.1 200 OK\r\n\
-Date: Tue, 24 Aug 2010 21:51:08 GMT\r\n\
-Server: unsermarkt/0.1\r\n\
-Transfer-Encoding: chunked\r\n\
-Connection: Keep-Alive\r\n\
-Content-Type: multipart/x-mixed-replace;boundary=\"umbdry\"\r\n\r\n";
-	write(fd, httphdr, sizeof(httphdr) - 1);
-	return;
-}
-
-static char mbuf[1048576], *mptr;
-
 static void
 reset(void)
 {
@@ -44,6 +29,7 @@ append(const char *ptr, size_t len)
 {
 	memcpy(mptr, ptr, len);
 	mptr += len;
+	return;
 }
 
 /* To prove that the handshake was received, the server has to take
@@ -72,7 +58,7 @@ wsget_key(char *msg, size_t msglen, int k)
 	char num[16] = {0};
 
 	/* turn the cookie into Key1 or Key2 */
-	cookie[sizeof(cookie) - 3] = k + '0';
+	cookie[sizeof(cookie) - 3] = (char)(k + '0');
 	if (UNLIKELY((key = strcasestr(msg, cookie)) == NULL)) {
 		/* google sends no keys */
 		return 0;
@@ -195,7 +181,7 @@ wsget_append_location(char *msg, size_t msglen)
 }
 
 /* see http://www.whatwg.org/specs/web-socket-protocol/ */
-static int
+int
 wsget_challenge(int fd, char *msg, size_t msglen)
 {
 	static const char wsget_resp[] = "\
@@ -219,40 +205,6 @@ Connection: Upgrade\r\n\
 	/* write the challenge response */
 	write(fd, mbuf, mptr - mbuf);
 	return 0;
-}
-
-static int
-htws_get_p(const char *msg, size_t UNUSED(msglen))
-{
-	static const char get_cookie[] = "GET /";
-	return strncmp(msg, get_cookie, sizeof(get_cookie) - 1) == 0;
-}
-
-static int
-htws_handle_get(int fd, char *msg, size_t msglen)
-{
-	/* respond to what the client wants */
-	wsget_challenge(fd, msg, msglen);
-	/* keep the connection open so we can push stuff */
-	memorise_htpush(fd);
-	return 0;
-}
-
-
-/* dealing with the closing handshake */
-static const char htws_clo_seq[2] = {0xff, 0x00};
-
-static int
-htws_clo_p(const char *msg, size_t UNUSED(msglen))
-{
-	return memcmp(msg, htws_clo_seq, sizeof(htws_clo_seq)) == 0;
-}
-
-static int
-htws_handle_clo(int fd, char *UNUSED(msg), size_t UNUSED(msglen))
-{
-	write(fd, htws_clo_seq, sizeof(htws_clo_seq));
-	return -1;
 }
 
 /* htws.c ends here */

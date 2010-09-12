@@ -63,10 +63,19 @@
 /* some forwards and globals */
 static int handle_data(int fd, char *msg, size_t msglen);
 static void handle_close(int fd);
-/* push new status to everyone */
-static void prhttphdr(int fd);
 
 static uschi_t h = NULL;
+
+
+/* message buffer */
+static char mbuf[1048576], *mptr;
+
+static void
+reset(void)
+{
+	mptr = mbuf;
+	return;
+}
 
 
 #define MAX_INSTR	(32)
@@ -163,6 +172,15 @@ memorise_agent(int fd, agtid_t a)
 	return;
 }
 
+static void
+memorise_htpush(int fd)
+{
+	um_conn_t slot = um_conn_memorise(fd, 0);
+	slot->agent = 0;
+	slot->flags = 0;
+	return;
+}
+
 static agtid_t
 find_agent_by_fd(int fd)
 {
@@ -171,11 +189,10 @@ find_agent_by_fd(int fd)
 }
 
 #define forget_agent	um_conn_forget
+#define forget_htpush	um_conn_forget
 
 
 /* our websocket support */
-#include "htws.c"
-
 static int status_updated = 0;
 
 
@@ -316,8 +333,45 @@ upstatus(uint64_t ichanges)
  * KTHX close connection
  * CANCEL <order_id> cancel order by oid
  * QUOTES <instr> get the quotes for INSTR
+ *
+ * Additionally we understand:
+ * GET /
+ * which will be redir'd to htws
  **/
 static uint64_t ichanges;
+
+static int
+htws_get_p(const char *msg, size_t UNUSED(msglen))
+{
+	static const char get_cookie[] = "GET /";
+	return strncmp(msg, get_cookie, sizeof(get_cookie) - 1) == 0;
+}
+
+static int
+htws_handle_get(int fd, char *msg, size_t msglen)
+{
+	/* respond to what the client wants */
+	wsget_challenge(fd, msg, msglen);
+	/* keep the connection open so we can push stuff */
+	memorise_htpush(fd);
+	return 0;
+}
+
+/* dealing with the closing handshake */
+static const char htws_clo_seq[2] = {0xff, 0x00};
+
+static int
+htws_clo_p(const char *msg, size_t UNUSED(msglen))
+{
+	return memcmp(msg, htws_clo_seq, sizeof(htws_clo_seq)) == 0;
+}
+
+static int
+htws_handle_clo(int fd, char *UNUSED(msg), size_t UNUSED(msglen))
+{
+	write(fd, htws_clo_seq, sizeof(htws_clo_seq));
+	return -1;
+}
 
 static int
 EHLO_p(const char *msg, size_t UNUSED(msglen))

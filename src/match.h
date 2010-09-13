@@ -19,6 +19,9 @@ struct umm_s {
 	m30_t p;
 	/* agreed upon quantity */
 	uint32_t q;
+	/* time stamp */
+	uint32_t ts_sec;
+	uint32_t ts_usec:20;
 };
 
 #endif	/* !INCLUDED_dso_oq_match_h_ */

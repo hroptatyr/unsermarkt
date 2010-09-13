@@ -562,6 +562,7 @@ static void
 handle_match(umm_t m, void *clo)
 {
 	ring_t ltra_ring = clo;
+	stamp_match(m);
 	uschi_add_match(h, m);
 	/* also make a note on our ltra ring */
 	ring_add(ltra_ring, (struct ring_item_s){m->p, m->q});

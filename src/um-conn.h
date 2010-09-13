@@ -10,6 +10,13 @@
 
 typedef struct um_conn_s *um_conn_t;
 
+typedef enum {
+	UMCT_NONE,
+	UMCT_WS,
+	UMCT_XML,
+	UMCT_PLAIN,
+} um_conn_type_t;
+
 struct um_conn_s {
 	int fd:30;
 	int flags:2;

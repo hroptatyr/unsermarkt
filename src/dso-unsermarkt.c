@@ -333,6 +333,7 @@ upstatus(uint64_t ichanges)
  * KTHX close connection
  * CANCEL <order_id> cancel order by oid
  * QUOTES <instr> get the quotes for INSTR
+ * NOXML to instruct the socket not to emit XML (turns off auto quotes too)
  *
  * Additionally we understand:
  * GET /
@@ -617,7 +618,6 @@ handle_data(int fd, char *msg, size_t msglen)
 
 	if (!aid && htws_get_p(msg, msglen)) {
 		UM_DEBUG(MOD_PRE ": htws push request\n");
-		status_updated = 0;
 		if (htws_handle_get(fd, msg, msglen) < 0) {
 			return -1;
 		}

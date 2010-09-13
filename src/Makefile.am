@@ -19,6 +19,7 @@ mod_LTLIBRARIES += dso-unsermarkt.la
 noinst_PROGRAMS += umoc
 noinst_PROGRAMS += oq
 noinst_PROGRAMS += uschi
+noinst_PROGRAMS += blood-mm
 
 dso_unsermarkt_la_LDFLAGS = -module
 dso_unsermarkt_la_LDFLAGS += $(unserding_LDFLAGS) -lsqlite3 -lmxml
@@ -36,6 +37,9 @@ oq_CPPFLAGS = $(AM_CPPFLAGS) $(unserding_CFLAGS) -DSTANDALONE
 
 uschi_CPPFLAGS = $(AM_CPPFLAGS) $(unserding_CFLAGS) -DSTANDALONE
 uschi_LDFLAGS = $(AM_LDFLAGS) -lsqlite3
+
+blood_mm_LDFLAGS = $(unserding_LDFLAGS) -lmxml -lpthread
+blood_mm_CPPFLAGS = $(AM_CPPFLAGS) $(unserding_CFLAGS)
 
 # 
 # Help the developers get nice post-processed source files

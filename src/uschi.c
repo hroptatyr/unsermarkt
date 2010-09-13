@@ -268,8 +268,8 @@ make_uschi(const char *dbpath)
 	static const char mins[] =
 		"INSERT INTO match ("
 		"b_agent_id, s_agent_id, b_instr_id, s_instr_id, "
-		"price, quantity) VALUES "
-		"(?, ?, ?, ?, ?, ?);";
+		"price, quantity, tsec, tusec) VALUES "
+		"(?, ?, ?, ?, ?, ?, ?, ?);";
 	static const char linv[] =
 		"SELECT lpos, spos FROM agtinv "
 		"WHERE agent_id = ? AND instr_id = ?;";
@@ -513,7 +513,8 @@ push_inventory(uschi_t h, agtid_t a, insid_t i, inv_t pf)
 static void
 pr_match(FILE *fp, umm_t m)
 {
-	fprintf(fp, "%u v %u %u<->%u\n", m->ab, m->as, m->ib, m->is);
+	fprintf(fp, "%u.%06u %u v %u %u<->%u\n",
+		m->ts_sec, (uint32_t)m->ts_usec, m->ab, m->as, m->ib, m->is);
 	return;
 }
 #else  /* !DEBUG_FLAG */
@@ -535,6 +536,8 @@ uschi_add_match(uschi_t h, umm_t m)
 	sqlite3_bind_int(h->minster, 4, m->is);
 	sqlite3_bind_int(h->minster, 5, m->p.mant);
 	sqlite3_bind_int(h->minster, 6, m->q * 10000);
+	sqlite3_bind_int(h->minster, 7, m->ts_sec);
+	sqlite3_bind_int(h->minster, 8, m->ts_usec);
 	pr_match(stderr, m);
 	if ((rc = sqlite3_step(h->minster)) == SQLITE_DONE) {
 		res = sqlite3_last_insert_rowid(h->db);

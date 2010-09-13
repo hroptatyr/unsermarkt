@@ -48,6 +48,7 @@
 #include <unserding/unserding-cfg.h>
 #include <unserding/module.h>
 #include "nifty.h"
+#include "um-stamp.h"
 /* order queue */
 #include "oq.h"
 /* settlement and clearing */
@@ -460,6 +461,24 @@ UM_DEBUG_ORDER(umo_t UNUSED(o))
 	return;
 }
 
+static void
+stamp_order(umo_t o)
+{
+	struct timespec s = hrclock_stamp();
+	o->ts_sec = s.tv_sec;
+	o->ts_usec = s.tv_nsec / 1000;
+	return;
+}
+
+static void
+stamp_match(umm_t m)
+{
+	struct timespec s = hrclock_stamp();
+	m->ts_sec = s.tv_sec;
+	m->ts_usec = s.tv_nsec / 1000;
+	return;
+}
+
 static int
 handle_ORDER(int fd, agtid_t a, char *msg, size_t msglen)
 {
@@ -534,8 +553,10 @@ handle_ORDER(int fd, agtid_t a, char *msg, size_t msglen)
 
 	/* looks good so far, propagate the agent id */
 	o->agent_id = a;
-	/* finally set order modifier, only one we support atm is GTC */
+	/* set order modifier, only one we support atm is GTC */
 	o->tymod = OTYMOD_GTC;
+	/* obtain a time stamp and populate it */
+	stamp_order(o);
 
 	UM_DEBUG_ORDER(o);
 	/* everything seems in order, just send the fucker off and pray */
@@ -596,6 +617,7 @@ static void
 handle_match(umm_t m, void *clo)
 {
 	ring_t ltra_ring = clo;
+	stamp_match(m);
 	uschi_add_match(h, m);
 	/* also make a note on our ltra ring */
 	ring_add(ltra_ring, (struct ring_item_s){m->p, m->q});

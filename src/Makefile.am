@@ -79,6 +79,15 @@ um_quomon_LDFLAGS += $(AM_LDFLAGS) -lncurses
 um_quomon_LDFLAGS += $(libev_LIBS)
 um_quomon_LDFLAGS += $(unserding_LIBS)
 um_quomon_LDFLAGS += -lreadline
+
+bin_PROGRAMS += um-xmit
+um_xmit_SOURCES = um-xmit.c
+BUILT_SOURCES += um-xmit-clo.c um-xmit-clo.h
+um_xmit_CPPFLAGS = $(AM_CPPFLAGS)
+um_xmit_CPPFLAGS += $(uterus_CFLAGS)
+um_xmit_LDFLAGS = -static
+um_xmit_LDFLAGS += $(uterus_LIBS)
+um_xmit_LDFLAGS += $(unserding_LIBS)
 endif
 
 if HAVE_TWSTOOLS

@@ -36,11 +36,9 @@ m4_ifdef([AM_SILENT_RULES], [AM_SILENT_RULES([yes])])
 SXE_INIT_MSG_LEVEL
 
 ## the build chain
-with_ridiculously_aggressive_optimisations="yes"
-with_maximum_warning_output="yes"
-with_omp="no"
-AC_PROG_CC(["icc -static-intel" icc gcc cc])
-SXE_CHECK_CC
+AC_PROG_CC([icc gcc tcc cc])
+SXE_CHECK_CC([gnu11 c11 gnu1x c1x gnu99 c99])
+AC_C_BIGENDIAN
 SXE_CHECK_CFLAGS
 
 ## parser goodness

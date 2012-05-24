@@ -21,7 +21,7 @@ noinst_PROGRAMS += blood-mm
 
 dso_unsermarkt_la_LDFLAGS = -module
 dso_unsermarkt_la_LDFLAGS += $(unserding_LDFLAGS) -lsqlite3 -lmxml
-dso_unsermarkt_la_CPPFLAGS = $(AM_CPPFLAGS)
+dso_unsermarkt_la_CPPFLAGS = $(AM_CPPFLAGS) -D_GNU_SOURCE
 dso_unsermarkt_la_SOURCES = dso-unsermarkt.c
 dso_unsermarkt_la_SOURCES += md5.c md5.h
 dso_unsermarkt_la_SOURCES += htws.c htws.h

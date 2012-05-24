@@ -1,12 +1,21 @@
 #if !defined INCLUDED_um_conn_h_
 #define INCLUDED_um_conn_h_
 
+#include "um-types.h"
+
 /* maximum number of http clients */
 #if !defined MAX_CLIENTS
 # define MAX_CLIENTS	(1024)
 #endif	/* MAX_CLIENTS */
 
 typedef struct um_conn_s *um_conn_t;
+
+typedef enum {
+	UMCT_NONE,
+	UMCT_WS,
+	UMCT_XML,
+	UMCT_PLAIN,
+} um_conn_type_t;
 
 struct um_conn_s {
 	int fd:30;

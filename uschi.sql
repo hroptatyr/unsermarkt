@@ -33,6 +33,8 @@ CREATE TABLE 'match' (
   s_instr_id INTEGER,
   price NUMERIC,
   quantity NUMERIC,
+  tsec INTEGER,
+  tusec INTEGER,
   FOREIGN KEY (b_agent_id) REFERENCES 'agent' (agent_id)  
   FOREIGN KEY (s_agent_id) REFERENCES 'agent' (agent_id)  
   FOREIGN KEY (b_instr_id) REFERENCES 'instr' (instr_id)  

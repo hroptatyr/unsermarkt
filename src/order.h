@@ -63,10 +63,13 @@ struct umo_s {
 	m30_t p;
 	/* quantity */
 	uint32_t q;
+	/* time stamp */
+	uint32_t ts_sec;
+	uint32_t ts_usec:20;
 	/* all the rest */
 	uint32_t side:2;
 	uint32_t type:2;
-	uint32_t tymod:28;
+	uint32_t tymod:8;
 };
 
 

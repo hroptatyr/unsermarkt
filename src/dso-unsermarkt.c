@@ -48,6 +48,7 @@
 #include <unserding/unserding-cfg.h>
 #include <unserding/module.h>
 #include "nifty.h"
+#include "um-stamp.h"
 /* order queue */
 #include "oq.h"
 /* settlement and clearing */
@@ -63,10 +64,19 @@
 /* some forwards and globals */
 static int handle_data(int fd, char *msg, size_t msglen);
 static void handle_close(int fd);
-/* push new status to everyone */
-static void prhttphdr(int fd);
 
 static uschi_t h = NULL;
+
+
+/* message buffer */
+static char mbuf[1048576], *mptr;
+
+static void
+reset(void)
+{
+	mptr = mbuf;
+	return;
+}
 
 
 #define MAX_INSTR	(32)
@@ -152,7 +162,7 @@ massage_oid(agtid_t aid, insid_t iid, oid_t oid)
 
 
 /* our connectivity cruft */
-#include "dso-oq-con6ity.c"
+#include "con6ity.c"
 
 static void
 memorise_agent(int fd, agtid_t a)
@@ -160,6 +170,15 @@ memorise_agent(int fd, agtid_t a)
 	um_conn_t slot = um_conn_memorise(fd, a);
 	slot->agent = a;
 	slot->flags = 1;
+	return;
+}
+
+static void
+memorise_htpush(int fd)
+{
+	um_conn_t slot = um_conn_memorise(fd, 0);
+	slot->agent = 0;
+	slot->flags = 0;
 	return;
 }
 
@@ -171,11 +190,10 @@ find_agent_by_fd(int fd)
 }
 
 #define forget_agent	um_conn_forget
+#define forget_htpush	um_conn_forget
 
 
 /* our websocket support */
-#include "htws.c"
-
 static int status_updated = 0;
 
 
@@ -316,8 +334,46 @@ upstatus(uint64_t ichanges)
  * KTHX close connection
  * CANCEL <order_id> cancel order by oid
  * QUOTES <instr> get the quotes for INSTR
+ * NOXML to instruct the socket not to emit XML (turns off auto quotes too)
+ *
+ * Additionally we understand:
+ * GET /
+ * which will be redir'd to htws
  **/
 static uint64_t ichanges;
+
+static int
+htws_get_p(const char *msg, size_t UNUSED(msglen))
+{
+	static const char get_cookie[] = "GET /";
+	return strncmp(msg, get_cookie, sizeof(get_cookie) - 1) == 0;
+}
+
+static int
+htws_handle_get(int fd, char *msg, size_t msglen)
+{
+	/* respond to what the client wants */
+	wsget_challenge(fd, msg, msglen);
+	/* keep the connection open so we can push stuff */
+	memorise_htpush(fd);
+	return 0;
+}
+
+/* dealing with the closing handshake */
+static const char htws_clo_seq[2] = {0xff, 0x00};
+
+static int
+htws_clo_p(const char *msg, size_t UNUSED(msglen))
+{
+	return memcmp(msg, htws_clo_seq, sizeof(htws_clo_seq)) == 0;
+}
+
+static int
+htws_handle_clo(int fd, char *UNUSED(msg), size_t UNUSED(msglen))
+{
+	write(fd, htws_clo_seq, sizeof(htws_clo_seq));
+	return -1;
+}
 
 static int
 EHLO_p(const char *msg, size_t UNUSED(msglen))
@@ -405,6 +461,24 @@ UM_DEBUG_ORDER(umo_t UNUSED(o))
 	return;
 }
 
+static void
+stamp_order(umo_t o)
+{
+	struct timespec s = hrclock_stamp();
+	o->ts_sec = s.tv_sec;
+	o->ts_usec = s.tv_nsec / 1000;
+	return;
+}
+
+static void
+stamp_match(umm_t m)
+{
+	struct timespec s = hrclock_stamp();
+	m->ts_sec = s.tv_sec;
+	m->ts_usec = s.tv_nsec / 1000;
+	return;
+}
+
 static int
 handle_ORDER(int fd, agtid_t a, char *msg, size_t msglen)
 {
@@ -479,8 +553,10 @@ handle_ORDER(int fd, agtid_t a, char *msg, size_t msglen)
 
 	/* looks good so far, propagate the agent id */
 	o->agent_id = a;
-	/* finally set order modifier, only one we support atm is GTC */
+	/* set order modifier, only one we support atm is GTC */
 	o->tymod = OTYMOD_GTC;
+	/* obtain a time stamp and populate it */
+	stamp_order(o);
 
 	UM_DEBUG_ORDER(o);
 	/* everything seems in order, just send the fucker off and pray */
@@ -541,6 +617,7 @@ static void
 handle_match(umm_t m, void *clo)
 {
 	ring_t ltra_ring = clo;
+	stamp_match(m);
 	uschi_add_match(h, m);
 	/* also make a note on our ltra ring */
 	ring_add(ltra_ring, (struct ring_item_s){m->p, m->q});
@@ -563,7 +640,6 @@ handle_data(int fd, char *msg, size_t msglen)
 
 	if (!aid && htws_get_p(msg, msglen)) {
 		UM_DEBUG(MOD_PRE ": htws push request\n");
-		status_updated = 0;
 		if (htws_handle_get(fd, msg, msglen) < 0) {
 			return -1;
 		}

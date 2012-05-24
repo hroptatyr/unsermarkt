@@ -142,6 +142,18 @@ dnl PKG_CHECK_MODULES([LIBCONFIG], [libconfig])
 ## check for unserding
 PKG_CHECK_MODULES([unserding], [unserding])
 
+## check for ute
+PKG_CHECK_MODULES([uterus], [libuterus >= 0.2.1],
+	[have_uterus="yes"], [have_uterus="no"])
+if test "${have_uterus}"; then
+	## check for the header
+	SXE_DUMP_LIBS
+	CPPFLAGS="${CPPFLAGS} ${uterus_CFLAGS}"
+	AC_CHECK_HEADERS([uterus.h])
+	SXE_RESTORE_LIBS
+fi
+AM_CONDITIONAL([HAVE_UTERUS], [test "${have_uterus}" = "yes"])
+
 AC_CONFIG_FILES([Makefile])
 AC_CONFIG_FILES([src/Makefile])
 AC_OUTPUT

@@ -1,0 +1,14 @@
+args "--unamed-opts --no-handle-error --long-help -a umqm_args_info -f umqm_parser"
+package "um-quomon"
+usage "um-quomon [OPTION]..."
+description "monitor quotes on unserding beef channels"
+
+section "Network options"
+option "port" p
+	"Multicast control channel port"
+	int default="8653" optional
+
+option "beef" -
+	"Multicast payload channels, can be used multiple times"
+	int optional multiple
+

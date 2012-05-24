@@ -140,7 +140,7 @@ dnl PKG_CHECK_MODULES([LIBCONFIG], [libconfig])
 ## check for lua instead!
 
 ## check for unserding
-PKG_CHECK_MODULES([unserding], [unserding])
+PKG_CHECK_MODULES([unserding], [unserding >= 0.2.2])
 
 ## check for ute
 PKG_CHECK_MODULES([uterus], [libuterus >= 0.2.1],

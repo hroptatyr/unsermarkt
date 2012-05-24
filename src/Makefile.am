@@ -21,23 +21,33 @@ noinst_PROGRAMS += blood-mm
 
 dso_unsermarkt_la_LDFLAGS = -module
 dso_unsermarkt_la_LDFLAGS += $(unserding_LDFLAGS) -lsqlite3 -lmxml
-dso_unsermarkt_la_CPPFLAGS = $(AM_CPPFLAGS) $(unserding_CFLAGS)
+dso_unsermarkt_la_CPPFLAGS = $(AM_CPPFLAGS)
 dso_unsermarkt_la_SOURCES = dso-unsermarkt.c
 dso_unsermarkt_la_SOURCES += md5.c md5.h
 dso_unsermarkt_la_SOURCES += htws.c htws.h
 dso_unsermarkt_la_SOURCES += oq.c oq.h
 dso_unsermarkt_la_SOURCES += uschi.c uschi.h
+dso_unsermarkt_la_SOURCES += order.h
+dso_unsermarkt_la_CPPFLAGS += $(unserding_CFLAGS)
+dso_unsermarkt_la_CPPFLAGS += $(uterus_CFLAGS)
 
 umoc_LDFLAGS = $(unserding_LDFLAGS)
-umoc_CPPFLAGS = $(AM_CPPFLAGS) $(unserding_CFLAGS)
+umoc_CPPFLAGS = $(AM_CPPFLAGS)
+umoc_CPPFLAGS += $(unserding_CFLAGS)
+umoc_CPPFLAGS += $(uterus_CFLAGS)
 
-oq_CPPFLAGS = $(AM_CPPFLAGS) $(unserding_CFLAGS) -DSTANDALONE
+oq_CPPFLAGS = $(AM_CPPFLAGS) -DSTANDALONE
+oq_CPPFLAGS += $(unserding_CFLAGS) $(uterus_CFLAGS)
 
-uschi_CPPFLAGS = $(AM_CPPFLAGS) $(unserding_CFLAGS) -DSTANDALONE
+uschi_CPPFLAGS = $(AM_CPPFLAGS) -DSTANDALONE
+uschi_CPPFLAGS += $(unserding_CFLAGS)
+uschi_CPPFLAGS += $(uterus_CFLAGS)
 uschi_LDFLAGS = $(AM_LDFLAGS) -lsqlite3
 
 blood_mm_LDFLAGS = $(unserding_LDFLAGS) -lmxml -lpthread
-blood_mm_CPPFLAGS = $(AM_CPPFLAGS) $(unserding_CFLAGS)
+blood_mm_CPPFLAGS = $(AM_CPPFLAGS)
+blood_mm_CPPFLAGS += $(unserding_CFLAGS)
+blood_mm_CPPFLAGS += $(uterus_CFLAGS)
 
 # 
 # Help the developers get nice post-processed source files

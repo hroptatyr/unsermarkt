@@ -3,7 +3,7 @@ dnl Autoconf startup.
 dnl -------------------------------------------------------------------------
 
 AC_PREREQ([2.64])
-AC_INIT([unserding], [0.1], [http://www.ga-group.nl])
+AC_INIT([unsermarkt], [0.0.0], [https://github.com/hroptatyr/unsermarkt])
 AC_CONFIG_AUX_DIR([.])
 AC_CONFIG_HEADER([src/config.h])
 AC_CONFIG_MACRO_DIR([m4])

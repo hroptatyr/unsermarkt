@@ -11,13 +11,15 @@ noinst_PROGRAMS =
 mod_LTLIBRARIES =
 
 BUILT_SOURCES =
-CLEANFILES = $(BUILT_SOURCES)
+CLEANFILES =
+EXTRA_DIST = $(BUILT_SOURCES)
 
 mod_LTLIBRARIES += dso-unsermarkt.la
 noinst_PROGRAMS += umoc
 noinst_PROGRAMS += oq
 noinst_PROGRAMS += uschi
 noinst_PROGRAMS += blood-mm
+noinst_PROGRAMS += um-quomon
 
 dso_unsermarkt_la_LDFLAGS = -module
 dso_unsermarkt_la_LDFLAGS += $(unserding_LDFLAGS) -lsqlite3 -lmxml
@@ -48,6 +50,22 @@ blood_mm_LDFLAGS = $(unserding_LDFLAGS) -lmxml -lpthread
 blood_mm_CPPFLAGS = $(AM_CPPFLAGS)
 blood_mm_CPPFLAGS += $(unserding_CFLAGS)
 blood_mm_CPPFLAGS += $(uterus_CFLAGS)
+
+if HAVE_UTERUS
+um_quomon_SOURCES = um-quomon.c um-quomon-clo.ggo
+BUILT_SOURCES += um-quomon-clo.c um-quomon-clo.h
+um_quomon_CPPFLAGS = $(AM_CPPFLAGS)
+um_quomon_CPPFLAGS += $(libev_CFLAGS)
+um_quomon_CPPFLAGS += $(unserding_CFLAGS)
+um_quomon_CPPFLAGS += $(uterus_CFLAGS)
+um_quomon_LDFLAGS = $(AM_LDFLAGS)
+um_quomon_LDFLAGS += $(libev_LIBS)
+um_quomon_LDFLAGS += $(unserding_LIBS)
+endif
+
+## our rule for gengetopt
+%.c %.h: %.ggo
+	gengetopt -l -i $< -F $*
 
 # 
 # Help the developers get nice post-processed source files

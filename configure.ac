@@ -2,8 +2,13 @@ dnl -------------------------------------------------------------------------
 dnl Autoconf startup.
 dnl -------------------------------------------------------------------------
 
-AC_PREREQ([2.64])
-AC_INIT([unsermarkt], [0.0.0], [https://github.com/hroptatyr/unsermarkt])
+AC_PREREQ([2.63])
+m4_define([GIT_VERSION_GEN], [dnl
+pushdef([version], [m4_esyscmd([./git-version-gen])])dnl
+ifelse([]version[], [], [0.0.0], []version[])[]dnl
+popdef([version])dnl
+])
+AC_INIT([unsermarkt], [GIT_VERSION_GEN], [https://github.com/hroptatyr/unsermarkt])
 AC_CONFIG_AUX_DIR([.])
 AC_CONFIG_HEADER([src/config.h])
 AC_CONFIG_MACRO_DIR([m4])

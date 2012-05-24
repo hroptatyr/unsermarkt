@@ -12,7 +12,7 @@
 /* our own stuff */
 #include "uschi.h"
 /* more precision for the big portfolios */
-#include "m62.h"
+#include <m62.h>
 /* very abstract list provider */
 #include "mmls.c"
 

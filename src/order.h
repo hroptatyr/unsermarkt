@@ -6,7 +6,7 @@
 #include <stdint.h>
 #define WITH_M30_CMP
 #define DEFINE_GORY_STUFF
-#include "m30.h"
+#include <m30.h>
 #include "um-types.h"
 
 typedef struct umo_s *umo_t;

@@ -73,6 +73,10 @@
 #include <m30.h>
 #include <m62.h>
 
+#include <ncurses.h>
+
+static int nr, nc;
+
 
 /* the actual worker function */
 static void
@@ -109,10 +113,10 @@ mon_pkt_cb(job_t j)
 
 			switch (ttf) {
 			case SL1T_TTF_BID:
-				fputc('b', stdout);
+				mvprintw(nr / 2, nc / 2 - 1, "b");
 				break;
 			case SL1T_TTF_ASK:
-				fputc('a', stdout);
+				mvprintw(nr / 2, nc / 2 + 1, "a");
 				break;
 			case SL1T_TTF_TRA:
 			case SL1T_TTF_FIX:
@@ -127,7 +131,7 @@ mon_pkt_cb(job_t j)
 				/* snaps */
 			case SSNP_FLAVOUR:
 			case SBAP_FLAVOUR:
-				fputc('S', stdout);
+				mvprintw(nr / 2 + 1, nc / 2 - 1, "S S");
 				break;
 
 				/* candles */
@@ -137,7 +141,7 @@ mon_pkt_cb(job_t j)
 			case SL1T_TTF_FIX | SCOM_FLAG_LM:
 			case SL1T_TTF_STL | SCOM_FLAG_LM:
 			case SL1T_TTF_AUC | SCOM_FLAG_LM:
-				fputc('C', stdout);
+				mvprintw(nr / 2, nc / 2 - 1, "C");
 				break;
 
 			case SCOM_TTF_UNK:
@@ -155,6 +159,7 @@ mon_pkt_cb(job_t j)
 	default:
 		break;
 	}
+	refresh();
 	return;
 }
 
@@ -181,7 +186,6 @@ mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
 
 	/* decode the guy */
 	(void)mon_pkt_cb(j);
-	fputc('\n', stdout);
 out_revok:
 	return;
 }
@@ -286,11 +290,19 @@ main(int argc, char *argv[])
 		ev_io_start(EV_A_ beef + i + 1);
 	}
 
+	/* start the screen */
+	initscr();
+	keypad(stdscr, TRUE);
+	noecho();
+	getmaxyx(stdscr, nr, nc);
+
 	/* now wait for events to arrive */
 	ev_loop(EV_A_ 0);
 
-	/* detaching beef channels */
+	/* reset the screen */
+	endwin();
 
+	/* detaching beef channels */
 	for (unsigned int i = 0; i < nbeef; i++) {
 		int s = beef[i].fd;
 		ev_io_stop(EV_A_ beef + i);

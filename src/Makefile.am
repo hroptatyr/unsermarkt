@@ -1,9 +1,7 @@
-
-
 ### Makefile.am
 
-AM_CPPFLAGS = -D_GNU_SOURCE -D_POSIX_C_SOURCE=201001L -D__USE_XOPEN2K8
-AM_LDFLAGS = 
+AM_CPPFLAGS = -D_POSIX_C_SOURCE=200112L -D_XOPEN_SOURCE=600 -D_BSD_SOURCE
+AM_LDFLAGS =
 
 headerdir = $(includedir)/unserding
 moddir = $(libdir)/unserding

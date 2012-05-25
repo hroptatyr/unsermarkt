@@ -173,6 +173,7 @@ lob_ins_at(lob_side_t s, lobidx_t pr, struct lob_entry_s v)
 	nu = s->free;
 	assert(nu);
 	assert(nu != pr);
+	assert(s->head != s->free);
 	s->free = NEXT(s, s->free);
 
 	/* populate the cell */
@@ -206,23 +207,26 @@ lob_rem_at(lob_side_t s, lobidx_t idx)
 	assert(idx);
 
 	/* fix up navigators */
-	if (PREV(s, idx) && NEXT(s, idx)) {
-		PREV(s, NEXT(s, idx)) = PREV(s, idx);
+	if (s->head != idx) {
+		assert(PREV(s, idx));
+
+		if (NEXT(s, idx)) {
+			PREV(s, NEXT(s, idx)) = PREV(s, idx);
+		}
 		NEXT(s, PREV(s, idx)) = NEXT(s, idx);
-	} else if (PREV(s, idx)) {
-		/* tail fiddling */
-		NEXT(s, PREV(s, idx)) = 0;
 	} else {
 		/* head fiddling */
-		if (s->head) {
+		assert(s->head);
+
+		if ((s->head = NEXT(s, idx))) {
 			PREV(s, s->head) = 0;
 		}
-		s->head = NEXT(s, idx);
 	}
 
 	assert(idx != s->free);
 	NEXT(s, idx) = s->free;
 	s->free = idx;
+	assert(s->head != s->free);
 	return;
 }
 

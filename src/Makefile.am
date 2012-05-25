@@ -59,6 +59,7 @@ um_quomon_CPPFLAGS += $(libev_CFLAGS)
 um_quomon_CPPFLAGS += $(unserding_CFLAGS)
 um_quomon_CPPFLAGS += $(uterus_CFLAGS)
 um_quomon_LDFLAGS = $(AM_LDFLAGS)
+um_quomon_LDFLAGS += $(AM_LDFLAGS) -lncurses
 um_quomon_LDFLAGS += $(libev_LIBS)
 um_quomon_LDFLAGS += $(unserding_LIBS)
 endif

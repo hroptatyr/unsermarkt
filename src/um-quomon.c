@@ -96,7 +96,8 @@ struct lob_cli_s {
 /* our limit order book, well just level 2 */
 struct lob_entry_s {
 	/* client, that is addr+port */
-	lob_cli_t cli;
+	lobidx_t cli;
+	lobidx_t pad;
 	/* price */
 	m30_t p;
 	/* quantity */
@@ -127,6 +128,7 @@ static lob_side_t loba = NULL;
 static lob_cli_t cli = NULL;
 static size_t ncli = 0;
 
+#define CLI(x)		(assert(x), assert(x <= ncli), cli + x - 1)
 #define EAT(y, x)	y->e[x]
 #define NEXT(y, x)	EAT(y, x).next
 #define PREV(y, x)	EAT(y, x).prev
@@ -263,20 +265,20 @@ sa_eq_p(ud_sockaddr_t sa1, ud_sockaddr_t sa2)
 		memcmp(&sa1->sa6.sin6_addr, &sa2->sa6.sin6_addr, s6sz) == 0;
 }
 
-static lob_cli_t
+static lobidx_t
 find_cli(ud_sockaddr_t sa)
 {
 	for (size_t i = 0; i < ncli; i++) {
 		ud_sockaddr_t cur = &cli[i].sa;
 
 		if (sa_eq_p(cur, sa)) {
-			return cli + i;
+			return i + 1;
 		}
 	}
-	return NULL;
+	return 0;
 }
 
-static lob_cli_t
+static lobidx_t
 add_cli(ud_sockaddr_t sa)
 {
 	size_t idx = ncli++;
@@ -300,7 +302,7 @@ add_cli(ud_sockaddr_t sa)
 		epi += snprintf(epi, 16, ":%hu", port);
 		cli[idx].sz = epi - cli[idx].ss;
 	}
-	return cli + idx;
+	return idx + 1;
 }
 
 
@@ -334,10 +336,10 @@ mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
 	case 0x7575: {
 		char *pbuf = UDPC_PAYLOAD(JOB_PACKET(j).pbuf);
 		size_t plen = UDPC_PAYLLEN(JOB_PACKET(j).plen);
-		lob_cli_t c;
+		lobidx_t c;
 
 
-		if ((c = find_cli(&j->sa)) == NULL) {
+		if ((c = find_cli(&j->sa)) == 0) {
 			c = add_cli(&j->sa);
 		}
 
@@ -359,28 +361,28 @@ mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
 				lobidx_t e;
 			case SL1T_TTF_BID:
 				/* delete the former bid first */
-				if (c->b) {
-					lob_rem_at(lobb, c->b);
+				if (CLI(c)->b) {
+					lob_rem_at(lobb, CLI(c)->b);
 				}
 				/* find our spot in the lob */
 				e = find_bid(v.p);
 				/* and insert */
 				e = lob_ins_at(lobb, e, v);
 				/* update client info */
-				c->b = e;
+				CLI(c)->b = e;
 				changep = 1;
 				break;
 			case SL1T_TTF_ASK:
 				/* delete the former ask first */
-				if (c->a) {
-					lob_rem_at(loba, c->a);
+				if (CLI(c)->a) {
+					lob_rem_at(loba, CLI(c)->a);
 				}
 				/* find our spot in the lob */
 				e = find_ask(v.p);
 				/* and insert */
 				e = lob_ins_at(loba, e, v);
 				/* update client info */
-				c->a = e;
+				CLI(c)->a = e;
 				changep = 1;
 				break;
 			case SL1T_TTF_TRA:
@@ -396,20 +398,20 @@ mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
 				/* snaps */
 			case SSNP_FLAVOUR:
 			case SBAP_FLAVOUR:
-				if (c->b) {
-					lob_rem_at(lobb, c->b);
+				if (CLI(c)->b) {
+					lob_rem_at(lobb, CLI(c)->b);
 				}
 				e = find_bid(v.p);
 				e = lob_ins_at(lobb, e, v);
-				c->b = e;
+				CLI(c)->b = e;
 
-				if (c->a) {
-					lob_rem_at(loba, c->a);
+				if (CLI(c)->a) {
+					lob_rem_at(loba, CLI(c)->a);
 				}
 				v.p = v.q;
 				e = find_ask(v.q);
 				e = lob_ins_at(loba, e, v);
-				c->a = e;
+				CLI(c)->a = e;
 				changep = 1;
 				break;
 
@@ -461,9 +463,10 @@ render_cb(EV_P_ ev_timer *w, int UNUSED(revents))
 	     i && j < nr;
 	     i = NEXT(lobb, i), j++) {
 		char tmp[128], *p = tmp;
+		lob_cli_t c = CLI(EAT(lobb, i).v.cli);
 
-		memcpy(p, EAT(lobb, i).v.cli->ss, EAT(lobb, i).v.cli->sz);
-		p += EAT(lobb, i).v.cli->sz;
+		memcpy(p, c->ss, c->sz);
+		p += c->sz;
 		*p++ = ' ';
 		p += ffff_m30_s(p, EAT(lobb, i).v.p);
 		*p = '\0';
@@ -475,12 +478,13 @@ render_cb(EV_P_ ev_timer *w, int UNUSED(revents))
 	for (lobidx_t i = loba->head, j = 1;
 	     i && j < nr;
 	     i = NEXT(loba, i), j++) {
-		char tmp[64], *p = tmp;
+		char tmp[128], *p = tmp;
+		lob_cli_t c = CLI(EAT(lobb, i).v.cli);
 
 		p += ffff_m30_s(p, EAT(lobb, i).v.p);
 		*p++ = ' ';
-		memcpy(p, EAT(lobb, i).v.cli->ss, EAT(lobb, i).v.cli->sz);
-		p += EAT(lobb, i).v.cli->sz;
+		memcpy(p, c->ss, c->sz);
+		p += c->sz;
 		*p = '\0';
 
 		mvprintw(j, nc, tmp);

@@ -113,12 +113,11 @@ struct lob_entnav_s {
 /* all entries of one side */
 union lob_side_u {
 	struct lob_entnav_s e[];
+	struct lob_entnav_s pad;
 
 	struct {
 		lobidx_t head;
 		lobidx_t free;
-		/* padding */
-		lobidx_t v[4];
 	};
 };
 

@@ -471,8 +471,7 @@ render_cb(EV_P_ ev_timer *w, int UNUSED(revents))
 		p += ffff_m30_s(p, EAT(lobb, i).v.p);
 		*p = '\0';
 
-		mvprintw(j, 10, tmp);
-		nc = 10 + 2 + p - tmp;
+		mvprintw(j, nc / 2 - 1 - (p - tmp), tmp);
 	}
 
 	for (lobidx_t i = loba->head, j = 1;
@@ -487,7 +486,7 @@ render_cb(EV_P_ ev_timer *w, int UNUSED(revents))
 		p += c->sz;
 		*p = '\0';
 
-		mvprintw(j, nc, tmp);
+		mvprintw(j, nc / 2 + 1, tmp);
 	}
 
 	/* print a note on how to quit */

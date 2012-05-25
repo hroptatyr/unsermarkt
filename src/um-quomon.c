@@ -88,6 +88,9 @@ struct lob_cli_s {
 	ud_sockaddr_u sa;
 	lobidx_t b;
 	lobidx_t a;
+
+	char ss[INET6_ADDRSTRLEN + 2 + 6];
+	size_t sz;
 };
 
 /* our limit order book, well just level 2 */
@@ -271,6 +274,22 @@ add_cli(ud_sockaddr_t sa)
 	cli[idx].sa = *sa;
 	cli[idx].b = 0;
 	cli[idx].a = 0;
+
+	/* obtain the address in human readable form */
+	{
+		char *epi = cli[idx].ss;
+		int fam = ud_sockaddr_fam(sa);
+		const struct sockaddr *addr = ud_sockaddr_addr(sa);
+		uint16_t port = ud_sockaddr_port(sa);
+
+		*epi++ = '[';
+		if (inet_ntop(fam, addr, epi, sizeof(cli->ss))) {
+			epi += strlen(epi);
+		}
+		*epi++ = ']';
+		epi += snprintf(epi, 16, ":%hu", port);
+		cli[idx].sz = epi - cli[idx].ss;
+	}
 	return cli + idx;
 }
 
@@ -298,21 +317,6 @@ mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
 	}
 
 	j->blen = nread;
-
-	/* obtain the address in human readable form */
-	{
-		char buf[256], *epi = buf;
-		int fam = ud_sockaddr_fam(&j->sa);
-		const struct sockaddr *sa = ud_sockaddr_addr(&j->sa);
-		uint16_t port = ud_sockaddr_port(&j->sa);
-
-		*epi++ = '[';
-		if (inet_ntop(fam, sa, epi, 128)) {
-			epi += strlen(epi);
-		}
-		*epi++ = ']';
-		epi += snprintf(epi, 16, ":%hu", port);
-	}
 
 	/* intercept special channels */
 	switch (udpc_pkt_cmd(JOB_PACKET(j))) {
@@ -446,11 +450,14 @@ render_cb(EV_P_ ev_timer *w, int UNUSED(revents))
 	for (lobidx_t i = lobb->head, j = 1;
 	     i && j < nr;
 	     i = NEXT(lobb, i), j++) {
-		char tmp[64], *p = tmp;
+		char tmp[128], *p = tmp;
 
-		p += snprintf(p, sizeof(tmp), "%p ", EAT(lobb, i).v.cli);
+		memcpy(p, EAT(lobb, i).v.cli->ss, EAT(lobb, i).v.cli->sz);
+		p += EAT(lobb, i).v.cli->sz;
+		*p++ = ' ';
 		p += ffff_m30_s(p, EAT(lobb, i).v.p);
 		*p = '\0';
+
 		mvprintw(j, 10, tmp);
 		nc = 10 + 2 + p - tmp;
 	}
@@ -460,9 +467,12 @@ render_cb(EV_P_ ev_timer *w, int UNUSED(revents))
 	     i = NEXT(loba, i), j++) {
 		char tmp[64], *p = tmp;
 
-		p += ffff_m30_s(p, EAT(loba, i).v.p);
-		p += snprintf(p, sizeof(tmp), " %p", EAT(loba, i).v.cli);
+		p += ffff_m30_s(p, EAT(lobb, i).v.p);
+		*p++ = ' ';
+		memcpy(p, EAT(lobb, i).v.cli->ss, EAT(lobb, i).v.cli->sz);
+		p += EAT(lobb, i).v.cli->sz;
 		*p = '\0';
+
 		mvprintw(j, nc, tmp);
 	}
 

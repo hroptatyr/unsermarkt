@@ -85,7 +85,7 @@ typedef union lob_side_u *lob_side_t;
 
 /* the client */
 struct lob_cli_s {
-	ud_sockaddr_u sa;
+	union ud_sockaddr_u sa;
 	lobidx_t b;
 	lobidx_t a;
 
@@ -255,11 +255,22 @@ find_ask(m30_t p)
 	return idx;
 }
 
+static int
+sa_eq_p(ud_sockaddr_t sa1, ud_sockaddr_t sa2)
+{
+	const size_t s6sz = sizeof(sa1->sa6.sin6_addr);
+	return sa1->sa6.sin6_family == sa2->sa6.sin6_family &&
+		sa1->sa6.sin6_port == sa2->sa6.sin6_port &&
+		memcmp(&sa1->sa6.sin6_addr, &sa2->sa6.sin6_addr, s6sz) == 0;
+}
+
 static lob_cli_t
 find_cli(ud_sockaddr_t sa)
 {
 	for (size_t i = 0; i < ncli; i++) {
-		if (memcmp(&cli[i].sa, sa, sizeof(*sa)) == 0) {
+		ud_sockaddr_t cur = &cli[i].sa;
+
+		if (sa_eq_p(cur, sa)) {
 			return cli + i;
 		}
 	}

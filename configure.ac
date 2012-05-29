@@ -154,6 +154,23 @@ if test "${have_uterus}"; then
 fi
 AM_CONDITIONAL([HAVE_UTERUS], [test "${have_uterus}" = "yes"])
 
+## check for mxml
+## check for ute
+PKG_CHECK_MODULES([mxml], [mxml >= 2.7],
+	[have_mxml="yes"], [have_mxml="no"])
+if test "${have_mxml}"; then
+	## check for the header
+	SXE_DUMP_LIBS
+	CPPFLAGS="${CPPFLAGS} ${mxml_CFLAGS}"
+	AC_CHECK_HEADERS([mxml.h])
+	SXE_RESTORE_LIBS
+
+	if test "${ac_cv_header_mxml_h}" != "yes"; then
+		have_mxml="no"
+	fi
+fi
+AM_CONDITIONAL([HAVE_MXML], [test "${have_mxml}" = "yes"])
+
 AC_CONFIG_FILES([Makefile])
 AC_CONFIG_FILES([src/Makefile])
 AC_OUTPUT

@@ -46,10 +46,12 @@ uschi_CPPFLAGS += $(unserding_CFLAGS)
 uschi_CPPFLAGS += $(uterus_CFLAGS)
 uschi_LDFLAGS = $(AM_LDFLAGS) -lsqlite3
 
+if HAVE_MXML
 blood_mm_LDFLAGS = $(unserding_LDFLAGS) -lmxml -lpthread
 blood_mm_CPPFLAGS = $(AM_CPPFLAGS)
 blood_mm_CPPFLAGS += $(unserding_CFLAGS)
 blood_mm_CPPFLAGS += $(uterus_CFLAGS)
+endif  ## HAVE_MXML
 
 if HAVE_UTERUS
 um_quomon_SOURCES = um-quomon.c um-quomon-clo.ggo

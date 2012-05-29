@@ -34,7 +34,7 @@ dso_unsermarkt_la_CPPFLAGS += $(unserding_CFLAGS)
 dso_unsermarkt_la_CPPFLAGS += $(uterus_CFLAGS)
 
 umoc_LDFLAGS = $(unserding_LDFLAGS)
-umoc_CPPFLAGS = $(AM_CPPFLAGS)
+umoc_CPPFLAGS = $(AM_CPPFLAGS) -D_GNU_SOURCE
 umoc_CPPFLAGS += $(unserding_CFLAGS)
 umoc_CPPFLAGS += $(uterus_CFLAGS)
 

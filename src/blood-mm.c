@@ -13,12 +13,16 @@
 
 #include "order.h"
 
+#if !defined UNUSED
+# define UNUSED(_x)	_x __attribute__((unused))
+#endif	/* !UNUSED */
+
 
 /* XML mumbo jumbo */
 #include <mxml.h>
 
 static void
-bla(const char *buf, size_t bsz)
+bla(const char *buf, size_t UNUSED(bsz))
 {
 	mxml_node_t *bla;
 

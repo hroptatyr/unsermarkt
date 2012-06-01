@@ -482,9 +482,9 @@ render_cb(EV_P_ ev_timer *w, int UNUSED(revents))
 	     i && j < nr;
 	     i = NEXT(loba, i), j++) {
 		char tmp[128], *p = tmp;
-		lob_cli_t c = CLI(EAT(lobb, i).v.cli);
+		lob_cli_t c = CLI(EAT(loba, i).v.cli);
 
-		p += ffff_m30_s(p, EAT(lobb, i).v.p);
+		p += ffff_m30_s(p, EAT(loba, i).v.p);
 		*p++ = ' ';
 		memcpy(p, c->ss, c->sz);
 		p += c->sz;

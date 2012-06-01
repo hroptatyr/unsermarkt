@@ -269,7 +269,7 @@ prep_htws_status(uint64_t ichanges)
 	umx_node_t root = umx_make_doc("1.0");
 	umx_node_t head = umx_add_node(root, "unsermarkt");
 
-	for (int j = 1; j < nq; j++) {
+	for (unsigned int j = 1; j < nq; j++) {
 		umx_node_t ix;
 		ins_t i;
 
@@ -543,7 +543,7 @@ handle_ORDER(int fd, agtid_t a, char *msg, size_t msglen)
 		/* market to limit order, what a shame */
 		o->p.v = 0;
 		o->type = OTYPE_MTL;
-	} else if ((o->p = ffff_m30_get_s(&cursor)).v != 0) {
+	} else if ((o->p = ffff_m30_get_s((const char**)&cursor)).v != 0) {
 		/* limit order, p should point to the price now */
 		o->type = OTYPE_LIM;
 	} else {
@@ -692,7 +692,7 @@ handle_data(int fd, char *msg, size_t msglen)
 			return -1;
 		}
 	}
-	for (int j = 1; j < nq; j++) {
+	for (unsigned int j = 1; j < nq; j++) {
 		/* no changes for this instr? skip it */
 		if ((ichanges & (1UL << j)) == 0) {
 			continue;

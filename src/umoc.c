@@ -99,7 +99,8 @@ proc_order(char *line, void *clo)
 		return send_mkt_order(poclo->fd, side, qty);
 	} else {
 		/* limit order, p should point to the price now */
-		pri = ffff_m30_get_s(&p);
+		const char *q = p;
+		pri = ffff_m30_get_s(&q);
 		return send_lmt_order(poclo->fd, side, pri, qty);
 	}
 }

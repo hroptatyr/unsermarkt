@@ -132,7 +132,7 @@ listener(void)
 }
 
 static void
-data_cb(EV_P_ ev_io *w, int re)
+data_cb(EV_P_ ev_io *w, int UNUSED(re))
 {
 	char buf[4096];
 	ssize_t nrd;

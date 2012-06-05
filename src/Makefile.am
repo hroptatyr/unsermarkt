@@ -67,6 +67,17 @@ um_quomon_LDFLAGS += $(libev_LIBS)
 um_quomon_LDFLAGS += $(unserding_LIBS)
 endif
 
+if HAVE_TWSTOOLS
+noinst_LTLIBRARIES += tws-snarf.la
+tws_snarf_la_LDFLAGS = -module -rpath /none
+tws_snarf_la_SOURCES = tws-snarf.cpp
+tws_snarf_la_CPPFLAGS = $(AM_CPPFLAGS)
+tws_snarf_la_CPPFLAGS += $(twstools_CFLAGS)
+tws_snarf_la_CPPFLAGS += $(uterus_CFLAGS)
+tws_snarf_la_CPPFLAGS += $(unserding_CFLAGS)
+tws_snarf_la_LDFLAGS += $(unserding_LIBS)
+endif
+
 ## our rule for gengetopt
 %.c %.h: %.ggo
 	gengetopt -l -i $< -F $*

@@ -81,6 +81,17 @@ tws_snarf_la_CPPFLAGS += $(unserding_CFLAGS)
 tws_snarf_la_LDFLAGS += $(unserding_LIBS)
 endif
 
+noinst_PROGRAMS += tenfore
+tenfore_SOURCES = tenfore.c tenfore-clo.ggo
+BUILT_SOURCES += tenfore-clo.c tenfore-clo.h
+tenfore_CPPFLAGS = $(AM_CPPFLAGS)
+tenfore_CPPFLAGS += $(uterus_CFLAGS)
+tenfore_CPPFLAGS += $(unserding_CFLAGS)
+tenfore_CPPFLAGS += $(libev_CFLAGS)
+tenfore_LDFLAGS = $(AM_LDFLAGS)
+tenfore_LDFLAGS += $(libev_LIBS)
+tenfore_LDFLAGS += $(unserding_LIBS)
+
 ## our rule for gengetopt
 %.c %.h: %.ggo
 	gengetopt -l -i $< -F $*

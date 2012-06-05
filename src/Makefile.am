@@ -9,6 +9,7 @@ moddir = $(libdir)/unserding
 bin_PROGRAMS =
 noinst_PROGRAMS =
 mod_LTLIBRARIES =
+noinst_LTLIBRARIES =
 
 BUILT_SOURCES =
 CLEANFILES =

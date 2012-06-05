@@ -41,6 +41,8 @@ SXE_CHECK_CC([gnu11 c11 gnu1x c1x gnu99 c99])
 AC_C_BIGENDIAN
 SXE_CHECK_CFLAGS
 
+AC_PROG_CXX([icpc g++])
+
 ## parser goodness
 SXE_CHECK_PARSER_LEXER
 
@@ -91,6 +93,20 @@ if test "${have_mxml}" = "yes"; then
 	fi
 fi
 AM_CONDITIONAL([HAVE_MXML], [test "${have_mxml}" = "yes"])
+
+## check for twstools
+PKG_CHECK_MODULES([twstools], [twstools >= 0.4.0],
+	[have_twstools="yes"], [have_twstools="no"])
+if test "${have_twstools}" = "yes"; then
+	## check for the header
+	SXE_DUMP_LIBS
+	AC_LANG([C++])
+	CPPFLAGS="${CPPFLAGS} ${twstools_CFLAGS}"
+	AC_CHECK_HEADERS([twstools/twsdo.h])
+	AC_LANG([C])
+	SXE_RESTORE_LIBS
+fi
+AM_CONDITIONAL([HAVE_TWSTOOLS], [test "${have_twstools}" = "yes"])
 
 AC_CONFIG_FILES([Makefile])
 AC_CONFIG_FILES([src/Makefile])

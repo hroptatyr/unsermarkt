@@ -66,7 +66,7 @@ PKG_CHECK_MODULES([unserding], [unserding >= 0.2.2])
 ## check for ute
 PKG_CHECK_MODULES([uterus], [libuterus >= 0.2.1],
 	[have_uterus="yes"], [have_uterus="no"])
-if test "${have_uterus}"; then
+if test "${have_uterus}" = "yes"; then
 	## check for the header
 	SXE_DUMP_LIBS
 	CPPFLAGS="${CPPFLAGS} ${uterus_CFLAGS}"
@@ -79,7 +79,7 @@ AM_CONDITIONAL([HAVE_UTERUS], [test "${have_uterus}" = "yes"])
 ## check for ute
 PKG_CHECK_MODULES([mxml], [mxml >= 2.7],
 	[have_mxml="yes"], [have_mxml="no"])
-if test "${have_mxml}"; then
+if test "${have_mxml}" = "yes"; then
 	## check for the header
 	SXE_DUMP_LIBS
 	CPPFLAGS="${CPPFLAGS} ${mxml_CFLAGS}"

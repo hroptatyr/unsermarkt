@@ -9,6 +9,7 @@ moddir = $(libdir)/unserding
 bin_PROGRAMS =
 noinst_PROGRAMS =
 mod_LTLIBRARIES =
+noinst_LTLIBRARIES =
 
 BUILT_SOURCES =
 CLEANFILES =
@@ -18,8 +19,6 @@ mod_LTLIBRARIES += dso-unsermarkt.la
 noinst_PROGRAMS += umoc
 noinst_PROGRAMS += oq
 noinst_PROGRAMS += uschi
-noinst_PROGRAMS += blood-mm
-noinst_PROGRAMS += um-quomon
 
 dso_unsermarkt_la_LDFLAGS = -module
 dso_unsermarkt_la_LDFLAGS += $(unserding_LDFLAGS) -lsqlite3 -lmxml
@@ -47,6 +46,7 @@ uschi_CPPFLAGS += $(uterus_CFLAGS)
 uschi_LDFLAGS = $(AM_LDFLAGS) -lsqlite3
 
 if HAVE_MXML
+noinst_PROGRAMS += blood-mm
 blood_mm_LDFLAGS = $(unserding_LDFLAGS) -lmxml -lpthread
 blood_mm_CPPFLAGS = $(AM_CPPFLAGS)
 blood_mm_CPPFLAGS += $(unserding_CFLAGS)
@@ -54,6 +54,7 @@ blood_mm_CPPFLAGS += $(uterus_CFLAGS)
 endif  ## HAVE_MXML
 
 if HAVE_UTERUS
+noinst_PROGRAMS += um-quomon
 um_quomon_SOURCES = um-quomon.c um-quomon-clo.ggo
 BUILT_SOURCES += um-quomon-clo.c um-quomon-clo.h
 um_quomon_CPPFLAGS = $(AM_CPPFLAGS)

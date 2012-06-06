@@ -111,6 +111,8 @@ init_sockaddr(ud_sockaddr_t sa, const char *name, uint16_t port)
 
 
 static char iobuf[4096];
+static const char **gsyms;
+static size_t ngsyms = 0;
 
 static int
 init_nd(void)
@@ -155,6 +157,10 @@ Host: balancer.netdania.com\r\n\
 		nsyms = 16;
 	}
 
+	/* for later */
+	gsyms = syms;
+	ngsyms = nsyms;
+
 	memcpy(p, pre, len = sizeof(pre) - 1);
 	p += len;
 
@@ -186,7 +192,8 @@ Host: balancer.netdania.com\r\n\
 }
 
 static void
-dump_job(job_t j)
+__attribute__((unused))
+dump_job_raw(job_t j)
 {
 	int was_print = 0;
 
@@ -210,6 +217,141 @@ dump_job(job_t j)
 		fputc('"', stdout);
 	}
 	fputc('\n', stdout);
+	return;
+}
+
+static uint32_t
+read_u32(char **p)
+{
+	uint32_t *q = (void*)*p;
+	uint32_t res = be32toh(*q++);
+	*p = (void*)q;
+	return res;
+}
+
+static uint16_t
+read_u16(char **p)
+{
+	uint16_t *q = (void*)*p;
+	uint16_t res = be16toh(*q++);
+	*p = (void*)q;
+	return res;
+}
+
+static uint8_t
+read_u8(char **p)
+{
+	uint8_t *q = (void*)*p;
+	uint8_t res = *q++;
+	*p = (void*)q;
+	return res;
+}
+
+static void
+fput_sub(uint16_t sub, char **p, FILE *out)
+{
+	size_t len;
+	const char *str = NULL;
+
+	if (*(*p)++ == 0) {
+		len = read_u8(p);
+		str = *p;
+		*p += len;
+	}
+
+	switch (sub) {
+	case 0x000a:
+		fputc('b', out);
+		break;
+	case 0x000b:
+		fputc('a', out);
+		break;
+	case 0x000c:
+		fputc('B', out);
+		break;
+	case 0x000d:
+		fputc('A', out);
+		break;
+	case 0x0010:
+		fputc('t', out);
+		break;
+	case 0x0011:
+		fputc('@', out);
+		break;
+	case 0x0017:
+		fputs("agent:", out);
+		break;
+	case 0x0019:
+		fputs("name:", out);
+		fputc('"', out);
+		fwrite(str, sizeof(char), len, out);
+		fputc('"', out);
+		str = NULL;
+		break;
+	case 0x0027:
+		fputs("isin:", out);
+		break;
+	default:
+		fprintf(out, "%04x?", sub);
+		break;
+	}
+	if (str) {
+		fwrite(str, sizeof(char), len, out);
+	}
+	return;
+}
+
+static void
+dump_job(job_t j)
+{
+	enum {
+		TF_UNK = 0x00,
+		TF_MSG = 0x01,
+		TF_NAUGHT = 0x0c,
+	};
+	char *p = j->buf, *ep = p + j->blen;
+
+	while (p < ep) {
+		switch (*p++) {
+		case TF_UNK: {
+			uint8_t len = read_u8(&p);
+
+			fputs("GENERIC\t", stdout);
+			fwrite(p, sizeof(char), len, stdout);
+			fputc('\n', stdout);
+			p += len;
+			break;
+		}
+		case TF_MSG: {
+			/* next up the identifier */
+			uint32_t rid = read_u32(&p);
+			/* number of records */
+			uint8_t nrec = read_u8(&p);
+
+			if (rid-- > ngsyms) {
+				/* we're fucked */
+				break;
+			}
+
+			/* record count */
+			fputs(gsyms[rid], stdout);
+			fputc('\t', stdout);
+			for (uint8_t i = 0; i < nrec; i++) {
+				uint16_t sub = read_u16(&p);
+
+				fput_sub(sub, &p, stdout);
+				fputc(' ', stdout);
+			}
+			fputc('\n', stdout);
+			break;
+		}
+		case TF_NAUGHT:
+			break;
+		default:
+			/* hard to decide what to do */
+			break;
+		}
+	}
 	return;
 }
 

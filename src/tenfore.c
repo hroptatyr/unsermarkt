@@ -35,7 +35,9 @@
  *
  ***/
 
-#include "config.h"
+#if defined HAVE_CONFIG_H
+# include "config.h"
+#endif	/* HAVE_CONFIG_H */
 #include <stdlib.h>
 #include <stdio.h>
 #include <stddef.h>
@@ -66,6 +68,8 @@
 #define DEFINE_GORY_STUFF
 #include <m30.h>
 #include <m62.h>
+
+#include "boobs.h"
 
 static void
 __attribute__((format(printf, 1, 2)))

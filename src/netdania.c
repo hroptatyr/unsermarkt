@@ -214,18 +214,20 @@ dump_job_raw(job_t j)
 	int was_print = 0;
 
 	for (unsigned int i = 0; i < j->blen; i++) {
-		if (isprint(j->buf[i])) {
+		uint8_t c = j->buf[i];
+
+		if (isprint(c)) {
 			if (!was_print) {
 				fputc('"', stdout);
 			}
-			fputc(j->buf[i], stdout);
+			fputc(c, stdout);
 			was_print = 1;
 		} else {
 			if (was_print) {
 				fputc('"', stdout);
 				fputc(' ', stdout);
 			}
-			fprintf(stdout, "%02x ", j->buf[i]);
+			fprintf(stdout, "%02x ", c);
 			was_print = 0;
 		}
 	}

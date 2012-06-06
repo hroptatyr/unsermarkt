@@ -10,6 +10,8 @@ bin_PROGRAMS =
 noinst_PROGRAMS =
 mod_LTLIBRARIES =
 noinst_LTLIBRARIES =
+noinst_HEADERS =
+header_HEADERS =
 
 BUILT_SOURCES =
 CLEANFILES =
@@ -19,6 +21,8 @@ mod_LTLIBRARIES += dso-unsermarkt.la
 noinst_PROGRAMS += umoc
 noinst_PROGRAMS += oq
 noinst_PROGRAMS += uschi
+
+noinst_HEADERS += boobs.h
 
 dso_unsermarkt_la_LDFLAGS = -module
 dso_unsermarkt_la_LDFLAGS += $(unserding_LDFLAGS) -lsqlite3 -lmxml

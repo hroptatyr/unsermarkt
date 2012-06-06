@@ -43,6 +43,9 @@ SXE_CHECK_CFLAGS
 
 AC_PROG_CXX([icpc g++])
 
+## check for byteorder utils
+AC_CHECK_HEADERS([endian.h sys/endian.h byteorder.h byteswap.h])
+
 ## parser goodness
 SXE_CHECK_PARSER_LEXER
 

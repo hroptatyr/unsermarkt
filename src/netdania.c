@@ -47,6 +47,7 @@
 #include <assert.h>
 #include <ctype.h>
 
+#include <sys/time.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -120,6 +121,7 @@ static const char **gsyms;
 static size_t ngsyms = 0;
 static ud_chan_t hdl = NULL;
 static unsigned int pno = 0;
+static struct timeval last_brag[1] = {0, 0};
 
 /* ute services come in 2 flavours little endian "ut" and big endian "UT" */
 #define UTE_CMD_LE	0x7574
@@ -541,6 +543,44 @@ dump_job(job_t j)
 }
 
 static void
+brag(void)
+{
+	char buf[UDPC_PKTLEN];
+	struct udpc_seria_s ser[1];
+
+#define PKT(x)		(ud_packet_t){ sizeof(x), x }
+#define MAKE_PKT							\
+	udpc_make_pkt(PKT(buf), -1, pno++, UDPC_PKT_RPL(UTE_QMETA));	\
+	udpc_seria_init(ser, UDPC_PAYLOAD(buf), UDPC_PAYLLEN(sizeof(buf)))
+#define SEND_PKT							\
+	if (udpc_seria_msglen(ser)) {					\
+		size_t msglen = UDPC_HDRLEN + udpc_seria_msglen(ser);	\
+		ud_chan_send(hdl, (ud_packet_t){msglen, buf});		\
+	}
+
+	MAKE_PKT;
+	for (size_t i = 0; i < ngsyms; i++) {
+		size_t len = strlen(gsyms[i]);
+
+		if (udpc_seria_msglen(ser) + len + 2 + 4 > UDPC_PLLEN) {
+			/* send off the old guy */
+			SEND_PKT;
+			/* and make a new one */
+			MAKE_PKT;
+		}
+		/* add the new guy in town */
+		udpc_seria_add_ui16(ser, i + 1);
+		udpc_seria_add_str(ser, gsyms[i], len);
+	}
+	/* send remainder also */
+	SEND_PKT;
+#undef PKT
+#undef MAKE_PKT
+#undef SEND_PKT
+	return;
+}
+
+static void
 inspect_rec(char **p, struct sl1t_s *l1t, size_t nl1t)
 {
 	/* next up the identifier */
@@ -694,6 +734,9 @@ send_job(job_t j)
 		}
 	}
 	SEND_PKT;
+#undef PKT
+#undef MAKE_PKT
+#undef SEND_PKT
 	return;
 }
 
@@ -705,6 +748,7 @@ mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
 	/* a job */
 	struct job_s j[1];
 	socklen_t lsa = sizeof(j->sa);
+	struct timeval now[1];
 
 	j->sock = w->fd;
 	nread = recvfrom(w->fd, j->buf, sizeof(j->buf), 0, &j->sa.sa, &lsa);
@@ -717,6 +761,17 @@ mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
 		goto out_revok;
 	}
 
+	/* check if we need bragging */
+	if (gettimeofday(now, NULL) < 0) {
+		/* time is fucked */
+		;
+	} else if (now->tv_sec - last_brag->tv_sec > BRAG_INTV) {
+		brag();
+		/* keep track of last brag date */
+		*last_brag = *now;
+	}
+
+	/* prepare the job */
 	j->blen = nread;
 	dump_job(j);
 	send_job(j);

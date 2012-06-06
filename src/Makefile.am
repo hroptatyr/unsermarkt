@@ -17,13 +17,9 @@ BUILT_SOURCES =
 CLEANFILES =
 EXTRA_DIST = $(BUILT_SOURCES)
 
-mod_LTLIBRARIES += dso-unsermarkt.la
-noinst_PROGRAMS += umoc
-noinst_PROGRAMS += oq
-noinst_PROGRAMS += uschi
-
 noinst_HEADERS += boobs.h
 
+mod_LTLIBRARIES += dso-unsermarkt.la
 dso_unsermarkt_la_LDFLAGS = -module
 dso_unsermarkt_la_LDFLAGS += $(unserding_LDFLAGS) -lsqlite3 -lmxml
 dso_unsermarkt_la_CPPFLAGS = $(AM_CPPFLAGS) -D_GNU_SOURCE
@@ -36,14 +32,17 @@ dso_unsermarkt_la_SOURCES += order.h
 dso_unsermarkt_la_CPPFLAGS += $(unserding_CFLAGS)
 dso_unsermarkt_la_CPPFLAGS += $(uterus_CFLAGS)
 
+noinst_PROGRAMS += umoc
 umoc_LDFLAGS = $(unserding_LDFLAGS)
 umoc_CPPFLAGS = $(AM_CPPFLAGS) -D_GNU_SOURCE
 umoc_CPPFLAGS += $(unserding_CFLAGS)
 umoc_CPPFLAGS += $(uterus_CFLAGS)
 
+noinst_PROGRAMS += oq
 oq_CPPFLAGS = $(AM_CPPFLAGS) -DSTANDALONE
 oq_CPPFLAGS += $(unserding_CFLAGS) $(uterus_CFLAGS)
 
+noinst_PROGRAMS += uschi
 uschi_CPPFLAGS = $(AM_CPPFLAGS) -DSTANDALONE
 uschi_CPPFLAGS += $(unserding_CFLAGS)
 uschi_CPPFLAGS += $(uterus_CFLAGS)

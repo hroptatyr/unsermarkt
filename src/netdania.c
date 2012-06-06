@@ -72,6 +72,10 @@
 #include "boobs.h"
 #include "netdania.h"
 
+#if !defined countof
+# define countof(x)	(sizeof(x) / sizeof(*x))
+#endif	/* !countof */
+
 static void
 __attribute__((format(printf, 1, 2)))
 error(const char *fmt, ...)
@@ -114,6 +118,20 @@ init_sockaddr(ud_sockaddr_t sa, const char *name, uint16_t port)
 static char iobuf[4096];
 static const char **gsyms;
 static size_t ngsyms = 0;
+static ud_chan_t hdl = NULL;
+static unsigned int pno = 0;
+
+/* ute services come in 2 flavours little endian "ut" and big endian "UT" */
+#define UTE_CMD_LE	0x7574
+#define UTE_CMD_BE	0x5554
+#if defined WORDS_BIGENDIAN
+# define UTE_CMD	UTE_CMD_BE
+#else  /* !WORDS_BIGENDIAN */
+# define UTE_CMD	UTE_CMD_LE
+#endif	/* WORDS_BIGENDIAN */
+
+#define BRAG_INTV	(10)
+#define UTE_QMETA	0x7572
 
 static int
 init_nd(void)
@@ -522,6 +540,163 @@ dump_job(job_t j)
 	return;
 }
 
+static void
+inspect_rec(char **p, struct sl1t_s *l1t, size_t nl1t)
+{
+	/* next up the identifier */
+	uint32_t rid = read_u32(p);
+	/* number of records */
+	uint8_t nrec = read_u8(p);
+	/* data to fill in */
+	long int sec = 0;
+	unsigned int msec = 0;
+
+	for (uint8_t i = 0; i < nrec; i++) {
+		uint16_t sub = read_u16(p);
+		/* value handling */
+		size_t len;
+		const char *str = NULL;
+		char save;
+
+		if (*(*p)++) {
+			continue;
+		}
+		/* read the string */
+		len = read_u8(p);
+		str = *p;
+		*p += len;
+		save = **p, **p = '\0';
+
+		switch ((nd_sub_t)sub) {
+			char *q;
+		case ND_SUB_TIME:
+		case ND_SUB_MSTIME:
+			if ((sec = strtol(str, &q, 10), *q)) {
+				sec = 0;
+				msec = 0;
+			} else if ((nd_sub_t)sub == ND_SUB_MSTIME) {
+				msec = sec % 1000;
+				sec = sec / 1000;
+			}
+			break;
+		case ND_SUB_BID:
+		case ND_SUB_ASK:
+		case ND_SUB_TRA:
+		case ND_SUB_BSZ:
+		case ND_SUB_ASZ:
+		case ND_SUB_LAST:
+		case ND_SUB_LSZ: {
+			m30_t v = ffff_m30_get_s(&str);
+
+			switch ((nd_sub_t)sub) {
+			case ND_SUB_BID:
+				l1t[0].bid = v.u;
+				sl1t_set_ttf(l1t + 0, SL1T_TTF_BID);
+				break;
+			case ND_SUB_ASK:
+				l1t[1].ask = v.u;
+				sl1t_set_ttf(l1t + 1, SL1T_TTF_ASK);
+				break;
+			case ND_SUB_TRA:
+			case ND_SUB_LAST:
+				l1t[2].tra = v.u;
+				sl1t_set_ttf(l1t + 2, SL1T_TTF_TRA);
+				break;
+			case ND_SUB_BSZ:
+				l1t[0].bsz = v.u;
+				break;
+			case ND_SUB_ASZ:
+				l1t[1].asz = v.u;
+				break;
+			case ND_SUB_LSZ:
+				l1t[2].tsz = v.u;
+				break;
+			}
+			break;
+		}
+		case ND_SUB_VOL: {
+			m62_t v = ffff_m62_get_s(&str);
+
+			l1t[3].w[0] = v.u;
+			sl1t_set_ttf(l1t + 3, SL1T_TTF_VOL);
+			break;
+		}
+		default:
+			break;
+		}
+
+		/* re-instantiate the saved character */
+		**p = save;
+	}
+
+	if (sec == 0) {
+		/* ticks without time stamp are fucking useless */
+		return;
+	}
+	for (size_t i = 0; i < nl1t; i++) {
+		if (l1t[i].v[0]) {
+			sl1t_set_stmp_sec(l1t + i, sec);
+			sl1t_set_stmp_msec(l1t + i, msec);
+			sl1t_set_tblidx(l1t + i, rid);
+		}
+	}
+	return;
+}
+
+static inline void
+udpc_seria_add_scom(udpc_seria_t sctx, scom_t s, size_t len)
+{
+	memcpy(sctx->msg + sctx->msgoff, s, len);
+	sctx->msgoff += len;
+	return;
+}
+
+static void
+send_job(job_t j)
+{
+	enum {
+		TF_UNK = 0x00,
+		TF_MSG = 0x01,
+		TF_NAUGHT = 0x0c,
+	};
+	char *p = j->buf, *ep = p + j->blen;
+	/* unserding goodness */
+	char buf[UDPC_PKTLEN];
+	struct udpc_seria_s ser[1];
+	struct sl1t_s l1t[4];
+
+#define PKT(x)		(ud_packet_t){sizeof(x), x}
+#define MAKE_PKT							\
+	udpc_make_pkt(PKT(buf), -1, pno++, UTE_CMD);			\
+	udpc_seria_init(ser, UDPC_PAYLOAD(buf), UDPC_PAYLLEN(sizeof(buf)))
+#define SEND_PKT							\
+	if (udpc_seria_msglen(ser)) {					\
+		size_t len = UDPC_HDRLEN + udpc_seria_msglen(ser);	\
+		ud_packet_t pkt = {len, buf};				\
+		ud_chan_send(hdl, pkt);					\
+	}
+
+	MAKE_PKT;
+	while (p < ep) {
+		if (*p++ == TF_MSG) {
+			memset(l1t, 0, sizeof(l1t));
+			inspect_rec(&p, l1t, countof(l1t));
+
+			for (size_t i = 0; i < countof(l1t); i++) {
+				if (scom_thdr_tblidx(AS_SCOM(l1t + i))) {
+					udpc_seria_add_scom(
+						ser,
+						AS_SCOM(l1t + i), sizeof(*l1t));
+				}
+			}
+		} else {
+			break;
+		}
+	}
+	SEND_PKT;
+	return;
+}
+
 /* the actual worker function */
 static void
 mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
@@ -544,6 +719,7 @@ mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
 
 	j->blen = nread;
 	dump_job(j);
+	send_job(j);
 
 out_revok:
 	return;
@@ -601,7 +777,6 @@ main(int argc, char *argv[])
 	ev_signal sigpipe_watcher[1];
 	ev_io beef[1];
 	/* unserding resources */
-	ud_chan_t hdl;
 	int nd_sock;
 
 	/* parse the command line */

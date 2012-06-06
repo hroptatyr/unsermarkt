@@ -92,7 +92,7 @@ tws_snarf_la_LDFLAGS += $(unserding_LIBS)
 endif
 
 noinst_PROGRAMS += netdania
-netdania_SOURCES = netdania.c netdania-clo.ggo
+netdania_SOURCES = netdania.c netdania.h netdania-clo.ggo
 BUILT_SOURCES += netdania-clo.c netdania-clo.h
 netdania_CPPFLAGS = $(AM_CPPFLAGS)
 netdania_CPPFLAGS += $(uterus_CFLAGS)

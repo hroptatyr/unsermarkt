@@ -18,6 +18,7 @@ CLEANFILES =
 EXTRA_DIST = $(BUILT_SOURCES)
 
 noinst_HEADERS += boobs.h
+noinst_HEADERS += nifty.h
 
 mod_LTLIBRARIES += dso-unsermarkt.la
 dso_unsermarkt_la_LDFLAGS = -module
@@ -29,8 +30,17 @@ dso_unsermarkt_la_SOURCES += htws.c htws.h
 dso_unsermarkt_la_SOURCES += oq.c oq.h
 dso_unsermarkt_la_SOURCES += uschi.c uschi.h
 dso_unsermarkt_la_SOURCES += order.h
+dso_unsermarkt_la_SOURCES += instr.h
+dso_unsermarkt_la_SOURCES += match.h
+dso_unsermarkt_la_SOURCES += um-conn.h
+dso_unsermarkt_la_SOURCES += um-stamp.h
+dso_unsermarkt_la_SOURCES += um-types.h
+dso_unsermarkt_la_SOURCES += um-xml.h
 dso_unsermarkt_la_CPPFLAGS += $(unserding_CFLAGS)
 dso_unsermarkt_la_CPPFLAGS += $(uterus_CFLAGS)
+EXTRA_dso_unsermarkt_la_SOURCES =
+EXTRA_dso_unsermarkt_la_SOURCES += con6ity.c
+EXTRA_dso_unsermarkt_la_SOURCES += mmls.c
 
 noinst_PROGRAMS += umoc
 umoc_LDFLAGS = $(unserding_LDFLAGS)
@@ -82,7 +92,7 @@ tws_snarf_la_LDFLAGS += $(unserding_LIBS)
 endif
 
 noinst_PROGRAMS += netdania
-netdania_SOURCES = netdania.c netdania-clo.ggo
+netdania_SOURCES = netdania.c netdania.h netdania-clo.ggo
 BUILT_SOURCES += netdania-clo.c netdania-clo.h
 netdania_CPPFLAGS = $(AM_CPPFLAGS)
 netdania_CPPFLAGS += $(uterus_CFLAGS)

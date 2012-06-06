@@ -5,5 +5,5 @@ description "Subscribe to SYMBOLs on the netdania_fxa data feed."
 
 section "Network options"
 option "beef" -
-	"Multicast payload channels"
+	"Multicast payload channels, default 7868"
 	int optional

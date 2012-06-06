@@ -43,6 +43,7 @@
 #include <stdbool.h>
 #include <time.h>
 #include <assert.h>
+#include <ctype.h>
 
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -180,6 +181,34 @@ Host: balancer.netdania.com\r\n\
 	return 0;
 }
 
+static void
+dump_job(job_t j)
+{
+	int was_print = 0;
+
+	for (unsigned int i = 0; i < j->blen; i++) {
+		if (isprint(j->buf[i])) {
+			if (!was_print) {
+				fputc('"', stdout);
+			}
+			fputc(j->buf[i], stdout);
+			was_print = 1;
+		} else {
+			if (was_print) {
+				fputc('"', stdout);
+				fputc(' ', stdout);
+			}
+			fprintf(stdout, "%02x ", j->buf[i]);
+			was_print = 0;
+		}
+	}
+	if (was_print) {
+		fputc('"', stdout);
+	}
+	fputc('\n', stdout);
+	return;
+}
+
 /* the actual worker function */
 static void
 mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
@@ -201,8 +230,7 @@ mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
 	}
 
 	j->blen = nread;
-
-	fputs("hooray\n", stderr);
+	dump_job(j);
 
 out_revok:
 	return;

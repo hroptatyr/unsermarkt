@@ -352,6 +352,96 @@ fput_sub(uint16_t sub, char **p, FILE *out)
 	case ND_SUB_TNASK:
 		fputs("TNa:", out);
 		break;
+	case ND_SUB_1WBID:
+		fputs("1Wb:", out);
+		break;
+	case ND_SUB_1WASK:
+		fputs("1Wa:", out);
+		break;
+	case ND_SUB_2WBID:
+		fputs("2Wb:", out);
+		break;
+	case ND_SUB_2WASK:
+		fputs("2Wa:", out);
+		break;
+	case ND_SUB_3WBID:
+		fputs("3Wb:", out);
+		break;
+	case ND_SUB_3WASK:
+		fputs("3Wa:", out);
+		break;
+	case ND_SUB_1MBID:
+		fputs("1Mb:", out);
+		break;
+	case ND_SUB_1MASK:
+		fputs("1Ma:", out);
+		break;
+	case ND_SUB_2MBID:
+		fputs("2Mb:", out);
+		break;
+	case ND_SUB_2MASK:
+		fputs("2Ma:", out);
+		break;
+	case ND_SUB_3MBID:
+		fputs("3Mb:", out);
+		break;
+	case ND_SUB_3MASK:
+		fputs("3Ma:", out);
+		break;
+	case ND_SUB_4MBID:
+		fputs("4Mb:", out);
+		break;
+	case ND_SUB_4MASK:
+		fputs("4Ma:", out);
+		break;
+	case ND_SUB_5MBID:
+		fputs("5Mb:", out);
+		break;
+	case ND_SUB_5MASK:
+		fputs("5Ma:", out);
+		break;
+	case ND_SUB_6MBID:
+		fputs("6Mb:", out);
+		break;
+	case ND_SUB_6MASK:
+		fputs("6Ma:", out);
+		break;
+	case ND_SUB_7MBID:
+		fputs("7Mb:", out);
+		break;
+	case ND_SUB_7MASK:
+		fputs("7Ma:", out);
+		break;
+	case ND_SUB_8MBID:
+		fputs("8Mb:", out);
+		break;
+	case ND_SUB_8MASK:
+		fputs("8Ma:", out);
+		break;
+	case ND_SUB_9MBID:
+		fputs("9Mb:", out);
+		break;
+	case ND_SUB_9MASK:
+		fputs("9Ma:", out);
+		break;
+	case ND_SUB_10MBID:
+		fputs("10Mb:", out);
+		break;
+	case ND_SUB_10MASK:
+		fputs("10Ma:", out);
+		break;
+	case ND_SUB_11MBID:
+		fputs("11Mb:", out);
+		break;
+	case ND_SUB_11MASK:
+		fputs("11Ma:", out);
+		break;
+	case ND_SUB_1YBID:
+		fputs("12Mb:", out);
+		break;
+	case ND_SUB_1YASK:
+		fputs("12Ma:", out);
+		break;
 
 	case ND_SUB_CHG_ABS:
 		fputs("chg$:", out);

@@ -71,11 +71,8 @@
 #include <m62.h>
 
 #include "boobs.h"
+#include "nifty.h"
 #include "netdania.h"
-
-#if !defined countof
-# define countof(x)	(sizeof(x) / sizeof(*x))
-#endif	/* !countof */
 
 static void
 __attribute__((format(printf, 1, 2)))
@@ -212,24 +209,25 @@ Host: balancer.netdania.com\r\n\
 }
 
 static void
-__attribute__((unused))
 dump_job_raw(job_t j)
 {
 	int was_print = 0;
 
 	for (unsigned int i = 0; i < j->blen; i++) {
-		if (isprint(j->buf[i])) {
+		uint8_t c = j->buf[i];
+
+		if (isprint(c)) {
 			if (!was_print) {
 				fputc('"', stdout);
 			}
-			fputc(j->buf[i], stdout);
+			fputc(c, stdout);
 			was_print = 1;
 		} else {
 			if (was_print) {
 				fputc('"', stdout);
 				fputc(' ', stdout);
 			}
-			fprintf(stdout, "%02x ", j->buf[i]);
+			fprintf(stdout, "%02x ", c);
 			was_print = 0;
 		}
 	}
@@ -740,6 +738,9 @@ send_job(job_t j)
 	return;
 }
 
+/* helpers for the worker function */
+static int rawp = 0;
+
 /* the actual worker function */
 static void
 mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
@@ -773,8 +774,13 @@ mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
 
 	/* prepare the job */
 	j->blen = nread;
-	dump_job(j);
-	send_job(j);
+	if (LIKELY(!rawp)) {
+		dump_job(j);
+		send_job(j);
+	} else {
+		/* send fuckall in raw mode, just dump it */
+		dump_job_raw(j);
+	}
 
 out_revok:
 	return;
@@ -838,6 +844,8 @@ main(int argc, char *argv[])
 	if (nd_parser(argc, argv, argi)) {
 		exit(1);
 	}
+	/* start with the context assignments */
+	rawp = argi->raw_given;
 
 	/* initialise the main loop */
 	loop = ev_default_loop(EVFLAG_AUTO);

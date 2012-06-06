@@ -3,6 +3,10 @@ package "netdania"
 usage "netdania [OPTION]... SYMBOL..."
 description "Subscribe to SYMBOLs on the netdania_fxa data feed."
 
+option "raw" -
+	"Display uninterpreted feed"
+	optional
+
 section "Network options"
 option "beef" -
 	"Multicast payload channels, default 7868"

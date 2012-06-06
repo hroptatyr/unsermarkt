@@ -737,6 +737,9 @@ send_job(job_t j)
 	return;
 }
 
+/* helpers for the worker function */
+static int rawp = 0;
+
 /* the actual worker function */
 static void
 mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
@@ -770,8 +773,13 @@ mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
 
 	/* prepare the job */
 	j->blen = nread;
-	dump_job(j);
-	send_job(j);
+	if (LIKELY(!rawp)) {
+		dump_job(j);
+		send_job(j);
+	} else {
+		/* send fuckall in raw mode, just dump it */
+		dump_job_raw(j);
+	}
 
 out_revok:
 	return;
@@ -835,6 +843,8 @@ main(int argc, char *argv[])
 	if (nd_parser(argc, argv, argi)) {
 		exit(1);
 	}
+	/* start with the context assignments */
+	rawp = argi->raw_given;
 
 	/* initialise the main loop */
 	loop = ev_default_loop(EVFLAG_AUTO);

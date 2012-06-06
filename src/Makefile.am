@@ -92,6 +92,17 @@ tenfore_LDFLAGS = $(AM_LDFLAGS)
 tenfore_LDFLAGS += $(libev_LIBS)
 tenfore_LDFLAGS += $(unserding_LIBS)
 
+noinst_PROGRAMS += netdania
+netdania_SOURCES = netdania.c netdania-clo.ggo
+BUILT_SOURCES += netdania-clo.c netdania-clo.h
+netdania_CPPFLAGS = $(AM_CPPFLAGS)
+netdania_CPPFLAGS += $(uterus_CFLAGS)
+netdania_CPPFLAGS += $(unserding_CFLAGS)
+netdania_CPPFLAGS += $(libev_CFLAGS)
+netdania_LDFLAGS = $(AM_LDFLAGS)
+netdania_LDFLAGS += $(libev_LIBS)
+netdania_LDFLAGS += $(unserding_LIBS)
+
 ## our rule for gengetopt
 %.c %.h: %.ggo
 	gengetopt -l -i $< -F $*

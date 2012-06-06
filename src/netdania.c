@@ -314,7 +314,7 @@ fput_sub(uint16_t sub, char **p, FILE *out)
 		fputc('o', out);
 		break;
 	case ND_SUB_VOL:
-		fputc('v', out);
+		fputc('V', out);
 		break;
 	case ND_SUB_LAST:
 		fputc('x', out);

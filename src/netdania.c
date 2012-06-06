@@ -71,11 +71,8 @@
 #include <m62.h>
 
 #include "boobs.h"
+#include "nifty.h"
 #include "netdania.h"
-
-#if !defined countof
-# define countof(x)	(sizeof(x) / sizeof(*x))
-#endif	/* !countof */
 
 static void
 __attribute__((format(printf, 1, 2)))

@@ -51,6 +51,7 @@ SXE_CHECK_PARSER_LEXER
 
 ## libtool goddess^Wgoodness
 SXE_CHECK_LIBTOOL
+SXE_CHECK_LIBLTDL
 
 AC_CHECK_HEADERS([stdbool.h])
 AC_CHECK_HEADERS([fcntl.h])

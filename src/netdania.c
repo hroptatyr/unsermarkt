@@ -1,4 +1,4 @@
-/*** tenfore.c -- leech some tenfore resources
+/*** netdania.c -- leech some netdania resources
  *
  * Copyright (C) 2012 Sebastian Freundt
  *
@@ -47,6 +47,7 @@
 #include <assert.h>
 #include <ctype.h>
 
+#include <sys/time.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -70,6 +71,11 @@
 #include <m62.h>
 
 #include "boobs.h"
+#include "netdania.h"
+
+#if !defined countof
+# define countof(x)	(sizeof(x) / sizeof(*x))
+#endif	/* !countof */
 
 static void
 __attribute__((format(printf, 1, 2)))
@@ -77,7 +83,7 @@ error(const char *fmt, ...)
 {
 	va_list vap;
 	va_start(vap, fmt);
-	fputs("tenfore: ", stderr);
+	fputs("netdania: ", stderr);
 	vfprintf(stderr, fmt, vap);
 	va_end(vap);
 	if (errno) {
@@ -113,6 +119,21 @@ init_sockaddr(ud_sockaddr_t sa, const char *name, uint16_t port)
 static char iobuf[4096];
 static const char **gsyms;
 static size_t ngsyms = 0;
+static ud_chan_t hdl = NULL;
+static unsigned int pno = 0;
+static struct timeval last_brag[1] = {0, 0};
+
+/* ute services come in 2 flavours little endian "ut" and big endian "UT" */
+#define UTE_CMD_LE	0x7574
+#define UTE_CMD_BE	0x5554
+#if defined WORDS_BIGENDIAN
+# define UTE_CMD	UTE_CMD_BE
+#else  /* !WORDS_BIGENDIAN */
+# define UTE_CMD	UTE_CMD_LE
+#endif	/* WORDS_BIGENDIAN */
+
+#define BRAG_INTV	(10)
+#define UTE_QMETA	0x7572
 
 static int
 init_nd(void)
@@ -139,7 +160,7 @@ static int
 subs_nd(int s, const char **syms, size_t nsyms)
 {
 	static const char pre[] = "\
-GET /StreamingServer/StreamingServer?xstream&group=www.forex-markets.com&user=.&pass=.&appid=quotelist_awt&xcmd&type=1&reqid=";
+GET /StreamingServer/StreamingServer?xstream&group=www.netdania.com&user=.&pass=.&appid=quotelist_awt&xcmd&type=1&reqid=";
 	static const char post[] = "\
 User-Agent: Streaming Agent\r\n\
 Host: balancer.netdania.com\r\n\
@@ -174,13 +195,10 @@ Host: balancer.netdania.com\r\n\
 	p += len;
 
 	for (size_t i = 0; i < nsyms; i++) {
-		static const char suf[] = "|ms_dla;";
-
 		memcpy(p, syms[i], len = strlen(syms[i]));
 		p += len;
 
-		memcpy(p, suf, len = sizeof(suf) - 1);
-		p += len;
+		*p++ = ';';
 	}
 	p[-1] = '\r';
 	*p++ = '\n';
@@ -261,37 +279,204 @@ fput_sub(uint16_t sub, char **p, FILE *out)
 		*p += len;
 	}
 
-	switch (sub) {
-	case 0x000a:
+	/* values come from:
+	 * http://www.netdania.com/Products/\
+	 * live-streaming-currency-exchange-rates/\
+	 * real-time-forex-charts/FinanceChart.aspx */
+	switch ((nd_sub_t)sub) {
+	case ND_SUB_BID:
 		fputc('b', out);
 		break;
-	case 0x000b:
+	case ND_SUB_ASK:
 		fputc('a', out);
 		break;
-	case 0x000c:
+	case ND_SUB_BSZ:
 		fputc('B', out);
 		break;
-	case 0x000d:
+	case ND_SUB_ASZ:
 		fputc('A', out);
 		break;
-	case 0x0010:
+	case ND_SUB_TRA:
 		fputc('t', out);
 		break;
-	case 0x0011:
+	case ND_SUB_TIME:
 		fputc('@', out);
 		break;
-	case 0x0017:
+
+	case ND_SUB_CLOSE:
+		fputc('c', out);
+		break;
+	case ND_SUB_HIGH:
+		fputc('h', out);
+		break;
+	case ND_SUB_LOW:
+		fputc('l', out);
+		break;
+	case ND_SUB_OPEN:
+		fputc('o', out);
+		break;
+	case ND_SUB_VOL:
+		fputc('V', out);
+		break;
+	case ND_SUB_LAST:
+		fputc('x', out);
+		break;
+	case ND_SUB_LSZ:
+		fputc('X', out);
+		break;
+	case ND_SUB_OI:
+		fputs("oi:", out);
+		break;
+	case ND_SUB_STL:
+		fputs("stl:", out);
+		break;
+	case ND_SUB_AGENT:
 		fputs("agent:", out);
 		break;
-	case 0x0019:
+	case ND_SUB_NAME:
 		fputs("name:", out);
 		fputc('"', out);
 		fwrite(str, sizeof(char), len, out);
 		fputc('"', out);
 		str = NULL;
 		break;
-	case 0x0027:
+	case ND_SUB_ISIN:
 		fputs("isin:", out);
+		break;
+
+	case ND_SUB_NANO:
+		fputs("nano:", out);
+		break;
+	case ND_SUB_MSTIME:
+		fputc('@', out);
+		fwrite(str, sizeof(char), len - 3, out);
+		fputc('.', out);
+		fwrite(str + len - 3, sizeof(char), 3, out);
+		str = NULL;
+		break;
+	case ND_SUB_ONBID:
+		fputs("ONb:", out);
+		break;
+	case ND_SUB_ONASK:
+		fputs("ONa:", out);
+		break;
+	case ND_SUB_SNBID:
+		fputs("SNb:", out);
+		break;
+	case ND_SUB_SNASK:
+		fputs("SNa:", out);
+		break;
+	case ND_SUB_TNBID:
+		fputs("TNb:", out);
+		break;
+	case ND_SUB_TNASK:
+		fputs("TNa:", out);
+		break;
+	case ND_SUB_1WBID:
+		fputs("1Wb:", out);
+		break;
+	case ND_SUB_1WASK:
+		fputs("1Wa:", out);
+		break;
+	case ND_SUB_2WBID:
+		fputs("2Wb:", out);
+		break;
+	case ND_SUB_2WASK:
+		fputs("2Wa:", out);
+		break;
+	case ND_SUB_3WBID:
+		fputs("3Wb:", out);
+		break;
+	case ND_SUB_3WASK:
+		fputs("3Wa:", out);
+		break;
+	case ND_SUB_1MBID:
+		fputs("1Mb:", out);
+		break;
+	case ND_SUB_1MASK:
+		fputs("1Ma:", out);
+		break;
+	case ND_SUB_2MBID:
+		fputs("2Mb:", out);
+		break;
+	case ND_SUB_2MASK:
+		fputs("2Ma:", out);
+		break;
+	case ND_SUB_3MBID:
+		fputs("3Mb:", out);
+		break;
+	case ND_SUB_3MASK:
+		fputs("3Ma:", out);
+		break;
+	case ND_SUB_4MBID:
+		fputs("4Mb:", out);
+		break;
+	case ND_SUB_4MASK:
+		fputs("4Ma:", out);
+		break;
+	case ND_SUB_5MBID:
+		fputs("5Mb:", out);
+		break;
+	case ND_SUB_5MASK:
+		fputs("5Ma:", out);
+		break;
+	case ND_SUB_6MBID:
+		fputs("6Mb:", out);
+		break;
+	case ND_SUB_6MASK:
+		fputs("6Ma:", out);
+		break;
+	case ND_SUB_7MBID:
+		fputs("7Mb:", out);
+		break;
+	case ND_SUB_7MASK:
+		fputs("7Ma:", out);
+		break;
+	case ND_SUB_8MBID:
+		fputs("8Mb:", out);
+		break;
+	case ND_SUB_8MASK:
+		fputs("8Ma:", out);
+		break;
+	case ND_SUB_9MBID:
+		fputs("9Mb:", out);
+		break;
+	case ND_SUB_9MASK:
+		fputs("9Ma:", out);
+		break;
+	case ND_SUB_10MBID:
+		fputs("10Mb:", out);
+		break;
+	case ND_SUB_10MASK:
+		fputs("10Ma:", out);
+		break;
+	case ND_SUB_11MBID:
+		fputs("11Mb:", out);
+		break;
+	case ND_SUB_11MASK:
+		fputs("11Ma:", out);
+		break;
+	case ND_SUB_1YBID:
+		fputs("12Mb:", out);
+		break;
+	case ND_SUB_1YASK:
+		fputs("12Ma:", out);
+		break;
+
+	case ND_SUB_CHG_ABS:
+		fputs("chg$:", out);
+		break;
+	case ND_SUB_CHG_PCT:
+		fputs("chg%:", out);
+		break;
+	case ND_SUB_YCHG_PCT:
+		fputs("Ychg%:", out);
+		break;
+	case ND_SUB_52W_HIGH:
+		fputs("52wh:", out);
+		break;
+	case ND_SUB_52W_LOW:
+		fputs("52wl:", out);
 		break;
 	default:
 		fprintf(out, "%04x?", sub);
@@ -357,6 +542,204 @@ dump_job(job_t j)
 	return;
 }
 
+static void
+brag(void)
+{
+	char buf[UDPC_PKTLEN];
+	struct udpc_seria_s ser[1];
+
+#define PKT(x)		(ud_packet_t){ sizeof(x), x }
+#define MAKE_PKT							\
+	udpc_make_pkt(PKT(buf), -1, pno++, UDPC_PKT_RPL(UTE_QMETA));	\
+	udpc_seria_init(ser, UDPC_PAYLOAD(buf), UDPC_PAYLLEN(sizeof(buf)))
+#define SEND_PKT							\
+	if (udpc_seria_msglen(ser)) {					\
+		size_t msglen = UDPC_HDRLEN + udpc_seria_msglen(ser);	\
+		ud_chan_send(hdl, (ud_packet_t){msglen, buf});		\
+	}
+
+	MAKE_PKT;
+	for (size_t i = 0; i < ngsyms; i++) {
+		size_t len = strlen(gsyms[i]);
+
+		if (udpc_seria_msglen(ser) + len + 2 + 4 > UDPC_PLLEN) {
+			/* send off the old guy */
+			SEND_PKT;
+			/* and make a new one */
+			MAKE_PKT;
+		}
+		/* add the new guy in town */
+		udpc_seria_add_ui16(ser, i + 1);
+		udpc_seria_add_str(ser, gsyms[i], len);
+	}
+	/* send remainder also */
+	SEND_PKT;
+#undef PKT
+#undef MAKE_PKT
+#undef SEND_PKT
+	return;
+}
+
+static void
+inspect_rec(char **p, struct sl1t_s *l1t, size_t nl1t)
+{
+	/* next up the identifier */
+	uint32_t rid = read_u32(p);
+	/* number of records */
+	uint8_t nrec = read_u8(p);
+	/* data to fill in */
+	long int sec = 0;
+	unsigned int msec = 0;
+
+	for (uint8_t i = 0; i < nrec; i++) {
+		uint16_t sub = read_u16(p);
+		/* value handling */
+		size_t len;
+		const char *str = NULL;
+		char save;
+
+		if (*(*p)++) {
+			continue;
+		}
+		/* read the string */
+		len = read_u8(p);
+		str = *p;
+		*p += len;
+		save = **p, **p = '\0';
+
+		switch ((nd_sub_t)sub) {
+			char *q;
+		case ND_SUB_TIME:
+		case ND_SUB_MSTIME:
+			if ((sec = strtol(str, &q, 10), *q)) {
+				sec = 0;
+				msec = 0;
+			} else if ((nd_sub_t)sub == ND_SUB_MSTIME) {
+				msec = sec % 1000;
+				sec = sec / 1000;
+			}
+			break;
+		case ND_SUB_BID:
+		case ND_SUB_ASK:
+		case ND_SUB_TRA:
+		case ND_SUB_BSZ:
+		case ND_SUB_ASZ:
+		case ND_SUB_LAST:
+		case ND_SUB_LSZ: {
+			m30_t v = ffff_m30_get_s(&str);
+
+			switch ((nd_sub_t)sub) {
+			case ND_SUB_BID:
+				l1t[0].bid = v.u;
+				sl1t_set_ttf(l1t + 0, SL1T_TTF_BID);
+				break;
+			case ND_SUB_ASK:
+				l1t[1].ask = v.u;
+				sl1t_set_ttf(l1t + 1, SL1T_TTF_ASK);
+				break;
+			case ND_SUB_TRA:
+			case ND_SUB_LAST:
+				l1t[2].tra = v.u;
+				sl1t_set_ttf(l1t + 2, SL1T_TTF_TRA);
+				break;
+			case ND_SUB_BSZ:
+				l1t[0].bsz = v.u;
+				break;
+			case ND_SUB_ASZ:
+				l1t[1].asz = v.u;
+				break;
+			case ND_SUB_LSZ:
+				l1t[2].tsz = v.u;
+				break;
+			}
+			break;
+		}
+		case ND_SUB_VOL: {
+			m62_t v = ffff_m62_get_s(&str);
+
+			l1t[3].w[0] = v.u;
+			sl1t_set_ttf(l1t + 3, SL1T_TTF_VOL);
+			break;
+		}
+		default:
+			break;
+		}
+
+		/* re-instantiate the saved character */
+		**p = save;
+	}
+
+	if (sec == 0) {
+		/* ticks without time stamp are fucking useless */
+		return;
+	}
+	for (size_t i = 0; i < nl1t; i++) {
+		if (l1t[i].v[0]) {
+			sl1t_set_stmp_sec(l1t + i, sec);
+			sl1t_set_stmp_msec(l1t + i, msec);
+			sl1t_set_tblidx(l1t + i, rid);
+		}
+	}
+	return;
+}
+
+static inline void
+udpc_seria_add_scom(udpc_seria_t sctx, scom_t s, size_t len)
+{
+	memcpy(sctx->msg + sctx->msgoff, s, len);
+	sctx->msgoff += len;
+	return;
+}
+
+static void
+send_job(job_t j)
+{
+	enum {
+		TF_UNK = 0x00,
+		TF_MSG = 0x01,
+		TF_NAUGHT = 0x0c,
+	};
+	char *p = j->buf, *ep = p + j->blen;
+	/* unserding goodness */
+	char buf[UDPC_PKTLEN];
+	struct udpc_seria_s ser[1];
+	struct sl1t_s l1t[4];
+
+#define PKT(x)		(ud_packet_t){sizeof(x), x}
+#define MAKE_PKT							\
+	udpc_make_pkt(PKT(buf), -1, pno++, UTE_CMD);			\
+	udpc_seria_init(ser, UDPC_PAYLOAD(buf), UDPC_PAYLLEN(sizeof(buf)))
+#define SEND_PKT							\
+	if (udpc_seria_msglen(ser)) {					\
+		size_t len = UDPC_HDRLEN + udpc_seria_msglen(ser);	\
+		ud_packet_t pkt = {len, buf};				\
+		ud_chan_send(hdl, pkt);					\
+	}
+
+	MAKE_PKT;
+	while (p < ep) {
+		if (*p++ == TF_MSG) {
+			memset(l1t, 0, sizeof(l1t));
+			inspect_rec(&p, l1t, countof(l1t));
+
+			for (size_t i = 0; i < countof(l1t); i++) {
+				if (scom_thdr_tblidx(AS_SCOM(l1t + i))) {
+					udpc_seria_add_scom(
+						ser,
+						AS_SCOM(l1t + i), sizeof(*l1t));
+				}
+			}
+		} else {
+			break;
+		}
+	}
+	SEND_PKT;
+#undef PKT
+#undef MAKE_PKT
+#undef SEND_PKT
+	return;
+}
+
 /* the actual worker function */
 static void
 mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
@@ -365,6 +748,7 @@ mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
 	/* a job */
 	struct job_s j[1];
 	socklen_t lsa = sizeof(j->sa);
+	struct timeval now[1];
 
 	j->sock = w->fd;
 	nread = recvfrom(w->fd, j->buf, sizeof(j->buf), 0, &j->sa.sa, &lsa);
@@ -377,8 +761,20 @@ mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
 		goto out_revok;
 	}
 
+	/* check if we need bragging */
+	if (gettimeofday(now, NULL) < 0) {
+		/* time is fucked */
+		;
+	} else if (now->tv_sec - last_brag->tv_sec > BRAG_INTV) {
+		brag();
+		/* keep track of last brag date */
+		*last_brag = *now;
+	}
+
+	/* prepare the job */
 	j->blen = nread;
 	dump_job(j);
+	send_job(j);
 
 out_revok:
 	return;
@@ -412,8 +808,8 @@ sighup_cb(EV_P_ ev_signal *UNUSED(w), int UNUSED(revents))
 # pragma GCC diagnostic ignored "-Wswitch"
 # pragma GCC diagnostic ignored "-Wswitch-enum"
 #endif /* __INTEL_COMPILER */
-#include "tenfore-clo.h"
-#include "tenfore-clo.c"
+#include "netdania-clo.h"
+#include "netdania-clo.c"
 #if defined __INTEL_COMPILER
 # pragma warning (default:593)
 # pragma warning (default:181)
@@ -428,7 +824,7 @@ main(int argc, char *argv[])
 	/* use the default event loop unless you have special needs */
 	struct ev_loop *loop;
 	/* args */
-	struct tf_args_info argi[1];
+	struct nd_args_info argi[1];
 	/* ev goodies */
 	ev_signal sigint_watcher[1];
 	ev_signal sighup_watcher[1];
@@ -436,11 +832,10 @@ main(int argc, char *argv[])
 	ev_signal sigpipe_watcher[1];
 	ev_io beef[1];
 	/* unserding resources */
-	ud_chan_t hdl;
 	int nd_sock;
 
 	/* parse the command line */
-	if (tf_parser(argc, argv, argi)) {
+	if (nd_parser(argc, argv, argi)) {
 		exit(1);
 	}
 
@@ -461,7 +856,7 @@ main(int argc, char *argv[])
 	ev_signal_start(EV_A_ sighup_watcher);
 
 	/* attach to the beef channel */
-	hdl = ud_chan_init(argi->beef_given ? argi->beef_arg : 8584/*UT*/);
+	hdl = ud_chan_init(argi->beef_given ? argi->beef_arg : 7868/*ND*/);
 
 	/* connect to netdania balancer */
 	nd_sock = init_nd();
@@ -485,10 +880,10 @@ main(int argc, char *argv[])
 	ev_default_destroy();
 
 	/* kick the config context */
-	tf_parser_free(argi);
+	nd_parser_free(argi);
 
 	/* unloop was called, so exit */
 	return 0;
 }
 
-/* tenfore.c ends here */
+/* netdania.c ends here */

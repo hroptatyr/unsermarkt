@@ -209,7 +209,6 @@ Host: balancer.netdania.com\r\n\
 }
 
 static void
-__attribute__((unused))
 dump_job_raw(job_t j)
 {
 	int was_print = 0;

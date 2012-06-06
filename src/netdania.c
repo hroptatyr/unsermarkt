@@ -801,7 +801,7 @@ main(int argc, char *argv[])
 	ev_signal_start(EV_A_ sighup_watcher);
 
 	/* attach to the beef channel */
-	hdl = ud_chan_init(argi->beef_given ? argi->beef_arg : 8584/*UT*/);
+	hdl = ud_chan_init(argi->beef_given ? argi->beef_arg : 7868/*ND*/);
 
 	/* connect to netdania balancer */
 	nd_sock = init_nd();

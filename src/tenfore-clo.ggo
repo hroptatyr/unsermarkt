@@ -1,9 +1,0 @@
-args "--unamed-opts --no-handle-error --long-help -a tf_args_info -f tf_parser"
-package "tenfore"
-usage "tenfore [OPTION]... SYMBOL..."
-description "Subscribe to SYMBOLs on the tenfore data feed."
-
-section "Network options"
-option "beef" -
-	"Multicast payload channels"
-	int optional

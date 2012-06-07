@@ -275,8 +275,8 @@ read_u8(char **p)
 	return res;
 }
 
-static void
-fput_sub(uint16_t sub, char **p, FILE *out)
+static int
+fput_sub(uint16_t sub, char **p, const char *ep, FILE *out)
 {
 	size_t len;
 	const char *str = NULL;
@@ -284,7 +284,14 @@ fput_sub(uint16_t sub, char **p, FILE *out)
 	if (*(*p)++ == 0) {
 		len = read_u8(p);
 		str = *p;
-		*p += len;
+		if ((*p += len) > ep) {
+			/* string is incomplete */
+			UM_DEBUG("string incomplete\n");
+			return -1;
+		}
+	} else {
+		UM_DEBUG("not a string type: %x\n", (*p)[-1]);
+		return -1;
 	}
 
 	/* values come from:
@@ -493,7 +500,7 @@ fput_sub(uint16_t sub, char **p, FILE *out)
 	if (str) {
 		fwrite(str, sizeof(char), len, out);
 	}
-	return;
+	return 0;
 }
 
 static int
@@ -518,7 +525,9 @@ dump_TF_MSG(char **q, size_t len)
 	for (i = 0; i < nrec && p <= ep - 4; i++) {
 		uint16_t sub = read_u16(&p);
 
-		fput_sub(sub, &p, stdout);
+		if (fput_sub(sub, &p, ep, stdout) < 0) {
+			break;
+		}
 		fputc(' ', stdout);
 	}
 	fputc('\n', stdout);

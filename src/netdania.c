@@ -543,6 +543,7 @@ dump_job(job_t j)
 			break;
 		}
 	}
+	fflush(stdout);
 	return;
 }
 

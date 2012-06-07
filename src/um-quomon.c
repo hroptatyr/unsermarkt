@@ -129,6 +129,7 @@ static lob_side_t lobb = NULL;
 static lob_side_t loba = NULL;
 static lob_cli_t cli = NULL;
 static size_t ncli = 0;
+static size_t alloc_cli = 0;
 
 #define CLI(x)		(assert(x), assert(x <= ncli), cli + x - 1)
 #define EAT(y, x)	y->e[x]
@@ -147,6 +148,7 @@ init_lob(void)
 	lobb = mmap(NULL, 4096, PROT_MEM, MAP_MEM, -1, 0);
 	loba = mmap(NULL, 4096, PROT_MEM, MAP_MEM, -1, 0);
 	cli = mmap(NULL, 4096, PROT_MEM, MAP_MEM, -1, 0);
+	alloc_cli = 4096;
 
 	/* init the lob */
 	lobb->free = 1;
@@ -290,6 +292,12 @@ static lobidx_t
 add_cli(ud_sockaddr_t sa, uint16_t id)
 {
 	size_t idx = ncli++;
+
+	if (ncli * sizeof(*cli) > alloc_cli) {
+		size_t nu = alloc_cli + 4096;
+		cli = mremap(cli, alloc_cli, nu, MREMAP_MAYMOVE);
+		alloc_cli = nu;
+	}
 
 	cli[idx].sa = *sa;
 	cli[idx].id = id;

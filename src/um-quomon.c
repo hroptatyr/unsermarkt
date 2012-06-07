@@ -86,6 +86,8 @@ typedef union lob_side_u *lob_side_t;
 /* the client */
 struct lob_cli_s {
 	union ud_sockaddr_u sa;
+	uint16_t id;
+
 	lobidx_t b;
 	lobidx_t a;
 
@@ -270,12 +272,14 @@ sa_eq_p(ud_sockaddr_t sa1, ud_sockaddr_t sa2)
 }
 
 static lobidx_t
-find_cli(ud_sockaddr_t sa)
+find_cli(ud_sockaddr_t sa, uint16_t id)
 {
 	for (size_t i = 0; i < ncli; i++) {
-		ud_sockaddr_t cur = &cli[i].sa;
+		lob_cli_t c = cli + i;
+		ud_sockaddr_t cur_sa = &c->sa;
+		uint16_t cur_id = c->id;
 
-		if (sa_eq_p(cur, sa)) {
+		if (sa_eq_p(cur_sa, sa) && cur_id == id) {
 			return i + 1;
 		}
 	}
@@ -283,11 +287,12 @@ find_cli(ud_sockaddr_t sa)
 }
 
 static lobidx_t
-add_cli(ud_sockaddr_t sa)
+add_cli(ud_sockaddr_t sa, uint16_t id)
 {
 	size_t idx = ncli++;
 
 	cli[idx].sa = *sa;
+	cli[idx].id = id;
 	cli[idx].b = 0;
 	cli[idx].a = 0;
 
@@ -342,18 +347,18 @@ mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
 		size_t plen = UDPC_PAYLLEN(JOB_PACKET(j).plen);
 		lobidx_t c;
 
-
-		if ((c = find_cli(&j->sa)) == 0) {
-			c = add_cli(&j->sa);
-		}
-
 		for (scom_t sp = (void*)pbuf, ep = (void*)(pbuf + plen);
 		     sp < ep;
 		     sp += scom_tick_size(sp) *
 			     (sizeof(struct sndwch_s) / sizeof(*sp))) {
 			uint16_t ttf = scom_thdr_ttf(sp);
+			uint16_t id = scom_thdr_tblidx(sp);
 			const_sl1t_t l1t;
 			struct lob_entry_s v;
+
+			if ((c = find_cli(&j->sa, id)) == 0) {
+				c = add_cli(&j->sa, id);
+			}
 
 			l1t = (const void*)sp;
 			/* populate the value tables */

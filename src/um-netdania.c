@@ -74,6 +74,15 @@
 #include "nifty.h"
 #include "um-netdania.h"
 
+typedef const struct nd_pkt_s *nd_pkt_t;
+
+struct nd_pkt_s {
+	union ud_sockaddr_u sa;
+	size_t bsz;
+	char *buf;
+};
+
+
 static void
 __attribute__((format(printf, 1, 2)))
 error(const char *fmt, ...)
@@ -209,11 +218,11 @@ Host: balancer.netdania.com\r\n\
 }
 
 static void
-dump_job_raw(job_t j)
+dump_job_raw(nd_pkt_t j)
 {
 	int was_print = 0;
 
-	for (unsigned int i = 0; i < j->blen; i++) {
+	for (unsigned int i = 0; i < j->bsz; i++) {
 		uint8_t c = j->buf[i];
 
 		if (isprint(c)) {
@@ -487,14 +496,14 @@ fput_sub(uint16_t sub, char **p, FILE *out)
 }
 
 static void
-dump_job(job_t j)
+dump_job(nd_pkt_t j)
 {
 	enum {
 		TF_UNK = 0x00,
 		TF_MSG = 0x01,
 		TF_NAUGHT = 0x0c,
 	};
-	char *p = j->buf, *ep = p + j->blen;
+	char *p = j->buf, *ep = p + j->bsz;
 
 	while (p < ep) {
 		switch (*p++) {
@@ -697,14 +706,14 @@ udpc_seria_add_scom(udpc_seria_t sctx, scom_t s, size_t len)
 }
 
 static void
-send_job(job_t j)
+send_job(nd_pkt_t j)
 {
 	enum {
 		TF_UNK = 0x00,
 		TF_MSG = 0x01,
 		TF_NAUGHT = 0x0c,
 	};
-	char *p = j->buf, *ep = p + j->blen;
+	char *p = j->buf, *ep = p + j->bsz;
 	/* unserding goodness */
 	char buf[UDPC_PKTLEN];
 	struct udpc_seria_s ser[1];
@@ -754,12 +763,11 @@ mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
 {
 	ssize_t nread;
 	/* a job */
-	struct job_s j[1];
+	struct nd_pkt_s j[1];
 	socklen_t lsa = sizeof(j->sa);
 	struct timeval now[1];
 
-	j->sock = w->fd;
-	nread = recvfrom(w->fd, j->buf, sizeof(j->buf), 0, &j->sa.sa, &lsa);
+	nread = recvfrom(w->fd, iobuf, sizeof(iobuf), 0, &j->sa.sa, &lsa);
 
 	/* handle the reading */
 	if (UNLIKELY(nread < 0)) {
@@ -780,7 +788,10 @@ mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
 	}
 
 	/* prepare the job */
-	j->blen = nread;
+	j->bsz = nread;
+	j->buf = iobuf;
+
+	UM_DEBUG("read %zd/%zu\n", nread, sizeof(iobuf));
 	if (LIKELY(!rawp)) {
 		dump_job(j);
 		send_job(j);

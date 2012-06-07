@@ -74,6 +74,16 @@
 #include "nifty.h"
 #include "um-netdania.h"
 
+typedef const struct nd_pkt_s *nd_pkt_t;
+
+struct nd_pkt_s {
+	union ud_sockaddr_u sa;
+	socklen_t lsa;
+	size_t bsz;
+	char *buf;
+};
+
+
 static void
 __attribute__((format(printf, 1, 2)))
 error(const char *fmt, ...)
@@ -209,11 +219,11 @@ Host: balancer.netdania.com\r\n\
 }
 
 static void
-dump_job_raw(job_t j)
+dump_job_raw(nd_pkt_t j)
 {
 	int was_print = 0;
 
-	for (unsigned int i = 0; i < j->blen; i++) {
+	for (unsigned int i = 0; i < j->bsz; i++) {
 		uint8_t c = j->buf[i];
 
 		if (isprint(c)) {
@@ -265,8 +275,8 @@ read_u8(char **p)
 	return res;
 }
 
-static void
-fput_sub(uint16_t sub, char **p, FILE *out)
+static int
+fput_sub(uint16_t sub, char **p, const char *ep, FILE *out)
 {
 	size_t len;
 	const char *str = NULL;
@@ -274,7 +284,14 @@ fput_sub(uint16_t sub, char **p, FILE *out)
 	if (*(*p)++ == 0) {
 		len = read_u8(p);
 		str = *p;
-		*p += len;
+		if ((*p += len) > ep) {
+			/* string is incomplete */
+			UM_DEBUG("string incomplete\n");
+			return -1;
+		}
+	} else {
+		UM_DEBUG("not a string type: %x\n", (*p)[-1]);
+		return -1;
 	}
 
 	/* values come from:
@@ -483,18 +500,55 @@ fput_sub(uint16_t sub, char **p, FILE *out)
 	if (str) {
 		fwrite(str, sizeof(char), len, out);
 	}
-	return;
+	return 0;
 }
 
-static void
-dump_job(job_t j)
+static int
+dump_TF_MSG(char **q, size_t len)
+{
+	char *p = *q;
+	char *ep = p + len;
+	/* next up the identifier */
+	uint32_t rid = read_u32(&p);
+	/* number of records */
+	uint8_t nrec = read_u8(&p);
+	uint8_t i;
+
+	if (rid-- > ngsyms) {
+		/* we're fucked */
+		return -1;
+	}
+
+	/* record count */
+	fputs(gsyms[rid], stdout);
+	fputc('\t', stdout);
+	for (i = 0; i < nrec && p <= ep - 4; i++) {
+		uint16_t sub = read_u16(&p);
+
+		if (fput_sub(sub, &p, ep, stdout) < 0) {
+			break;
+		}
+		fputc(' ', stdout);
+	}
+	fputc('\n', stdout);
+	if (i == nrec) {
+		*q = p;
+		return 0;
+	} else {
+		/* we could not decode all records, leave q untouched */
+		return -1;
+	}
+}
+
+static size_t
+dump_job(nd_pkt_t j)
 {
 	enum {
 		TF_UNK = 0x00,
 		TF_MSG = 0x01,
 		TF_NAUGHT = 0x0c,
 	};
-	char *p = j->buf, *ep = p + j->blen;
+	char *p = j->buf, *ep = p + j->bsz;
 
 	while (p < ep) {
 		switch (*p++) {
@@ -507,29 +561,13 @@ dump_job(job_t j)
 			p += len;
 			break;
 		}
-		case TF_MSG: {
-			/* next up the identifier */
-			uint32_t rid = read_u32(&p);
-			/* number of records */
-			uint8_t nrec = read_u8(&p);
 
-			if (rid-- > ngsyms) {
-				/* we're fucked */
-				break;
+		case TF_MSG:
+			if (dump_TF_MSG(&p, ep - p) < 0) {
+				return p - 1 - j->buf;
 			}
-
-			/* record count */
-			fputs(gsyms[rid], stdout);
-			fputc('\t', stdout);
-			for (uint8_t i = 0; i < nrec; i++) {
-				uint16_t sub = read_u16(&p);
-
-				fput_sub(sub, &p, stdout);
-				fputc(' ', stdout);
-			}
-			fputc('\n', stdout);
 			break;
-		}
+
 		case 0x0a: {
 			/* uint32_t? */
 			uint32_t v = read_u32(&p);
@@ -544,7 +582,7 @@ dump_job(job_t j)
 		}
 	}
 	fflush(stdout);
-	return;
+	return j->bsz;
 }
 
 static void
@@ -697,14 +735,14 @@ udpc_seria_add_scom(udpc_seria_t sctx, scom_t s, size_t len)
 }
 
 static void
-send_job(job_t j)
+send_job(nd_pkt_t j)
 {
 	enum {
 		TF_UNK = 0x00,
 		TF_MSG = 0x01,
 		TF_NAUGHT = 0x0c,
 	};
-	char *p = j->buf, *ep = p + j->blen;
+	char *p = j->buf, *ep = p + j->bsz;
 	/* unserding goodness */
 	char buf[UDPC_PKTLEN];
 	struct udpc_seria_s ser[1];
@@ -752,14 +790,15 @@ static int rawp = 0;
 static void
 mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
 {
-	ssize_t nread;
 	/* a job */
-	struct job_s j[1];
-	socklen_t lsa = sizeof(j->sa);
+	static struct nd_pkt_s j[1] = {{
+			.buf = iobuf,
+			.bsz = sizeof(iobuf),
+		}};
+	ssize_t nread;
 	struct timeval now[1];
 
-	j->sock = w->fd;
-	nread = recvfrom(w->fd, j->buf, sizeof(j->buf), 0, &j->sa.sa, &lsa);
+	nread = recvfrom(w->fd, j->buf, j->bsz, 0, &j->sa.sa, &j->lsa);
 
 	/* handle the reading */
 	if (UNLIKELY(nread < 0)) {
@@ -780,13 +819,27 @@ mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
 	}
 
 	/* prepare the job */
-	j->blen = nread;
+	UM_DEBUG("read %zd/%zu\n", nread, j->bsz);
+	nread += sizeof(iobuf) - j->bsz;
+	j->bsz = nread;
+	j->buf = iobuf;
 	if (LIKELY(!rawp)) {
-		dump_job(j);
+		size_t nproc;
+		size_t nmove;
+
+		nproc = dump_job(j);
+		j->bsz = nproc;
 		send_job(j);
+
+		if ((nmove = nread - nproc) > 0) {
+			memmove(iobuf, j->buf + nproc, nmove);
+		}
+		j->buf = iobuf + nmove;
+		j->bsz = sizeof(iobuf) - nmove;
 	} else {
 		/* send fuckall in raw mode, just dump it */
 		dump_job_raw(j);
+		j->bsz = sizeof(iobuf);
 	}
 
 out_revok:

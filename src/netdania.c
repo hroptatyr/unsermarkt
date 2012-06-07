@@ -530,6 +530,12 @@ dump_job(job_t j)
 			fputc('\n', stdout);
 			break;
 		}
+		case 0x0a: {
+			/* uint32_t? */
+			uint32_t v = read_u32(&p);
+			fprintf(stdout, "0x0a MSG\t%u\n", v);
+			break;
+		}
 		case TF_NAUGHT:
 			break;
 		default:
@@ -537,6 +543,7 @@ dump_job(job_t j)
 			break;
 		}
 	}
+	fflush(stdout);
 	return;
 }
 

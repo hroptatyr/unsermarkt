@@ -819,7 +819,8 @@ mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
 
 	/* prepare the job */
 	UM_DEBUG("read %zd/%zu\n", nread, j->bsz);
-	j->bsz = nread = sizeof(iobuf) - j->bsz + nread;
+	nread += sizeof(iobuf) - j->bsz;
+	j->bsz = nread;
 	j->buf = iobuf;
 	if (LIKELY(!rawp)) {
 		size_t nproc;

@@ -93,6 +93,9 @@ struct lob_cli_s {
 
 	char ss[INET6_ADDRSTRLEN + 2 + 6];
 	size_t sz;
+
+	char sym[64];
+	size_t ssz;
 };
 
 /* our limit order book, well just level 2 */
@@ -303,6 +306,7 @@ add_cli(ud_sockaddr_t sa, uint16_t id)
 	cli[idx].id = id;
 	cli[idx].b = 0;
 	cli[idx].a = 0;
+	cli[idx].ssz = 0;
 
 	/* obtain the address in human readable form */
 	{
@@ -320,6 +324,41 @@ add_cli(ud_sockaddr_t sa, uint16_t id)
 		cli[idx].sz = epi - cli[idx].ss;
 	}
 	return idx + 1;
+}
+
+static void
+snarf_syms(job_t j)
+{
+	char *pbuf = UDPC_PAYLOAD(JOB_PACKET(j).pbuf);
+	size_t plen = UDPC_PAYLLEN(JOB_PACKET(j).plen);
+	struct udpc_seria_s ser[1];
+	uint8_t tag;
+
+	udpc_seria_init(ser, pbuf, plen);
+	while (ser->msgoff < plen && (tag = udpc_seria_tag(ser))) {
+		lobidx_t c;
+		uint16_t id;
+
+		if (UNLIKELY(tag != UDPC_TYPE_UI16)) {
+			break;
+		}
+		/* otherwise find us the id */
+		id = udpc_seria_des_ui16(ser);
+		/* and the cli, if any */
+		if ((c = find_cli(&j->sa, id)) == 0) {
+			c = add_cli(&j->sa, id);
+		}
+		/* next up is the symbol */
+		tag = udpc_seria_tag(ser);
+		if (UNLIKELY(tag != UDPC_TYPE_STR || c == 0)) {
+
+			break;
+		}
+		/* fuck error checking */
+		CLI(c)->ssz = udpc_seria_des_str_into(
+			CLI(c)->sym, sizeof(CLI(c)->sym), ser);
+	}
+	return;
 }
 
 
@@ -349,6 +388,10 @@ mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
 
 	/* intercept special channels */
 	switch (udpc_pkt_cmd(JOB_PACKET(j))) {
+	case 0x7573:
+		snarf_syms(j);
+		break;
+
 	case 0x7574:
 	case 0x7575: {
 		char *pbuf = UDPC_PAYLOAD(JOB_PACKET(j).pbuf);
@@ -482,9 +525,15 @@ render_cb(EV_P_ ev_timer *w, int UNUSED(revents))
 		char tmp[128], *p = tmp;
 		lob_cli_t c = CLI(EAT(lobb, i).v.cli);
 
-		memcpy(p, c->ss, c->sz);
-		p += c->sz;
-		p += sprintf(p, " %04x ", c->id);
+		if (c->ssz) {
+			memcpy(p, c->sym, c->ssz);
+			p += c->ssz;
+			*p++ = ' ';
+		} else {
+			memcpy(p, c->ss, c->sz);
+			p += c->sz;
+			p += sprintf(p, " %04x ", c->id);
+		}
 		p += ffff_m30_s(p, EAT(lobb, i).v.q);
 		*p++ = ' ';
 		p += ffff_m30_s(p, EAT(lobb, i).v.p);
@@ -502,9 +551,15 @@ render_cb(EV_P_ ev_timer *w, int UNUSED(revents))
 		p += ffff_m30_s(p, EAT(loba, i).v.p);
 		*p++ = ' ';
 		p += ffff_m30_s(p, EAT(loba, i).v.q);
-		p += sprintf(p, " %04x ", c->id);
-		memcpy(p, c->ss, c->sz);
-		p += c->sz;
+		if (c->ssz) {
+			*p++ = ' ';
+			memcpy(p, c->sym, c->ssz);
+			p += c->ssz;
+		} else {
+			p += sprintf(p, " %04x ", c->id);
+			memcpy(p, c->ss, c->sz);
+			p += c->sz;
+		}
 		*p = '\0';
 
 		mvprintw(j, nc / 2 + 1, tmp);

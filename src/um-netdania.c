@@ -552,7 +552,6 @@ dump_job(nd_pkt_t j)
 			break;
 		}
 	}
-	fflush(stdout);
 	return;
 }
 

@@ -62,9 +62,8 @@ SXE_CHECK_METRONOME
 ## event loop
 SXE_CHECK_LIBEV
 
-## check if we've got libconfig
-dnl PKG_CHECK_MODULES([LIBCONFIG], [libconfig])
-## check for lua instead!
+## check for lua
+PKG_CHECK_MODULES([LUA], [lua >= 5.1.0], [:], [:])
 
 ## check for unserding
 PKG_CHECK_MODULES([unserding], [unserding >= 0.2.2])

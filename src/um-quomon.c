@@ -476,6 +476,8 @@ render_cb(EV_P_ ev_timer *w, int UNUSED(revents))
 
 		memcpy(p, c->ss, c->sz);
 		p += c->sz;
+		p += sprintf(p, " %04x ", c->id);
+		p += ffff_m30_s(p, EAT(lobb, i).v.q);
 		*p++ = ' ';
 		p += ffff_m30_s(p, EAT(lobb, i).v.p);
 		*p = '\0';
@@ -491,6 +493,8 @@ render_cb(EV_P_ ev_timer *w, int UNUSED(revents))
 
 		p += ffff_m30_s(p, EAT(loba, i).v.p);
 		*p++ = ' ';
+		p += ffff_m30_s(p, EAT(loba, i).v.q);
+		p += sprintf(p, " %04x ", c->id);
 		memcpy(p, c->ss, c->sz);
 		p += c->sz;
 		*p = '\0';

@@ -70,7 +70,7 @@ if HAVE_UTERUS
 noinst_PROGRAMS += um-quomon
 um_quomon_SOURCES = um-quomon.c um-quomon-clo.ggo
 BUILT_SOURCES += um-quomon-clo.c um-quomon-clo.h
-um_quomon_CPPFLAGS = $(AM_CPPFLAGS)
+um_quomon_CPPFLAGS = $(AM_CPPFLAGS) -D_GNU_SOURCE
 um_quomon_CPPFLAGS += $(libev_CFLAGS)
 um_quomon_CPPFLAGS += $(unserding_CFLAGS)
 um_quomon_CPPFLAGS += $(uterus_CFLAGS)
@@ -91,16 +91,16 @@ tws_snarf_la_CPPFLAGS += $(unserding_CFLAGS)
 tws_snarf_la_LDFLAGS += $(unserding_LIBS)
 endif
 
-noinst_PROGRAMS += netdania
-netdania_SOURCES = netdania.c netdania.h netdania-clo.ggo
-BUILT_SOURCES += netdania-clo.c netdania-clo.h
-netdania_CPPFLAGS = $(AM_CPPFLAGS)
-netdania_CPPFLAGS += $(uterus_CFLAGS)
-netdania_CPPFLAGS += $(unserding_CFLAGS)
-netdania_CPPFLAGS += $(libev_CFLAGS)
-netdania_LDFLAGS = $(AM_LDFLAGS)
-netdania_LDFLAGS += $(libev_LIBS)
-netdania_LDFLAGS += $(unserding_LIBS)
+bin_PROGRAMS += um-netdania
+um_netdania_SOURCES = um-netdania.c um-netdania.h um-netdania-clo.ggo
+BUILT_SOURCES += um-netdania-clo.c um-netdania-clo.h
+um_netdania_CPPFLAGS = $(AM_CPPFLAGS)
+um_netdania_CPPFLAGS += $(uterus_CFLAGS)
+um_netdania_CPPFLAGS += $(unserding_CFLAGS)
+um_netdania_CPPFLAGS += $(libev_CFLAGS)
+um_netdania_LDFLAGS = $(AM_LDFLAGS)
+um_netdania_LDFLAGS += $(libev_LIBS)
+um_netdania_LDFLAGS += $(unserding_LIBS)
 
 ## our rule for gengetopt
 %.c %.h: %.ggo

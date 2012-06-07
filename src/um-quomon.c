@@ -86,11 +86,16 @@ typedef union lob_side_u *lob_side_t;
 /* the client */
 struct lob_cli_s {
 	union ud_sockaddr_u sa;
+	uint16_t id;
+
 	lobidx_t b;
 	lobidx_t a;
 
 	char ss[INET6_ADDRSTRLEN + 2 + 6];
 	size_t sz;
+
+	char sym[64];
+	size_t ssz;
 };
 
 /* our limit order book, well just level 2 */
@@ -127,6 +132,7 @@ static lob_side_t lobb = NULL;
 static lob_side_t loba = NULL;
 static lob_cli_t cli = NULL;
 static size_t ncli = 0;
+static size_t alloc_cli = 0;
 
 #define CLI(x)		(assert(x), assert(x <= ncli), cli + x - 1)
 #define EAT(y, x)	y->e[x]
@@ -145,6 +151,7 @@ init_lob(void)
 	lobb = mmap(NULL, 4096, PROT_MEM, MAP_MEM, -1, 0);
 	loba = mmap(NULL, 4096, PROT_MEM, MAP_MEM, -1, 0);
 	cli = mmap(NULL, 4096, PROT_MEM, MAP_MEM, -1, 0);
+	alloc_cli = 4096;
 
 	/* init the lob */
 	lobb->free = 1;
@@ -270,12 +277,14 @@ sa_eq_p(ud_sockaddr_t sa1, ud_sockaddr_t sa2)
 }
 
 static lobidx_t
-find_cli(ud_sockaddr_t sa)
+find_cli(ud_sockaddr_t sa, uint16_t id)
 {
 	for (size_t i = 0; i < ncli; i++) {
-		ud_sockaddr_t cur = &cli[i].sa;
+		lob_cli_t c = cli + i;
+		ud_sockaddr_t cur_sa = &c->sa;
+		uint16_t cur_id = c->id;
 
-		if (sa_eq_p(cur, sa)) {
+		if (sa_eq_p(cur_sa, sa) && cur_id == id) {
 			return i + 1;
 		}
 	}
@@ -283,13 +292,21 @@ find_cli(ud_sockaddr_t sa)
 }
 
 static lobidx_t
-add_cli(ud_sockaddr_t sa)
+add_cli(ud_sockaddr_t sa, uint16_t id)
 {
 	size_t idx = ncli++;
 
+	if (ncli * sizeof(*cli) > alloc_cli) {
+		size_t nu = alloc_cli + 4096;
+		cli = mremap(cli, alloc_cli, nu, MREMAP_MAYMOVE);
+		alloc_cli = nu;
+	}
+
 	cli[idx].sa = *sa;
+	cli[idx].id = id;
 	cli[idx].b = 0;
 	cli[idx].a = 0;
+	cli[idx].ssz = 0;
 
 	/* obtain the address in human readable form */
 	{
@@ -307,6 +324,41 @@ add_cli(ud_sockaddr_t sa)
 		cli[idx].sz = epi - cli[idx].ss;
 	}
 	return idx + 1;
+}
+
+static void
+snarf_syms(job_t j)
+{
+	char *pbuf = UDPC_PAYLOAD(JOB_PACKET(j).pbuf);
+	size_t plen = UDPC_PAYLLEN(JOB_PACKET(j).plen);
+	struct udpc_seria_s ser[1];
+	uint8_t tag;
+
+	udpc_seria_init(ser, pbuf, plen);
+	while (ser->msgoff < plen && (tag = udpc_seria_tag(ser))) {
+		lobidx_t c;
+		uint16_t id;
+
+		if (UNLIKELY(tag != UDPC_TYPE_UI16)) {
+			break;
+		}
+		/* otherwise find us the id */
+		id = udpc_seria_des_ui16(ser);
+		/* and the cli, if any */
+		if ((c = find_cli(&j->sa, id)) == 0) {
+			c = add_cli(&j->sa, id);
+		}
+		/* next up is the symbol */
+		tag = udpc_seria_tag(ser);
+		if (UNLIKELY(tag != UDPC_TYPE_STR || c == 0)) {
+
+			break;
+		}
+		/* fuck error checking */
+		CLI(c)->ssz = udpc_seria_des_str_into(
+			CLI(c)->sym, sizeof(CLI(c)->sym), ser);
+	}
+	return;
 }
 
 
@@ -336,24 +388,28 @@ mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
 
 	/* intercept special channels */
 	switch (udpc_pkt_cmd(JOB_PACKET(j))) {
+	case 0x7573:
+		snarf_syms(j);
+		break;
+
 	case 0x7574:
 	case 0x7575: {
 		char *pbuf = UDPC_PAYLOAD(JOB_PACKET(j).pbuf);
 		size_t plen = UDPC_PAYLLEN(JOB_PACKET(j).plen);
 		lobidx_t c;
 
-
-		if ((c = find_cli(&j->sa)) == 0) {
-			c = add_cli(&j->sa);
-		}
-
 		for (scom_t sp = (void*)pbuf, ep = (void*)(pbuf + plen);
 		     sp < ep;
 		     sp += scom_tick_size(sp) *
 			     (sizeof(struct sndwch_s) / sizeof(*sp))) {
 			uint16_t ttf = scom_thdr_ttf(sp);
+			uint16_t id = scom_thdr_tblidx(sp);
 			const_sl1t_t l1t;
 			struct lob_entry_s v;
+
+			if ((c = find_cli(&j->sa, id)) == 0) {
+				c = add_cli(&j->sa, id);
+			}
 
 			l1t = (const void*)sp;
 			/* populate the value tables */
@@ -469,8 +525,16 @@ render_cb(EV_P_ ev_timer *w, int UNUSED(revents))
 		char tmp[128], *p = tmp;
 		lob_cli_t c = CLI(EAT(lobb, i).v.cli);
 
-		memcpy(p, c->ss, c->sz);
-		p += c->sz;
+		if (c->ssz) {
+			memcpy(p, c->sym, c->ssz);
+			p += c->ssz;
+			*p++ = ' ';
+		} else {
+			memcpy(p, c->ss, c->sz);
+			p += c->sz;
+			p += sprintf(p, " %04x ", c->id);
+		}
+		p += ffff_m30_s(p, EAT(lobb, i).v.q);
 		*p++ = ' ';
 		p += ffff_m30_s(p, EAT(lobb, i).v.p);
 		*p = '\0';
@@ -486,8 +550,16 @@ render_cb(EV_P_ ev_timer *w, int UNUSED(revents))
 
 		p += ffff_m30_s(p, EAT(loba, i).v.p);
 		*p++ = ' ';
-		memcpy(p, c->ss, c->sz);
-		p += c->sz;
+		p += ffff_m30_s(p, EAT(loba, i).v.q);
+		if (c->ssz) {
+			*p++ = ' ';
+			memcpy(p, c->sym, c->ssz);
+			p += c->ssz;
+		} else {
+			p += sprintf(p, " %04x ", c->id);
+			memcpy(p, c->ss, c->sz);
+			p += c->sz;
+		}
 		*p = '\0';
 
 		mvprintw(j, nc / 2 + 1, tmp);

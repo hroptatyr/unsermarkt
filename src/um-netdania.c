@@ -1,4 +1,4 @@
-/*** netdania.c -- leech some netdania resources
+/*** um-netdania.c -- leech some netdania resources
  *
  * Copyright (C) 2012 Sebastian Freundt
  *
@@ -72,7 +72,7 @@
 
 #include "boobs.h"
 #include "nifty.h"
-#include "netdania.h"
+#include "um-netdania.h"
 
 static void
 __attribute__((format(printf, 1, 2)))
@@ -80,7 +80,7 @@ error(const char *fmt, ...)
 {
 	va_list vap;
 	va_start(vap, fmt);
-	fputs("netdania: ", stderr);
+	fputs("um-netdania: ", stderr);
 	vfprintf(stderr, fmt, vap);
 	va_end(vap);
 	if (errno) {
@@ -821,8 +821,8 @@ sighup_cb(EV_P_ ev_signal *UNUSED(w), int UNUSED(revents))
 # pragma GCC diagnostic ignored "-Wswitch"
 # pragma GCC diagnostic ignored "-Wswitch-enum"
 #endif /* __INTEL_COMPILER */
-#include "netdania-clo.h"
-#include "netdania-clo.c"
+#include "um-netdania-clo.h"
+#include "um-netdania-clo.c"
 #if defined __INTEL_COMPILER
 # pragma warning (default:593)
 # pragma warning (default:181)
@@ -901,4 +901,4 @@ main(int argc, char *argv[])
 	return 0;
 }
 
-/* netdania.c ends here */
+/* um-netdania.c ends here */

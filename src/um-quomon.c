@@ -65,6 +65,8 @@
 # undef EV_P
 # define EV_P  struct ev_loop *loop __attribute__((unused))
 #endif	/* HAVE_EV_H */
+#include <readline/readline.h>
+#include <readline/history.h>
 
 #include <unserding/unserding.h>
 #include <unserding/protocore.h>
@@ -701,7 +703,9 @@ render_win(WINDOW *w)
 	return;
 }
 
+
 static WINDOW *symw = NULL;
+static const char symw_prompt[] = " Enter symbol:";
 
 static void
 render_cb(EV_P_ ev_timer *w, int UNUSED(revents))
@@ -722,22 +726,65 @@ render_cb(EV_P_ ev_timer *w, int UNUSED(revents))
 }
 
 static void
+sigwinch_cb(EV_P_ ev_signal *UNUSED(w), int UNUSED(revents))
+{
+	render_scr();
+	render_win(curw);
+	return;
+}
+
+/* readline glue */
+static void
+handle_el(char *line)
+{
+	/* print newline */
+	if (UNLIKELY(line == NULL)) {
+		/* and finally kick the event loop */
+		ev_unloop(EV_DEFAULT_ EVUNLOOP_ALL);
+		return;
+	}
+
+	if (UNLIKELY(line[0] == '\0' || line[0] == ' ')) {
+		goto out;
+	}
+
+#if 0
+	/* stuff up our history */
+	add_history(line);
+
+	/* parse him, blocks until a reply is nigh */
+	handle_cb(line, rl_end);
+#endif	/* 0 */
+
+	move(0, 4);
+	printw(line);
+
+out:
+	/* ah, user entered something? */
+	delwin(symw);
+	symw = NULL;
+	/* and free him */
+	free(line);
+
+	/* redraw it all */
+	sigwinch_cb(NULL, NULL, 0);
+	return;
+}
+
+static void
 keypress_cb(EV_P_ ev_io *UNUSED(w), int UNUSED(revents))
 {
 	int k;
 
 	if (UNLIKELY(symw != NULL)) {
-		k = wgetch(symw);
-		if (isprint(k)) {
-			waddch(symw, k);
-			wrefresh(symw);
-		} else if (k == '\n') {
-			/* ah, user entered something? */
-			delwin(symw);
-			symw = NULL;
-			redrawwin(stdscr);
-			refresh();
-		}
+		rl_callback_read_char();
+
+		/* rebuild and print the string, John Greco's trick */
+		wmove(symw, 0, sizeof(symw_prompt));
+		wclrtoeol(symw);
+		mvwprintw(symw, 0, sizeof(symw_prompt), rl_line_buffer);
+		wmove(symw, 0, sizeof(symw_prompt) + rl_point);
+		wrefresh(symw);
 		return;
 	}
 
@@ -793,8 +840,9 @@ keypress_cb(EV_P_ ev_io *UNUSED(w), int UNUSED(revents))
 		unsigned int nc = getmaxx(stdscr);
 
 		symw = newwin(1, nc, nr - 1, 0);
-		wattron(symw, COLOR_PAIR(STATUS));
-		waddstr(symw, " Enter symbol name:");
+		wmove(symw, 0, 0);
+		wattrset(symw, COLOR_PAIR(STATUS));
+		wprintw(symw, symw_prompt);
 		wattrset(symw, A_NORMAL);
 		waddch(symw, ' ');
 		wrefresh(symw);
@@ -811,10 +859,38 @@ redraw:
 }
 
 static void
-sigwinch_cb(EV_P_ ev_signal *UNUSED(w), int UNUSED(revents))
+init_rl(void)
 {
-	render_scr();
-	render_win(curw);
+	rl_initialize();
+	rl_already_prompted = 1;
+	rl_readline_name = "unsermarkt";
+#if 0
+	rl_attempted_completion_function = udcli_comp;
+#endif	/* 0 */
+
+	rl_basic_word_break_characters = "\t\n@$><=;|&{( ";
+	rl_catch_signals = 0;
+
+#if 0
+	/* load the history file */
+	(void)read_history(histfile);
+	history_set_pos(history_length);
+#endif	/* 0 */
+
+	/* just install the handler */
+	rl_callback_handler_install("", handle_el);
+	return;
+}
+
+static void
+fini_rl(void)
+{
+	rl_callback_handler_remove();
+
+#if 0
+	/* save the history file */
+	(void)write_history(histfile);
+#endif	/* 0 */
 	return;
 }
 
@@ -903,6 +979,8 @@ main(int argc, char *argv[])
 
 	/* start the screen */
 	init_wins();
+	/* init readline */
+	init_rl();
 
 	/* watch the terminal */
 	{
@@ -917,6 +995,8 @@ main(int argc, char *argv[])
 	/* now wait for events to arrive */
 	ev_loop(EV_A_ 0);
 
+	/* and readline too */
+	fini_rl();
 	/* reset the screen */
 	fini_wins();
 

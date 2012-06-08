@@ -78,6 +78,7 @@ um_quomon_LDFLAGS = $(AM_LDFLAGS)
 um_quomon_LDFLAGS += $(AM_LDFLAGS) -lncurses
 um_quomon_LDFLAGS += $(libev_LIBS)
 um_quomon_LDFLAGS += $(unserding_LIBS)
+um_quomon_LDFLAGS += -lreadline
 endif
 
 if HAVE_TWSTOOLS

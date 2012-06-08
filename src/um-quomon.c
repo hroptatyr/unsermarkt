@@ -754,11 +754,18 @@ keypress_cb(EV_P_ ev_io *UNUSED(w), int UNUSED(revents))
 		}
 		break;
 	case KEY_RIGHT:
-		selbidp = 0;
+		if (selbidp) {
+			selbidp = 0;
+			goto redraw;
+		}
 		break;
 	case KEY_LEFT:
-		selbidp = 1;
+		if (!selbidp) {
+			selbidp = 1;
+			goto redraw;
+		}
 		break;
+
 	default:
 		break;
 	}

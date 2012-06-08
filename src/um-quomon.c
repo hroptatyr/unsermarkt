@@ -551,6 +551,8 @@ static WINDOW *curw = NULL;
 #define JUST_GREEN	2
 #define JUST_YELLOW	3
 #define JUST_BLUE	4
+#define CLISEL		5
+#define STATUS		6
 
 static void
 render_scr(void)
@@ -601,6 +603,8 @@ init_wins(void)
 	init_pair(JUST_GREEN, COLOR_GREEN, -1);
 	init_pair(JUST_YELLOW, COLOR_YELLOW, -1);
 	init_pair(JUST_BLUE, COLOR_BLUE, -1);
+	init_pair(CLISEL, COLOR_BLACK, COLOR_YELLOW);
+	init_pair(STATUS, COLOR_BLACK, COLOR_GREEN);
 
 	/* start with a basic layout */
 	render_scr();
@@ -647,11 +651,10 @@ render_win(WINDOW *w)
 		*p = '\0';
 
 		wmove(w, j, nwc / 2 - 1 - (p - tmp));
-		if (c == selcli) {
+		if (c == selcli && selbidp) {
+			wattron(w, COLOR_PAIR(CLISEL));
+		} else if (c == selcli) {
 			wattron(w, A_STANDOUT);
-			if (selbidp) {
-				wattron(w, COLOR_PAIR(JUST_YELLOW));
-			}
 		}
 		waddstr(w, tmp);
 		wattrset(w, A_NORMAL);
@@ -679,11 +682,10 @@ render_win(WINDOW *w)
 		*p = '\0';
 
 		wmove(w, j, nwc / 2  + 1);
-		if (c == selcli) {
+		if (c == selcli && !selbidp) {
+			wattron(w, COLOR_PAIR(CLISEL));
+		} else if (c == selcli) {
 			wattron(w, A_STANDOUT);
-			if (!selbidp) {
-				wattron(w, COLOR_PAIR(JUST_YELLOW));
-			}
 		}
 		waddstr(w, tmp);
 		wattrset(w, A_NORMAL);

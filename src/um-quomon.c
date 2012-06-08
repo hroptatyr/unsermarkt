@@ -531,6 +531,12 @@ sighup_cb(EV_P_ ev_signal *UNUSED(w), int UNUSED(revents))
 
 
 static WINDOW *curw = NULL;
+static int selbidp = 1;
+
+#define JUST_RED	1
+#define JUST_GREEN	2
+#define JUST_YELLOW	3
+#define JUST_BLUE	4
 
 static void
 init_wins(void)
@@ -547,7 +553,11 @@ init_wins(void)
 
 	/* colour */
 	start_color();
-	init_pair(1, COLOR_BLACK, COLOR_GREEN);
+	use_default_colors();
+	init_pair(JUST_RED, COLOR_RED, -1);
+	init_pair(JUST_GREEN, COLOR_GREEN, -1);
+	init_pair(JUST_YELLOW, COLOR_YELLOW, -1);
+	init_pair(JUST_BLUE, COLOR_BLUE, -1);
 
 	/* box the whole screen */
 	box(stdscr, 0, 0);
@@ -559,7 +569,7 @@ init_wins(void)
 
 	/* also leave a note on how to exit */
 	move(nr - 1, 0);
-	attron(COLOR_PAIR(1));
+	attron(COLOR_PAIR(JUST_GREEN) | A_REVERSE);
 	hline(' ', nc);
 	move(nr - 1, 0);
 	addstr(" Press q to quit ");
@@ -581,18 +591,13 @@ fini_wins(void)
 }
 
 static void
-render_cb(EV_P_ ev_timer *w, int UNUSED(revents))
+render_win(WINDOW *w)
 {
-	unsigned int nwr = getmaxy(curw);
-	unsigned int nwc = getmaxx(curw);
-
-	if (!changep) {
-		/* don't bother */
-		return;
-	}
+	unsigned int nwr = getmaxy(w);
+	unsigned int nwc = getmaxx(w);
 
 	/* start with a clear window */
-	wclear(curw);
+	wclear(w);
 
 	/* go through bids */
 	for (lobidx_t i = lobb->head, j = 1;
@@ -616,12 +621,15 @@ render_cb(EV_P_ ev_timer *w, int UNUSED(revents))
 		p += ffff_m30_s(p, EAT(lobb, i).v.p);
 		*p = '\0';
 
-		wmove(curw, j, nwc / 2 - 1 - (p - tmp));
+		wmove(w, j, nwc / 2 - 1 - (p - tmp));
 		if (c == selcli) {
-			wattron(curw, A_STANDOUT);
+			wattron(w, A_STANDOUT);
+			if (selbidp) {
+				wattron(w, COLOR_PAIR(JUST_YELLOW));
+			}
 		}
-		waddstr(curw, tmp);
-		wattroff(curw, A_STANDOUT);
+		waddstr(w, tmp);
+		wattrset(w, A_NORMAL);
 	}
 
 	for (lobidx_t i = loba->head, j = 1;
@@ -645,20 +653,34 @@ render_cb(EV_P_ ev_timer *w, int UNUSED(revents))
 		}
 		*p = '\0';
 
-		wmove(curw, j, nwc / 2  + 1);
+		wmove(w, j, nwc / 2  + 1);
 		if (c == selcli) {
-			wattron(curw, A_STANDOUT);
+			wattron(w, A_STANDOUT);
+			if (!selbidp) {
+				wattron(w, COLOR_PAIR(JUST_YELLOW));
+			}
 		}
-		waddstr(curw, tmp);
-		wattroff(curw, A_STANDOUT);
+		waddstr(w, tmp);
+		wattrset(w, A_NORMAL);
 	}
 
 	/* actually render the window */
-	wmove(curw, nwr - 1, nwc - 1);
-	wrefresh(curw);
+	wmove(w, nwr - 1, nwc - 1);
+	wrefresh(w);
 
 	/* reset state */
 	changep = 0;
+	return;
+}
+
+static void
+render_cb(EV_P_ ev_timer *w, int UNUSED(revents))
+{
+	/* don't bother if nothing's changed */
+	if (changep) {
+		/* render the current window */
+		render_win(curw);
+	}
 
 	/* and then set the timer again */
 	ev_timer_again(EV_A_ w);
@@ -668,12 +690,55 @@ render_cb(EV_P_ ev_timer *w, int UNUSED(revents))
 static void
 keypress_cb(EV_P_ ev_io *UNUSED(w), int UNUSED(revents))
 {
-	switch (getch()) {
+	int k;
+
+	switch ((k = getch())) {
 	case 'q':
 		ev_unloop(EV_A_ EVUNLOOP_ALL);
+		break;
+	case KEY_UP:
+	case KEY_DOWN:
+		if (selcli) {
+			lob_side_t side;
+			lobidx_t qidx;
+			lobidx_t nu;
+
+			if (selbidp) {
+				side = lobb;
+				qidx = CLI(selcli)->b;
+			} else {
+				side = loba;
+				qidx = CLI(selcli)->a;
+			}
+
+			switch (k) {
+			case KEY_UP:
+				nu = EAT(side, qidx).prev;
+				break;
+			case KEY_DOWN:
+				nu = EAT(side, qidx).next;
+				break;
+			}
+
+			if (nu) {
+				selcli = EAT(side, nu).v.cli;
+				goto redraw;
+			}
+		}
+		break;
+	case KEY_RIGHT:
+		selbidp = 0;
+		break;
+	case KEY_LEFT:
+		selbidp = 1;
+		break;
 	default:
 		break;
 	}
+	return;
+
+redraw:
+	render_win(curw);
 	return;
 }
 

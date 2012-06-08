@@ -364,6 +364,7 @@ snarf_syms(job_t j)
 
 /* the actual worker function */
 static int changep = 0;
+static lobidx_t selcli = 0;
 
 static void
 mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
@@ -409,6 +410,9 @@ mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
 
 			if ((c = find_cli(&j->sa, id)) == 0) {
 				c = add_cli(&j->sa, id);
+			}
+			if (UNLIKELY(selcli == 0)) {
+				selcli = c;
 			}
 
 			l1t = (const void*)sp;
@@ -595,16 +599,17 @@ render_cb(EV_P_ ev_timer *w, int UNUSED(revents))
 	     i && j < nwr;
 	     i = NEXT(lobb, i), j++) {
 		char tmp[128], *p = tmp;
-		lob_cli_t c = CLI(EAT(lobb, i).v.cli);
+		lobidx_t c = EAT(lobb, i).v.cli;
+		lob_cli_t cp = CLI(c);
 
-		if (c->ssz) {
-			memcpy(p, c->sym, c->ssz);
-			p += c->ssz;
+		if (cp->ssz) {
+			memcpy(p, cp->sym, cp->ssz);
+			p += cp->ssz;
 			*p++ = ' ';
 		} else {
-			memcpy(p, c->ss, c->sz);
-			p += c->sz;
-			p += sprintf(p, " %04x ", c->id);
+			memcpy(p, cp->ss, cp->sz);
+			p += cp->sz;
+			p += sprintf(p, " %04x ", cp->id);
 		}
 		p += ffff_m30_s(p, EAT(lobb, i).v.q);
 		*p++ = ' ';
@@ -612,31 +617,40 @@ render_cb(EV_P_ ev_timer *w, int UNUSED(revents))
 		*p = '\0';
 
 		wmove(curw, j, nwc / 2 - 1 - (p - tmp));
-		wprintw(curw, tmp);
+		if (c == selcli) {
+			wattron(curw, A_STANDOUT);
+		}
+		waddstr(curw, tmp);
+		wattroff(curw, A_STANDOUT);
 	}
 
 	for (lobidx_t i = loba->head, j = 1;
 	     i && j < nwr;
 	     i = NEXT(loba, i), j++) {
 		char tmp[128], *p = tmp;
-		lob_cli_t c = CLI(EAT(loba, i).v.cli);
+		lobidx_t c = EAT(loba, i).v.cli;
+		lob_cli_t cp = CLI(c);
 
 		p += ffff_m30_s(p, EAT(loba, i).v.p);
 		*p++ = ' ';
 		p += ffff_m30_s(p, EAT(loba, i).v.q);
-		if (c->ssz) {
+		if (cp->ssz) {
 			*p++ = ' ';
-			memcpy(p, c->sym, c->ssz);
-			p += c->ssz;
+			memcpy(p, cp->sym, cp->ssz);
+			p += cp->ssz;
 		} else {
-			p += sprintf(p, " %04x ", c->id);
-			memcpy(p, c->ss, c->sz);
-			p += c->sz;
+			p += sprintf(p, " %04x ", cp->id);
+			memcpy(p, cp->ss, cp->sz);
+			p += cp->sz;
 		}
 		*p = '\0';
 
 		wmove(curw, j, nwc / 2  + 1);
-		wprintw(curw, tmp);
+		if (c == selcli) {
+			wattron(curw, A_STANDOUT);
+		}
+		waddstr(curw, tmp);
+		wattroff(curw, A_STANDOUT);
 	}
 
 	/* actually render the window */

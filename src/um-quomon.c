@@ -43,6 +43,7 @@
 #include <stdbool.h>
 #include <time.h>
 #include <assert.h>
+#include <ctype.h>
 
 #if defined HAVE_SYS_SOCKET_H
 # include <sys/socket.h>
@@ -64,6 +65,8 @@
 # undef EV_P
 # define EV_P  struct ev_loop *loop __attribute__((unused))
 #endif	/* HAVE_EV_H */
+#include <readline/readline.h>
+#include <readline/history.h>
 
 #include <unserding/unserding.h>
 #include <unserding/protocore.h>
@@ -364,6 +367,8 @@ snarf_syms(job_t j)
 
 /* the actual worker function */
 static int changep = 0;
+static lobidx_t selcli = 0;
+static int selbidp = 1;
 
 static void
 mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
@@ -397,6 +402,23 @@ mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
 		char *pbuf = UDPC_PAYLOAD(JOB_PACKET(j).pbuf);
 		size_t plen = UDPC_PAYLLEN(JOB_PACKET(j).plen);
 		lobidx_t c;
+
+		if (UNLIKELY(plen == 0)) {
+			break;
+		} else if (UNLIKELY(selcli == 0)) {
+			/* peek into the first scom */
+			scom_t sp = (void*)pbuf;
+			uint16_t id = scom_thdr_tblidx(sp);
+			uint16_t ttf = scom_thdr_ttf(sp);
+
+			if (ttf == SL1T_TTF_ASK) {
+				selbidp = 0;
+			}
+			if ((c = find_cli(&j->sa, id)) == 0) {
+				c = add_cli(&j->sa, id);
+			}
+			selcli = c;
+		}
 
 		for (scom_t sp = (void*)pbuf, ep = (void*)(pbuf + plen);
 		     sp < ep;
@@ -504,92 +526,6 @@ out_revok:
 	return;
 }
 
-static void
-render_cb(EV_P_ ev_timer *w, int UNUSED(revents))
-{
-	unsigned int nr = getmaxy(stdscr);
-	unsigned int nc = getmaxx(stdscr);
-
-	if (!changep) {
-		/* don't bother */
-		return;
-	}
-
-	/* start with a clear window */
-	clear();
-
-	/* go through bids */
-	for (lobidx_t i = lobb->head, j = 1;
-	     i && j < nr;
-	     i = NEXT(lobb, i), j++) {
-		char tmp[128], *p = tmp;
-		lob_cli_t c = CLI(EAT(lobb, i).v.cli);
-
-		if (c->ssz) {
-			memcpy(p, c->sym, c->ssz);
-			p += c->ssz;
-			*p++ = ' ';
-		} else {
-			memcpy(p, c->ss, c->sz);
-			p += c->sz;
-			p += sprintf(p, " %04x ", c->id);
-		}
-		p += ffff_m30_s(p, EAT(lobb, i).v.q);
-		*p++ = ' ';
-		p += ffff_m30_s(p, EAT(lobb, i).v.p);
-		*p = '\0';
-
-		mvprintw(j, nc / 2 - 1 - (p - tmp), tmp);
-	}
-
-	for (lobidx_t i = loba->head, j = 1;
-	     i && j < nr;
-	     i = NEXT(loba, i), j++) {
-		char tmp[128], *p = tmp;
-		lob_cli_t c = CLI(EAT(loba, i).v.cli);
-
-		p += ffff_m30_s(p, EAT(loba, i).v.p);
-		*p++ = ' ';
-		p += ffff_m30_s(p, EAT(loba, i).v.q);
-		if (c->ssz) {
-			*p++ = ' ';
-			memcpy(p, c->sym, c->ssz);
-			p += c->ssz;
-		} else {
-			p += sprintf(p, " %04x ", c->id);
-			memcpy(p, c->ss, c->sz);
-			p += c->sz;
-		}
-		*p = '\0';
-
-		mvprintw(j, nc / 2 + 1, tmp);
-	}
-
-	/* print a note on how to quit */
-	mvprintw(nr - 1, 0, "Press q to quit");
-
-	/* actually render the window */
-	refresh();
-
-	/* reset state */
-	changep = 0;
-
-	/* and then set the timer again */
-	ev_timer_again(EV_A_ w);
-	return;
-}
-
-static void
-keypress_cb(EV_P_ ev_io *UNUSED(w), int UNUSED(revents))
-{
-	switch (getch()) {
-	case 'q':
-		ev_unloop(EV_A_ EVUNLOOP_ALL);
-	default:
-		break;
-	}
-	return;
-}
 
 static void
 sigint_cb(EV_P_ ev_signal *UNUSED(w), int UNUSED(revents))
@@ -608,6 +544,353 @@ static void
 sighup_cb(EV_P_ ev_signal *UNUSED(w), int UNUSED(revents))
 {
 	ev_unloop(EV_A_ EVUNLOOP_ALL);
+	return;
+}
+
+
+static WINDOW *curw = NULL;
+
+#define JUST_RED	1
+#define JUST_GREEN	2
+#define JUST_YELLOW	3
+#define JUST_BLUE	4
+#define CLISEL		5
+#define STATUS		6
+
+static void
+render_scr(void)
+{
+	unsigned int nr = getmaxy(stdscr);
+	unsigned int nc = getmaxx(stdscr);
+
+	/* box the whole screen */
+	box(stdscr, 0, 0);
+	move(nr - 2, 0);
+	addch(ACS_LLCORNER);
+	hline(0, nc - 1);
+	move(nr - 2, nc - 1);
+	addch(ACS_LRCORNER);
+
+	/* also leave a note on how to exit */
+	move(nr - 1, 0);
+	attron(COLOR_PAIR(STATUS));
+	hline(' ', nc);
+	move(nr - 1, 0);
+	addstr(" Press q to quit ");
+	attrset(A_NORMAL);
+
+	/* delete old beef window */
+	if (curw) {
+		delwin(curw);
+	}
+	/* start with the beef window */
+	curw = newwin(nr - 3, nc - 2, 1, 1);
+
+	/* big refreshment */
+	refresh();
+	return;
+}
+
+static void
+init_wins(void)
+{
+
+	initscr();
+	keypad(stdscr, TRUE);
+	noecho();
+
+	/* colour */
+	start_color();
+	use_default_colors();
+	init_pair(JUST_RED, COLOR_RED, -1);
+	init_pair(JUST_GREEN, COLOR_GREEN, -1);
+	init_pair(JUST_YELLOW, COLOR_YELLOW, -1);
+	init_pair(JUST_BLUE, COLOR_BLUE, -1);
+	init_pair(CLISEL, COLOR_BLACK, COLOR_YELLOW);
+	init_pair(STATUS, COLOR_BLACK, COLOR_GREEN);
+
+	/* start with a basic layout */
+	render_scr();
+	return;
+}
+
+static void
+fini_wins(void)
+{
+	delwin(curw);
+	endwin();
+	return;
+}
+
+static void
+render_win(WINDOW *w)
+{
+	unsigned int nwr = getmaxy(w);
+	unsigned int nwc = getmaxx(w);
+
+	/* start with a clear window */
+	wclear(w);
+
+	/* go through bids */
+	for (lobidx_t i = lobb->head, j = 1;
+	     i && j < nwr;
+	     i = NEXT(lobb, i), j++) {
+		char tmp[128], *p = tmp;
+		lobidx_t c = EAT(lobb, i).v.cli;
+		lob_cli_t cp = CLI(c);
+
+		if (cp->ssz) {
+			memcpy(p, cp->sym, cp->ssz);
+			p += cp->ssz;
+			*p++ = ' ';
+		} else {
+			memcpy(p, cp->ss, cp->sz);
+			p += cp->sz;
+			p += sprintf(p, " %04x ", cp->id);
+		}
+		p += ffff_m30_s(p, EAT(lobb, i).v.q);
+		*p++ = ' ';
+		p += ffff_m30_s(p, EAT(lobb, i).v.p);
+		*p = '\0';
+
+		wmove(w, j, nwc / 2 - 1 - (p - tmp));
+		if (c == selcli && selbidp) {
+			wattron(w, COLOR_PAIR(CLISEL));
+		} else if (c == selcli) {
+			wattron(w, A_STANDOUT);
+		}
+		waddstr(w, tmp);
+		wattrset(w, A_NORMAL);
+	}
+
+	for (lobidx_t i = loba->head, j = 1;
+	     i && j < nwr;
+	     i = NEXT(loba, i), j++) {
+		char tmp[128], *p = tmp;
+		lobidx_t c = EAT(loba, i).v.cli;
+		lob_cli_t cp = CLI(c);
+
+		p += ffff_m30_s(p, EAT(loba, i).v.p);
+		*p++ = ' ';
+		p += ffff_m30_s(p, EAT(loba, i).v.q);
+		if (cp->ssz) {
+			*p++ = ' ';
+			memcpy(p, cp->sym, cp->ssz);
+			p += cp->ssz;
+		} else {
+			p += sprintf(p, " %04x ", cp->id);
+			memcpy(p, cp->ss, cp->sz);
+			p += cp->sz;
+		}
+		*p = '\0';
+
+		wmove(w, j, nwc / 2  + 1);
+		if (c == selcli && !selbidp) {
+			wattron(w, COLOR_PAIR(CLISEL));
+		} else if (c == selcli) {
+			wattron(w, A_STANDOUT);
+		}
+		waddstr(w, tmp);
+		wattrset(w, A_NORMAL);
+	}
+
+	/* actually render the window */
+	wmove(w, nwr - 1, nwc - 1);
+	wrefresh(w);
+
+	/* reset state */
+	changep = 0;
+	return;
+}
+
+
+static WINDOW *symw = NULL;
+static const char symw_prompt[] = " Enter symbol:";
+
+static void
+render_cb(EV_P_ ev_timer *w, int UNUSED(revents))
+{
+	/* don't bother if nothing's changed */
+	if (changep) {
+		/* render the current window */
+		render_win(curw);
+
+		if (UNLIKELY(symw != NULL)) {
+			wrefresh(symw);
+		}
+	}
+
+	/* and then set the timer again */
+	ev_timer_again(EV_A_ w);
+	return;
+}
+
+static void
+sigwinch_cb(EV_P_ ev_signal *UNUSED(w), int UNUSED(revents))
+{
+	render_scr();
+	render_win(curw);
+	return;
+}
+
+/* readline glue */
+static void
+handle_el(char *line)
+{
+	/* print newline */
+	if (UNLIKELY(line == NULL)) {
+		/* and finally kick the event loop */
+		ev_unloop(EV_DEFAULT_ EVUNLOOP_ALL);
+		return;
+	}
+
+	if (UNLIKELY(line[0] == '\0' || line[0] == ' ')) {
+		goto out;
+	}
+
+#if 0
+	/* stuff up our history */
+	add_history(line);
+
+	/* parse him, blocks until a reply is nigh */
+	handle_cb(line, rl_end);
+#endif	/* 0 */
+
+	move(0, 4);
+	printw(line);
+
+out:
+	/* ah, user entered something? */
+	delwin(symw);
+	symw = NULL;
+	/* and free him */
+	free(line);
+
+	/* redraw it all */
+	sigwinch_cb(NULL, NULL, 0);
+	return;
+}
+
+static void
+keypress_cb(EV_P_ ev_io *UNUSED(w), int UNUSED(revents))
+{
+	int k;
+
+	if (UNLIKELY(symw != NULL)) {
+		rl_callback_read_char();
+
+		/* rebuild and print the string, John Greco's trick */
+		wmove(symw, 0, sizeof(symw_prompt));
+		wclrtoeol(symw);
+		mvwprintw(symw, 0, sizeof(symw_prompt), rl_line_buffer);
+		wmove(symw, 0, sizeof(symw_prompt) + rl_point);
+		wrefresh(symw);
+		return;
+	}
+
+	switch ((k = getch())) {
+	case 'q':
+		ev_unloop(EV_A_ EVUNLOOP_ALL);
+		break;
+	case KEY_UP:
+	case KEY_DOWN:
+		if (selcli) {
+			lob_side_t side;
+			lobidx_t qidx;
+			lobidx_t nu;
+
+			if (selbidp) {
+				side = lobb;
+				qidx = CLI(selcli)->b;
+			} else {
+				side = loba;
+				qidx = CLI(selcli)->a;
+			}
+
+			switch (k) {
+			case KEY_UP:
+				nu = EAT(side, qidx).prev;
+				break;
+			case KEY_DOWN:
+				nu = EAT(side, qidx).next;
+				break;
+			}
+
+			if (nu) {
+				selcli = EAT(side, nu).v.cli;
+				goto redraw;
+			}
+		}
+		break;
+	case KEY_RIGHT:
+		if (selbidp) {
+			selbidp = 0;
+			goto redraw;
+		}
+		break;
+	case KEY_LEFT:
+		if (!selbidp) {
+			selbidp = 1;
+			goto redraw;
+		}
+		break;
+
+	case '\n': {
+		unsigned int nr = getmaxy(stdscr);
+		unsigned int nc = getmaxx(stdscr);
+
+		symw = newwin(1, nc, nr - 1, 0);
+		wmove(symw, 0, 0);
+		wattrset(symw, COLOR_PAIR(STATUS));
+		wprintw(symw, symw_prompt);
+		wattrset(symw, A_NORMAL);
+		waddch(symw, ' ');
+		wrefresh(symw);
+		break;
+	}
+	default:
+		break;
+	}
+	return;
+
+redraw:
+	render_win(curw);
+	return;
+}
+
+static void
+init_rl(void)
+{
+	rl_initialize();
+	rl_already_prompted = 1;
+	rl_readline_name = "unsermarkt";
+#if 0
+	rl_attempted_completion_function = udcli_comp;
+#endif	/* 0 */
+
+	rl_basic_word_break_characters = "\t\n@$><=;|&{( ";
+	rl_catch_signals = 0;
+
+#if 0
+	/* load the history file */
+	(void)read_history(histfile);
+	history_set_pos(history_length);
+#endif	/* 0 */
+
+	/* just install the handler */
+	rl_callback_handler_install("", handle_el);
+	return;
+}
+
+static void
+fini_rl(void)
+{
+	rl_callback_handler_remove();
+
+#if 0
+	/* save the history file */
+	(void)write_history(histfile);
+#endif	/* 0 */
 	return;
 }
 
@@ -643,6 +926,7 @@ main(int argc, char *argv[])
 	ev_signal sighup_watcher[1];
 	ev_signal sigterm_watcher[1];
 	ev_signal sigpipe_watcher[1];
+	ev_signal sigwinch_watcher[1];
 	ev_timer render[1];
 
 	/* parse the command line */
@@ -665,6 +949,9 @@ main(int argc, char *argv[])
 	/* initialise a SIGHUP handler */
 	ev_signal_init(sighup_watcher, sighup_cb, SIGHUP);
 	ev_signal_start(EV_A_ sighup_watcher);
+	/* initialise a SIGWINCH handler */
+	ev_signal_init(sigwinch_watcher, sigwinch_cb, SIGWINCH);
+	ev_signal_start(EV_A_ sigwinch_watcher);
 	/* initialise a timer */
 	ev_timer_init(render, render_cb, 0.1, 0.1);
 	ev_timer_start(EV_A_ render);
@@ -691,9 +978,9 @@ main(int argc, char *argv[])
 	}
 
 	/* start the screen */
-	initscr();
-	keypad(stdscr, TRUE);
-	noecho();
+	init_wins();
+	/* init readline */
+	init_rl();
 
 	/* watch the terminal */
 	{
@@ -708,8 +995,10 @@ main(int argc, char *argv[])
 	/* now wait for events to arrive */
 	ev_loop(EV_A_ 0);
 
+	/* and readline too */
+	fini_rl();
 	/* reset the screen */
-	endwin();
+	fini_wins();
 
 	/* finish order book */
 	free_lob();

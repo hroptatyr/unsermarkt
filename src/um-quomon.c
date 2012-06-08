@@ -365,6 +365,7 @@ snarf_syms(job_t j)
 /* the actual worker function */
 static int changep = 0;
 static lobidx_t selcli = 0;
+static int selbidp = 1;
 
 static void
 mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
@@ -399,6 +400,23 @@ mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
 		size_t plen = UDPC_PAYLLEN(JOB_PACKET(j).plen);
 		lobidx_t c;
 
+		if (UNLIKELY(plen == 0)) {
+			break;
+		} else if (UNLIKELY(selcli == 0)) {
+			/* peek into the first scom */
+			scom_t sp = (void*)pbuf;
+			uint16_t id = scom_thdr_tblidx(sp);
+			uint16_t ttf = scom_thdr_ttf(sp);
+
+			if (ttf == SL1T_TTF_ASK) {
+				selbidp = 0;
+			}
+			if ((c = find_cli(&j->sa, id)) == 0) {
+				c = add_cli(&j->sa, id);
+			}
+			selcli = c;
+		}
+
 		for (scom_t sp = (void*)pbuf, ep = (void*)(pbuf + plen);
 		     sp < ep;
 		     sp += scom_tick_size(sp) *
@@ -410,9 +428,6 @@ mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
 
 			if ((c = find_cli(&j->sa, id)) == 0) {
 				c = add_cli(&j->sa, id);
-			}
-			if (UNLIKELY(selcli == 0)) {
-				selcli = c;
 			}
 
 			l1t = (const void*)sp;
@@ -531,7 +546,6 @@ sighup_cb(EV_P_ ev_signal *UNUSED(w), int UNUSED(revents))
 
 
 static WINDOW *curw = NULL;
-static int selbidp = 1;
 
 #define JUST_RED	1
 #define JUST_GREEN	2

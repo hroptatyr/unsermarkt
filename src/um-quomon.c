@@ -553,25 +553,10 @@ static WINDOW *curw = NULL;
 #define JUST_BLUE	4
 
 static void
-init_wins(void)
+render_scr(void)
 {
-	unsigned int nr;
-	unsigned int nc;
-
-	initscr();
-	keypad(stdscr, TRUE);
-	noecho();
-
-	nr = getmaxy(stdscr);
-	nc = getmaxx(stdscr);
-
-	/* colour */
-	start_color();
-	use_default_colors();
-	init_pair(JUST_RED, COLOR_RED, -1);
-	init_pair(JUST_GREEN, COLOR_GREEN, -1);
-	init_pair(JUST_YELLOW, COLOR_YELLOW, -1);
-	init_pair(JUST_BLUE, COLOR_BLUE, -1);
+	unsigned int nr = getmaxy(stdscr);
+	unsigned int nc = getmaxx(stdscr);
 
 	/* box the whole screen */
 	box(stdscr, 0, 0);
@@ -583,16 +568,42 @@ init_wins(void)
 
 	/* also leave a note on how to exit */
 	move(nr - 1, 0);
-	attron(COLOR_PAIR(JUST_GREEN) | A_REVERSE);
+	attron(COLOR_PAIR(STATUS));
 	hline(' ', nc);
 	move(nr - 1, 0);
 	addstr(" Press q to quit ");
+	attrset(A_NORMAL);
 
+	/* delete old beef window */
+	if (curw) {
+		delwin(curw);
+	}
 	/* start with the beef window */
 	curw = newwin(nr - 3, nc - 2, 1, 1);
 
 	/* big refreshment */
 	refresh();
+	return;
+}
+
+static void
+init_wins(void)
+{
+
+	initscr();
+	keypad(stdscr, TRUE);
+	noecho();
+
+	/* colour */
+	start_color();
+	use_default_colors();
+	init_pair(JUST_RED, COLOR_RED, -1);
+	init_pair(JUST_GREEN, COLOR_GREEN, -1);
+	init_pair(JUST_YELLOW, COLOR_YELLOW, -1);
+	init_pair(JUST_BLUE, COLOR_BLUE, -1);
+
+	/* start with a basic layout */
+	render_scr();
 	return;
 }
 

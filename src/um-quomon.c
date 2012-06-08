@@ -654,6 +654,7 @@ render_cb(EV_P_ ev_timer *w, int UNUSED(revents))
 	}
 
 	/* actually render the window */
+	wmove(curw, nwr - 1, nwc - 1);
 	wrefresh(curw);
 
 	/* reset state */

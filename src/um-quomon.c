@@ -776,6 +776,14 @@ redraw:
 	return;
 }
 
+static void
+sigwinch_cb(EV_P_ ev_signal *UNUSED(w), int UNUSED(revents))
+{
+	render_scr();
+	render_win(curw);
+	return;
+}
+
 
 #if defined __INTEL_COMPILER
 # pragma warning (disable:593)
@@ -808,6 +816,7 @@ main(int argc, char *argv[])
 	ev_signal sighup_watcher[1];
 	ev_signal sigterm_watcher[1];
 	ev_signal sigpipe_watcher[1];
+	ev_signal sigwinch_watcher[1];
 	ev_timer render[1];
 
 	/* parse the command line */
@@ -830,6 +839,9 @@ main(int argc, char *argv[])
 	/* initialise a SIGHUP handler */
 	ev_signal_init(sighup_watcher, sighup_cb, SIGHUP);
 	ev_signal_start(EV_A_ sighup_watcher);
+	/* initialise a SIGWINCH handler */
+	ev_signal_init(sigwinch_watcher, sigwinch_cb, SIGWINCH);
+	ev_signal_start(EV_A_ sigwinch_watcher);
 	/* initialise a timer */
 	ev_timer_init(render, render_cb, 0.1, 0.1);
 	ev_timer_start(EV_A_ render);

@@ -504,92 +504,6 @@ out_revok:
 	return;
 }
 
-static void
-render_cb(EV_P_ ev_timer *w, int UNUSED(revents))
-{
-	unsigned int nr = getmaxy(stdscr);
-	unsigned int nc = getmaxx(stdscr);
-
-	if (!changep) {
-		/* don't bother */
-		return;
-	}
-
-	/* start with a clear window */
-	clear();
-
-	/* go through bids */
-	for (lobidx_t i = lobb->head, j = 1;
-	     i && j < nr;
-	     i = NEXT(lobb, i), j++) {
-		char tmp[128], *p = tmp;
-		lob_cli_t c = CLI(EAT(lobb, i).v.cli);
-
-		if (c->ssz) {
-			memcpy(p, c->sym, c->ssz);
-			p += c->ssz;
-			*p++ = ' ';
-		} else {
-			memcpy(p, c->ss, c->sz);
-			p += c->sz;
-			p += sprintf(p, " %04x ", c->id);
-		}
-		p += ffff_m30_s(p, EAT(lobb, i).v.q);
-		*p++ = ' ';
-		p += ffff_m30_s(p, EAT(lobb, i).v.p);
-		*p = '\0';
-
-		mvprintw(j, nc / 2 - 1 - (p - tmp), tmp);
-	}
-
-	for (lobidx_t i = loba->head, j = 1;
-	     i && j < nr;
-	     i = NEXT(loba, i), j++) {
-		char tmp[128], *p = tmp;
-		lob_cli_t c = CLI(EAT(loba, i).v.cli);
-
-		p += ffff_m30_s(p, EAT(loba, i).v.p);
-		*p++ = ' ';
-		p += ffff_m30_s(p, EAT(loba, i).v.q);
-		if (c->ssz) {
-			*p++ = ' ';
-			memcpy(p, c->sym, c->ssz);
-			p += c->ssz;
-		} else {
-			p += sprintf(p, " %04x ", c->id);
-			memcpy(p, c->ss, c->sz);
-			p += c->sz;
-		}
-		*p = '\0';
-
-		mvprintw(j, nc / 2 + 1, tmp);
-	}
-
-	/* print a note on how to quit */
-	mvprintw(nr - 1, 0, "Press q to quit");
-
-	/* actually render the window */
-	refresh();
-
-	/* reset state */
-	changep = 0;
-
-	/* and then set the timer again */
-	ev_timer_again(EV_A_ w);
-	return;
-}
-
-static void
-keypress_cb(EV_P_ ev_io *UNUSED(w), int UNUSED(revents))
-{
-	switch (getch()) {
-	case 'q':
-		ev_unloop(EV_A_ EVUNLOOP_ALL);
-	default:
-		break;
-	}
-	return;
-}
 
 static void
 sigint_cb(EV_P_ ev_signal *UNUSED(w), int UNUSED(revents))
@@ -608,6 +522,143 @@ static void
 sighup_cb(EV_P_ ev_signal *UNUSED(w), int UNUSED(revents))
 {
 	ev_unloop(EV_A_ EVUNLOOP_ALL);
+	return;
+}
+
+
+static WINDOW *curw = NULL;
+
+static void
+init_wins(void)
+{
+	unsigned int nr;
+	unsigned int nc;
+
+	initscr();
+	keypad(stdscr, TRUE);
+	noecho();
+
+	nr = getmaxy(stdscr);
+	nc = getmaxx(stdscr);
+
+	/* colour */
+	start_color();
+	init_pair(1, COLOR_BLACK, COLOR_GREEN);
+
+	/* box the whole screen */
+	box(stdscr, 0, 0);
+	move(nr - 2, 0);
+	addch(ACS_LLCORNER);
+	hline(0, nc - 1);
+	move(nr - 2, nc - 1);
+	addch(ACS_LRCORNER);
+
+	/* also leave a note on how to exit */
+	move(nr - 1, 0);
+	attron(COLOR_PAIR(1));
+	hline(' ', nc);
+	move(nr - 1, 0);
+	addstr(" Press q to quit ");
+
+	/* start with the beef window */
+	curw = newwin(nr - 3, nc - 2, 1, 1);
+
+	/* big refreshment */
+	refresh();
+	return;
+}
+
+static void
+fini_wins(void)
+{
+	delwin(curw);
+	endwin();
+	return;
+}
+
+static void
+render_cb(EV_P_ ev_timer *w, int UNUSED(revents))
+{
+	unsigned int nwr = getmaxy(curw);
+	unsigned int nwc = getmaxx(curw);
+
+	if (!changep) {
+		/* don't bother */
+		return;
+	}
+
+	/* start with a clear window */
+	wclear(curw);
+
+	/* go through bids */
+	for (lobidx_t i = lobb->head, j = 1;
+	     i && j < nwr;
+	     i = NEXT(lobb, i), j++) {
+		char tmp[128], *p = tmp;
+		lob_cli_t c = CLI(EAT(lobb, i).v.cli);
+
+		if (c->ssz) {
+			memcpy(p, c->sym, c->ssz);
+			p += c->ssz;
+			*p++ = ' ';
+		} else {
+			memcpy(p, c->ss, c->sz);
+			p += c->sz;
+			p += sprintf(p, " %04x ", c->id);
+		}
+		p += ffff_m30_s(p, EAT(lobb, i).v.q);
+		*p++ = ' ';
+		p += ffff_m30_s(p, EAT(lobb, i).v.p);
+		*p = '\0';
+
+		wmove(curw, j, nwc / 2 - 1 - (p - tmp));
+		wprintw(curw, tmp);
+	}
+
+	for (lobidx_t i = loba->head, j = 1;
+	     i && j < nwr;
+	     i = NEXT(loba, i), j++) {
+		char tmp[128], *p = tmp;
+		lob_cli_t c = CLI(EAT(loba, i).v.cli);
+
+		p += ffff_m30_s(p, EAT(loba, i).v.p);
+		*p++ = ' ';
+		p += ffff_m30_s(p, EAT(loba, i).v.q);
+		if (c->ssz) {
+			*p++ = ' ';
+			memcpy(p, c->sym, c->ssz);
+			p += c->ssz;
+		} else {
+			p += sprintf(p, " %04x ", c->id);
+			memcpy(p, c->ss, c->sz);
+			p += c->sz;
+		}
+		*p = '\0';
+
+		wmove(curw, j, nwc / 2  + 1);
+		wprintw(curw, tmp);
+	}
+
+	/* actually render the window */
+	wrefresh(curw);
+
+	/* reset state */
+	changep = 0;
+
+	/* and then set the timer again */
+	ev_timer_again(EV_A_ w);
+	return;
+}
+
+static void
+keypress_cb(EV_P_ ev_io *UNUSED(w), int UNUSED(revents))
+{
+	switch (getch()) {
+	case 'q':
+		ev_unloop(EV_A_ EVUNLOOP_ALL);
+	default:
+		break;
+	}
 	return;
 }
 
@@ -691,9 +742,7 @@ main(int argc, char *argv[])
 	}
 
 	/* start the screen */
-	initscr();
-	keypad(stdscr, TRUE);
-	noecho();
+	init_wins();
 
 	/* watch the terminal */
 	{
@@ -709,7 +758,7 @@ main(int argc, char *argv[])
 	ev_loop(EV_A_ 0);
 
 	/* reset the screen */
-	endwin();
+	fini_wins();
 
 	/* finish order book */
 	free_lob();

@@ -43,6 +43,7 @@
 #include <stdbool.h>
 #include <time.h>
 #include <assert.h>
+#include <ctype.h>
 
 #if defined HAVE_SYS_SOCKET_H
 # include <sys/socket.h>
@@ -700,6 +701,8 @@ render_win(WINDOW *w)
 	return;
 }
 
+static WINDOW *symw = NULL;
+
 static void
 render_cb(EV_P_ ev_timer *w, int UNUSED(revents))
 {
@@ -707,6 +710,10 @@ render_cb(EV_P_ ev_timer *w, int UNUSED(revents))
 	if (changep) {
 		/* render the current window */
 		render_win(curw);
+
+		if (UNLIKELY(symw != NULL)) {
+			wrefresh(symw);
+		}
 	}
 
 	/* and then set the timer again */
@@ -718,6 +725,21 @@ static void
 keypress_cb(EV_P_ ev_io *UNUSED(w), int UNUSED(revents))
 {
 	int k;
+
+	if (UNLIKELY(symw != NULL)) {
+		k = wgetch(symw);
+		if (isprint(k)) {
+			waddch(symw, k);
+			wrefresh(symw);
+		} else if (k == '\n') {
+			/* ah, user entered something? */
+			delwin(symw);
+			symw = NULL;
+			redrawwin(stdscr);
+			refresh();
+		}
+		return;
+	}
 
 	switch ((k = getch())) {
 	case 'q':
@@ -766,6 +788,18 @@ keypress_cb(EV_P_ ev_io *UNUSED(w), int UNUSED(revents))
 		}
 		break;
 
+	case '\n': {
+		unsigned int nr = getmaxy(stdscr);
+		unsigned int nc = getmaxx(stdscr);
+
+		symw = newwin(1, nc, nr - 1, 0);
+		wattron(symw, COLOR_PAIR(STATUS));
+		waddstr(symw, " Enter symbol name:");
+		wattrset(symw, A_NORMAL);
+		waddch(symw, ' ');
+		wrefresh(symw);
+		break;
+	}
 	default:
 		break;
 	}

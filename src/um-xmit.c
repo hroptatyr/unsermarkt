@@ -47,9 +47,8 @@
 #include <sys/time.h>
 #include <sys/epoll.h>
 #include <uterus.h>
-#include "unserding.h"
-#include "protocore.h"
-#include "seria.h"
+#include <unserding/unserding.h>
+#include <unserding/protocore.h>
 
 #if !defined LIKELY
 # define LIKELY(_x)	__builtin_expect(!!(_x), 1)
@@ -107,7 +106,7 @@ error(int eno, const char *fmt, ...)
 {
 	va_list vap;
 	va_start(vap, fmt);
-	fputs("[ud-xmit]: ", stderr);
+	fputs("[um-xmit]: ", stderr);
 	vfprintf(stderr, fmt, vap);
 	va_end(vap);
 	if (eno || errno) {
@@ -467,7 +466,7 @@ main(int argc, char *argv[])
 
 	/* also accept connections on that socket and the mcast network */
 	if ((ctx->epfd = epoll_create(2)) < 0) {
-		error(0, "cannot instantiate epoll on ud-xmit socket");
+		error(0, "cannot instantiate epoll on um-xmit socket");
 	} else {
 		struct epoll_event ev[1];
 

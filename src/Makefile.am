@@ -85,7 +85,8 @@ um_xmit_SOURCES = um-xmit.c
 BUILT_SOURCES += um-xmit-clo.c um-xmit-clo.h
 um_xmit_CPPFLAGS = $(AM_CPPFLAGS)
 um_xmit_CPPFLAGS += $(uterus_CFLAGS)
-um_xmit_LDFLAGS = -static
+um_xmit_CPPFLAGS += $(unserding_CFLAGS)
+um_xmit_LDFLAGS = $(AM_LDFLAGS)
 um_xmit_LDFLAGS += $(uterus_LIBS)
 um_xmit_LDFLAGS += $(unserding_LIBS)
 endif

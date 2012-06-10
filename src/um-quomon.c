@@ -140,7 +140,7 @@ struct lob_s {
 
 
 /* we support a maximum of 64 order books atm */
-static struct lob_s lob[128];
+static struct lob_s lob[128] = {0};
 size_t nlob = 0;
 static lob_cli_t cli = NULL;
 static size_t ncli = 0;
@@ -160,29 +160,53 @@ static size_t alloc_cli = 0;
 #define PROT_MEM	(PROT_READ | PROT_WRITE)
 
 static void
+resz_lob(lobidx_t li, size_t at_least)
+{
+	lob_side_t l = lob[li].lob;
+	size_t old_sz = lob[li].alloc_sz;
+	size_t new_sz = (at_least * sizeof(struct lob_entnav_s) + 4095) & ~4095;
+	size_t last_free;
+	size_t ol_nidx = old_sz / sizeof(struct lob_entnav_s);
+	size_t nu_nidx = new_sz / sizeof(struct lob_entnav_s);
+
+	if (l) {
+		l = lob[li].lob = mremap(l, old_sz, new_sz, MREMAP_MAYMOVE);
+	} else {
+		l = lob[li].lob = mmap(NULL, new_sz, PROT_MEM, MAP_MEM, -1, 0);
+	}
+	lob[li].alloc_sz = new_sz;
+
+	for (last_free = l->free;
+	     last_free && NEXT(l, last_free);
+	     last_free = NEXT(l, last_free));
+
+	/* i should now point to the last guy */
+	if (last_free) {
+		NEXT(l, last_free) = ol_nidx + 1;
+	} else {
+		l->free = ol_nidx + 1;
+	}
+	for (last_free = ol_nidx + 1; last_free < nu_nidx - 1; last_free++) {
+		NEXT(l, last_free) = last_free + 1;
+	}
+	return;
+}
+
+static void
 init_lob(void)
 {
 	size_t lobi;
-	const size_t ini_sz = 65536;
+	const size_t ini_sz = 4096;
 
 	/* start off with one big limit order book */
 	lobi = nlob++;
-	lob[lobi].lob = mmap(NULL, ini_sz, PROT_MEM, MAP_MEM, -1, 0);
-	lob[lobi].alloc_sz = ini_sz;
+	resz_lob(lobi, ini_sz / sizeof(struct lob_entnav_s));
 	lobi = nlob++;
-	lob[lobi].lob = mmap(NULL, ini_sz, PROT_MEM, MAP_MEM, -1, 0);
-	lob[lobi].alloc_sz = ini_sz;
+	resz_lob(lobi, ini_sz / sizeof(struct lob_entnav_s));
+
 	/* and our client list */
 	cli = mmap(NULL, 4096, PROT_MEM, MAP_MEM, -1, 0);
 	alloc_cli = 4096;
-
-	/* init the lob */
-	lob[BIDIDX(0)].lob->free = 1;
-	lob[ASKIDX(0)].lob->free = 1;
-	for (size_t i = 1; i < ini_sz / sizeof(struct lob_entnav_s) - 1; i++) {
-		NEXT(lob[BIDIDX(0)].lob, i) = i + 1;
-		NEXT(lob[ASKIDX(0)].lob, i) = i + 1;
-	}
 	return;
 }
 
@@ -205,7 +229,11 @@ lob_ins_at(lobidx_t li, lobidx_t pr, struct lob_entry_s v)
 	lobidx_t nu;
 	lob_side_t s = lob[li].lob;
 
-	nu = s->free;
+	if (!(nu = s->free)) {
+		resz_lob(li, (lob[li].alloc_sz + 4096) / sizeof(*s->e));
+		s = lob[li].lob;
+		nu = s->free;
+	}
 	assert(nu);
 	assert(nu != pr);
 	assert(s->head != s->free);

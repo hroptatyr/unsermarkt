@@ -85,12 +85,14 @@
 typedef uint32_t lobidx_t;
 typedef struct lob_cli_s *lob_cli_t;
 typedef union lob_side_u *lob_side_t;
+typedef struct lob_s *lob_t;
 
 /* the client */
 struct lob_cli_s {
 	union ud_sockaddr_u sa;
 	uint16_t id;
 
+	lobidx_t lob;
 	lobidx_t b;
 	lobidx_t a;
 
@@ -130,9 +132,16 @@ union lob_side_u {
 	};
 };
 
+/* all sides */
+struct lob_s {
+	lob_side_t lob;
+	size_t alloc_sz;
+};
+
 
-static lob_side_t lobb = NULL;
-static lob_side_t loba = NULL;
+/* we support a maximum of 64 order books atm */
+static struct lob_s lob[128] = {0};
+size_t nlob = 0;
 static lob_cli_t cli = NULL;
 static size_t ncli = 0;
 static size_t alloc_cli = 0;
@@ -141,6 +150,8 @@ static size_t alloc_cli = 0;
 #define EAT(y, x)	y->e[x]
 #define NEXT(y, x)	EAT(y, x).next
 #define PREV(y, x)	EAT(y, x).prev
+#define BIDIDX(i)	(2 * i)
+#define ASKIDX(i)	(2 * i + 1)
 
 #if defined MAP_ANON && !defined MAP_ANONYMOUS
 # define MAP_ANONYMOUS	MAP_ANON
@@ -149,38 +160,80 @@ static size_t alloc_cli = 0;
 #define PROT_MEM	(PROT_READ | PROT_WRITE)
 
 static void
+resz_lob(lobidx_t li, size_t at_least)
+{
+	lob_side_t l = lob[li].lob;
+	size_t old_sz = lob[li].alloc_sz;
+	size_t new_sz = (at_least * sizeof(struct lob_entnav_s) + 4095) & ~4095;
+	size_t last_free;
+	size_t ol_nidx = old_sz / sizeof(struct lob_entnav_s);
+	size_t nu_nidx = new_sz / sizeof(struct lob_entnav_s);
+
+	if (l) {
+		l = lob[li].lob = mremap(l, old_sz, new_sz, MREMAP_MAYMOVE);
+	} else {
+		l = lob[li].lob = mmap(NULL, new_sz, PROT_MEM, MAP_MEM, -1, 0);
+	}
+	lob[li].alloc_sz = new_sz;
+
+	for (last_free = l->free;
+	     last_free && NEXT(l, last_free);
+	     last_free = NEXT(l, last_free));
+
+	/* i should now point to the last guy */
+	if (last_free) {
+		NEXT(l, last_free) = ol_nidx + 1;
+	} else {
+		l->free = ol_nidx + 1;
+	}
+	for (last_free = ol_nidx + 1; last_free < nu_nidx - 1; last_free++) {
+		NEXT(l, last_free) = last_free + 1;
+	}
+	return;
+}
+
+static void
 init_lob(void)
 {
-	lobb = mmap(NULL, 4096, PROT_MEM, MAP_MEM, -1, 0);
-	loba = mmap(NULL, 4096, PROT_MEM, MAP_MEM, -1, 0);
+	size_t lobi;
+	const size_t ini_sz = 4096;
+
+	/* start off with one big limit order book */
+	lobi = nlob++;
+	resz_lob(lobi, ini_sz / sizeof(struct lob_entnav_s));
+	lobi = nlob++;
+	resz_lob(lobi, ini_sz / sizeof(struct lob_entnav_s));
+
+	/* and our client list */
 	cli = mmap(NULL, 4096, PROT_MEM, MAP_MEM, -1, 0);
 	alloc_cli = 4096;
-
-	/* init the lob */
-	lobb->free = 1;
-	loba->free = 1;
-	for (lobidx_t i = 1; i < 4096 / sizeof(*lobb->e) - 1; i++) {
-		NEXT(lobb, i) = i + 1;
-		NEXT(loba, i) = i + 1;
-	}
 	return;
 }
 
 static void
 free_lob(void)
 {
-	munmap(lobb, 4096);
-	munmap(loba, 4096);
+	/* free the lob blob first */
+	for (size_t i = 0; i < nlob; i++) {
+		munmap(lob[i].lob, lob[i].alloc_sz);
+		lob[i].alloc_sz = 0;
+	}
+	/* and the list of clients */
 	munmap(cli, 4096);
 	return;
 }
 
 static lobidx_t
-lob_ins_at(lob_side_t s, lobidx_t pr, struct lob_entry_s v)
+lob_ins_at(lobidx_t li, lobidx_t pr, struct lob_entry_s v)
 {
 	lobidx_t nu;
+	lob_side_t s = lob[li].lob;
 
-	nu = s->free;
+	if (!(nu = s->free)) {
+		resz_lob(li, (lob[li].alloc_sz + 4096) / sizeof(*s->e));
+		s = lob[li].lob;
+		nu = s->free;
+	}
 	assert(nu);
 	assert(nu != pr);
 	assert(s->head != s->free);
@@ -212,8 +265,10 @@ lob_ins_at(lob_side_t s, lobidx_t pr, struct lob_entry_s v)
 }
 
 static void
-lob_rem_at(lob_side_t s, lobidx_t idx)
+lob_rem_at(lobidx_t li, lobidx_t idx)
 {
+	lob_side_t s = lob[li].lob;
+
 	assert(idx);
 
 	/* fix up navigators */
@@ -241,29 +296,15 @@ lob_rem_at(lob_side_t s, lobidx_t idx)
 }
 
 static lobidx_t
-find_bid(m30_t p)
+find_quote(lobidx_t li, m30_t p)
 {
 	lobidx_t idx = 0;
+	lob_side_t l = lob[li].lob;
 
-	for (lobidx_t i = lobb->head; i; idx = i, i = NEXT(lobb, i)) {
-		if (EAT(lobb, i).v.p.v < p.v) {
+	for (size_t i = l->head; i; idx = i, i = NEXT(l, i)) {
+		if (EAT(l, i).v.p.v < p.v) {
 			return idx;
-		} else if (EAT(lobb, i).v.p.v == p.v) {
-			return i;
-		}
-	}
-	return idx;
-}
-
-static lobidx_t
-find_ask(m30_t p)
-{
-	lobidx_t idx = 0;
-
-	for (lobidx_t i = loba->head; i; idx = i, i = NEXT(loba, i)) {
-		if (EAT(loba, i).v.p.v > p.v) {
-			return idx;
-		} else if (EAT(loba, i).v.p.v == p.v) {
+		} else if (EAT(l, i).v.p.v == p.v) {
 			return i;
 		}
 	}
@@ -307,6 +348,7 @@ add_cli(ud_sockaddr_t sa, uint16_t id)
 
 	cli[idx].sa = *sa;
 	cli[idx].id = id;
+	cli[idx].lob = 0;
 	cli[idx].b = 0;
 	cli[idx].a = 0;
 	cli[idx].ssz = 0;
@@ -444,12 +486,12 @@ mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
 			case SL1T_TTF_BID:
 				/* delete the former bid first */
 				if (CLI(c)->b) {
-					lob_rem_at(lobb, CLI(c)->b);
+					lob_rem_at(BIDIDX(0), CLI(c)->b);
 				}
 				/* find our spot in the lob */
-				e = find_bid(v.p);
+				e = find_quote(BIDIDX(0), v.p);
 				/* and insert */
-				e = lob_ins_at(lobb, e, v);
+				e = lob_ins_at(BIDIDX(0), e, v);
 				/* update client info */
 				CLI(c)->b = e;
 				changep = 1;
@@ -457,12 +499,12 @@ mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
 			case SL1T_TTF_ASK:
 				/* delete the former ask first */
 				if (CLI(c)->a) {
-					lob_rem_at(loba, CLI(c)->a);
+					lob_rem_at(ASKIDX(0), CLI(c)->a);
 				}
 				/* find our spot in the lob */
-				e = find_ask(v.p);
+				e = find_quote(ASKIDX(0), v.p);
 				/* and insert */
-				e = lob_ins_at(loba, e, v);
+				e = lob_ins_at(ASKIDX(0), e, v);
 				/* update client info */
 				CLI(c)->a = e;
 				changep = 1;
@@ -481,18 +523,18 @@ mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
 			case SSNP_FLAVOUR:
 			case SBAP_FLAVOUR:
 				if (CLI(c)->b) {
-					lob_rem_at(lobb, CLI(c)->b);
+					lob_rem_at(BIDIDX(0), CLI(c)->b);
 				}
-				e = find_bid(v.p);
-				e = lob_ins_at(lobb, e, v);
+				e = find_quote(BIDIDX(0), v.p);
+				e = lob_ins_at(BIDIDX(0), e, v);
 				CLI(c)->b = e;
 
 				if (CLI(c)->a) {
-					lob_rem_at(loba, CLI(c)->a);
+					lob_rem_at(ASKIDX(0), CLI(c)->a);
 				}
 				v.p = v.q;
-				e = find_ask(v.q);
-				e = lob_ins_at(loba, e, v);
+				e = find_quote(ASKIDX(0), v.q);
+				e = lob_ins_at(ASKIDX(0), e, v);
 				CLI(c)->a = e;
 				changep = 1;
 				break;
@@ -632,11 +674,11 @@ render_win(WINDOW *w)
 	wclear(w);
 
 	/* go through bids */
-	for (lobidx_t i = lobb->head, j = 1;
+	for (size_t i = lob[BIDIDX(0)].lob->head, j = 1;
 	     i && j < nwr;
-	     i = NEXT(lobb, i), j++) {
+	     i = NEXT(lob[BIDIDX(0)].lob, i), j++) {
 		char tmp[128], *p = tmp;
-		lobidx_t c = EAT(lobb, i).v.cli;
+		lobidx_t c = EAT(lob[BIDIDX(0)].lob, i).v.cli;
 		lob_cli_t cp = CLI(c);
 
 		if (cp->ssz) {
@@ -648,9 +690,9 @@ render_win(WINDOW *w)
 			p += cp->sz;
 			p += sprintf(p, " %04x ", cp->id);
 		}
-		p += ffff_m30_s(p, EAT(lobb, i).v.q);
+		p += ffff_m30_s(p, EAT(lob[BIDIDX(0)].lob, i).v.q);
 		*p++ = ' ';
-		p += ffff_m30_s(p, EAT(lobb, i).v.p);
+		p += ffff_m30_s(p, EAT(lob[BIDIDX(0)].lob, i).v.p);
 		*p = '\0';
 
 		wmove(w, j, nwc / 2 - 1 - (p - tmp));
@@ -663,16 +705,16 @@ render_win(WINDOW *w)
 		wattrset(w, A_NORMAL);
 	}
 
-	for (lobidx_t i = loba->head, j = 1;
+	for (size_t i = lob[ASKIDX(0)].lob->head, j = 1;
 	     i && j < nwr;
-	     i = NEXT(loba, i), j++) {
+	     i = NEXT(lob[ASKIDX(0)].lob, i), j++) {
 		char tmp[128], *p = tmp;
-		lobidx_t c = EAT(loba, i).v.cli;
+		lobidx_t c = EAT(lob[ASKIDX(0)].lob, i).v.cli;
 		lob_cli_t cp = CLI(c);
 
-		p += ffff_m30_s(p, EAT(loba, i).v.p);
+		p += ffff_m30_s(p, EAT(lob[ASKIDX(0)].lob, i).v.p);
 		*p++ = ' ';
-		p += ffff_m30_s(p, EAT(loba, i).v.q);
+		p += ffff_m30_s(p, EAT(lob[ASKIDX(0)].lob, i).v.q);
 		if (cp->ssz) {
 			*p++ = ' ';
 			memcpy(p, cp->sym, cp->ssz);
@@ -800,10 +842,10 @@ keypress_cb(EV_P_ ev_io *UNUSED(w), int UNUSED(revents))
 			lobidx_t nu;
 
 			if (selbidp) {
-				side = lobb;
+				side = lob[BIDIDX(0)].lob;
 				qidx = CLI(selcli)->b;
 			} else {
-				side = loba;
+				side = lob[ASKIDX(0)].lob;
 				qidx = CLI(selcli)->a;
 			}
 

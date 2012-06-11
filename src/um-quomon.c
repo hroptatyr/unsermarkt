@@ -626,14 +626,6 @@ render_scr(void)
 	unsigned int nr = getmaxy(stdscr);
 	unsigned int nc = getmaxx(stdscr);
 
-	/* box the whole screen */
-	box(stdscr, 0, 0);
-	move(nr - 2, 0);
-	addch(ACS_LLCORNER);
-	hline(0, nc - 1);
-	move(nr - 2, nc - 1);
-	addch(ACS_LRCORNER);
-
 	/* also leave a note on how to exit */
 	move(nr - 1, 0);
 	attron(COLOR_PAIR(STATUS));
@@ -647,7 +639,7 @@ render_scr(void)
 		delwin(CURW);
 	}
 	/* start with the beef window */
-	CURW = newwin(nr - 3, nc - 2, 1, 1);
+	CURW = newwin(nr - 1, nc, 0, 0);
 
 	/* big refreshment */
 	refresh();
@@ -657,7 +649,6 @@ render_scr(void)
 static void
 init_wins(void)
 {
-
 	initscr();
 	keypad(stdscr, TRUE);
 	noecho();
@@ -696,6 +687,9 @@ render_win(lobidx_t wi)
 
 	/* start with a clear window */
 	wclear(w);
+
+	/* box with the name */
+	box(w, 0, 0);
 
 	/* go through bids */
 	for (size_t i = lob[BIDIDX(0)].lob->head, j = 1;

@@ -84,6 +84,10 @@
 
 #include "nifty.h"
 
+#if defined __INTEL_COMPILER
+# pragma warning (disable:981)
+#endif	/* __INTEL_COMPILER */
+
 typedef uint32_t lobidx_t;
 typedef struct lob_cli_s *lob_cli_t;
 typedef union lob_side_u *lob_side_t;
@@ -108,6 +112,7 @@ struct lob_cli_s {
 	size_t ssz;
 
 	int mark;
+	unsigned int last_seen;
 };
 
 /* our limit order book, well just level 2 */
@@ -167,6 +172,10 @@ static size_t nlob = 0;
 static lob_cli_t cli = NULL;
 static size_t ncli = 0;
 static size_t alloc_cli = 0;
+
+/* renderer counter will be inc'd with each render_cb call */
+static unsigned int nrend = 0;
+#define NOW		(nrend)
 
 #define CLI(x)		(assert(x), assert(x <= ncli), cli + x - 1)
 #define EAT(y, x)	(lob[y].lob->e[x])
@@ -461,6 +470,7 @@ add_cli(ud_sockaddr_t sa, uint16_t id)
 	cli[idx].a = 0;
 	cli[idx].ssz = 0;
 	cli[idx].mark = 0;
+	cli[idx].last_seen = 0;
 
 	/* obtain the address in human readable form */
 	{
@@ -574,6 +584,9 @@ mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
 			v.cli = c;
 			v.p = (m30_t)l1t->v[0];
 			v.q = (m30_t)l1t->v[1];
+
+			/* update last seen */
+			CLI(c)->last_seen = NOW;
 
 			switch (ttf) {
 				lobidx_t e;
@@ -851,6 +864,10 @@ render_win(lobidx_t wi)
 		}
 	}
 
+	/* check if selection points to pruned cli */
+	if (w->selcli && UNLIKELY(!CLI(w->selcli)->b && !CLI(w->selcli)->a)) {
+		w->selcli = 0;
+	}
 	/* check if we've got a selection */
 	if (w->selcli == 0) {
 		lob_side_t s;
@@ -947,6 +964,27 @@ render_win(lobidx_t wi)
 	return;
 }
 
+static void
+prune_clis(void)
+{
+/* max age of ticks in renderings */
+#define MAX_AGE		(600U)
+	for (size_t c = 1; c <= ncli; c++) {
+		if (CLI(c)->last_seen + MAX_AGE < NOW) {
+			/* client needs kicking */
+			if (CLI(c)->b) {
+				lob_rem_at(CLI(c)->blob, CLI(c)->b);
+				CLI(c)->b = 0;
+			}
+			if (CLI(c)->a) {
+				lob_rem_at(CLI(c)->alob, CLI(c)->a);
+				CLI(c)->a = 0;
+			}
+		}
+	}
+	return;
+}
+
 
 static WINDOW *symw = NULL;
 static const char symw_prompt[] = " Enter symbol:";
@@ -964,6 +1002,10 @@ render_cb(EV_P_ ev_timer *w, int UNUSED(revents))
 		}
 	}
 
+	/* prune old clients */
+	prune_clis();
+	/* update the rendering counter*/
+	nrend++;
 	/* and then set the timer again */
 	ev_timer_again(EV_A_ w);
 	return;

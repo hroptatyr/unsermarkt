@@ -146,6 +146,9 @@ struct lob_s {
 struct lob_win_s {
 	WINDOW *w;
 
+	lobidx_t bbook;
+	lobidx_t abook;
+
 	char sym[64];
 	size_t ssz;
 };
@@ -153,7 +156,7 @@ struct lob_win_s {
 
 /* we support a maximum of 64 order books atm */
 static struct lob_s lob[128] = {0};
-size_t nlob = 0;
+static size_t nlob = 0;
 static lob_cli_t cli = NULL;
 static size_t ncli = 0;
 static size_t alloc_cli = 0;
@@ -225,10 +228,6 @@ rem_lob(lobidx_t li)
 static void
 init_lob(void)
 {
-	/* start off with one big limit order book */
-	add_lob();
-	add_lob();
-
 	/* and our client list */
 	cli = mmap(NULL, 4096, PROT_MEM, MAP_MEM, -1, 0);
 	alloc_cli = 4096;
@@ -615,7 +614,8 @@ sighup_cb(EV_P_ ev_signal *UNUSED(w), int UNUSED(revents))
 
 
 static struct lob_win_s __gwins[countof(lob) / 2];
-static lobidx_t curw = 0;
+static size_t __ngwins = 0;
+static lobidx_t curw = -1;
 #define CURW		(__gwins[curw].w)
 
 #define JUST_RED	1
@@ -624,6 +624,67 @@ static lobidx_t curw = 0;
 #define JUST_BLUE	4
 #define CLISEL		5
 #define STATUS		6
+
+static void
+init_lobwin(lobidx_t li)
+{
+	unsigned int nr = getmaxy(stdscr);
+	unsigned int nc = getmaxx(stdscr);
+
+	__gwins[li].w = newwin(nr - 1, nc, 0, 0);
+	return;
+}
+
+static void
+fini_lobwin(lobidx_t li)
+{
+	if (__gwins[li].w) {
+		delwin(__gwins[li].w);
+		__gwins[li].w = NULL;
+	}
+	return;
+}
+
+static void
+rem_lobwin(lobidx_t li)
+{
+	fini_lobwin(li);
+	__gwins[li].ssz = 0;
+
+	rem_lob(__gwins[li].bbook);
+	rem_lob(__gwins[li].abook);
+	return;
+}
+
+static lobidx_t
+add_lobwin(const char *name)
+{
+	lobidx_t res = __ngwins++;
+
+	/* just to make sure */
+	fini_lobwin(res);
+	/* get the new one */
+	init_lobwin(res);
+
+	if (name) {
+		size_t sz = strlen(name);
+
+		if (sz > countof(__gwins->sym)) {
+			sz = countof(__gwins->sym) - 1;
+		}
+		memcpy(__gwins[res].sym, name, sz);
+		__gwins[res].sym[sz] = '\0';
+		__gwins[res].ssz = sz;
+	} else {
+		__gwins[res].sym[0] = '\0';
+		__gwins[res].ssz = 0;
+	}
+
+	/* oh, and get us some order books */
+	__gwins[res].bbook = add_lob();
+	__gwins[res].abook = add_lob();
+	return res;
+}
 
 static void
 render_scr(void)
@@ -639,12 +700,12 @@ render_scr(void)
 	addstr(" Press q to quit ");
 	attrset(A_NORMAL);
 
-	/* delete old beef window */
-	if (CURW) {
-		delwin(CURW);
+	for (size_t i = 0; i < __ngwins; i++) {
+		/* delete old beef window */
+		fini_lobwin(i);
+		/* start with the beef window */
+		init_lobwin(i);
 	}
-	/* start with the beef window */
-	CURW = newwin(nr - 1, nc, 0, 0);
 
 	/* big refreshment */
 	refresh();
@@ -668,17 +729,16 @@ init_wins(void)
 	init_pair(CLISEL, COLOR_BLACK, COLOR_YELLOW);
 	init_pair(STATUS, COLOR_BLACK, COLOR_GREEN);
 
-	/* start with a basic layout */
-	render_scr();
+	/* instantiate the catch-all window */
+	curw = add_lobwin("ALL");
 	return;
 }
 
 static void
 fini_wins(void)
 {
-	for (size_t i = 0; i < nlob / 2; i++) {
-		delwin(__gwins[i].w);
-		__gwins[i].ssz = 0;
+	for (size_t i = 0; i < __ngwins; i++) {
+		rem_lobwin(i);
 	}
 	endwin();
 	return;
@@ -820,11 +880,6 @@ handle_el(char *line)
 
 	/* stuff up our history */
 	add_history(line);
-
-#if 0
-	/* parse him, blocks until a reply is nigh */
-	handle_cb(line, rl_end);
-#endif	/* 0 */
 
 out:
 	/* ah, user entered something? */
@@ -1058,6 +1113,9 @@ main(int argc, char *argv[])
 
 	/* init the limit order book */
 	init_lob();
+
+	/* give him a sigwinch, so everything gets rerendered */
+	sigwinch_cb(EV_A_ sigwinch_watcher, 0);
 
 	/* now wait for events to arrive */
 	ev_loop(EV_A_ 0);

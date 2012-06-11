@@ -82,6 +82,8 @@
 
 #include <ncurses.h>
 
+#include "nifty.h"
+
 typedef uint32_t lobidx_t;
 typedef struct lob_cli_s *lob_cli_t;
 typedef union lob_side_u *lob_side_t;
@@ -96,6 +98,7 @@ struct lob_cli_s {
 	lobidx_t b;
 	lobidx_t a;
 
+	/* helpers for the renderer */
 	char ss[INET6_ADDRSTRLEN + 2 + 6];
 	size_t sz;
 
@@ -136,6 +139,9 @@ union lob_side_u {
 struct lob_s {
 	lob_side_t lob;
 	size_t alloc_sz;
+
+	char sym[64];
+	size_t ssz;
 };
 
 
@@ -192,17 +198,30 @@ resz_lob(lobidx_t li, size_t at_least)
 	return;
 }
 
+static lobidx_t
+add_lob(const char *name)
+{
+	const size_t ini_sz = 4096;
+	lobidx_t res = nlob++;
+
+	resz_lob(res, ini_sz / sizeof(struct lob_entnav_s));
+	if (name) {
+		if ((lob[res].ssz = strlen(name)) > countof(lob->sym)) {
+			lob[res].ssz = countof(lob->sym);
+		}
+		memcpy(lob[res].sym, name, lob[res].ssz);
+	} else {
+		lob[res].ssz = 0;
+	}
+	return res;
+}
+
 static void
 init_lob(void)
 {
-	size_t lobi;
-	const size_t ini_sz = 4096;
-
 	/* start off with one big limit order book */
-	lobi = nlob++;
-	resz_lob(lobi, ini_sz / sizeof(struct lob_entnav_s));
-	lobi = nlob++;
-	resz_lob(lobi, ini_sz / sizeof(struct lob_entnav_s));
+	add_lob(NULL);
+	add_lob(NULL);
 
 	/* and our client list */
 	cli = mmap(NULL, 4096, PROT_MEM, MAP_MEM, -1, 0);
@@ -590,7 +609,9 @@ sighup_cb(EV_P_ ev_signal *UNUSED(w), int UNUSED(revents))
 }
 
 
-static WINDOW *curw = NULL;
+static WINDOW *__gwins[countof(lob) / 2];
+static lobidx_t curw = 0;
+#define CURW		(__gwins[curw])
 
 #define JUST_RED	1
 #define JUST_GREEN	2
@@ -622,11 +643,11 @@ render_scr(void)
 	attrset(A_NORMAL);
 
 	/* delete old beef window */
-	if (curw) {
-		delwin(curw);
+	if (CURW) {
+		delwin(CURW);
 	}
 	/* start with the beef window */
-	curw = newwin(nr - 3, nc - 2, 1, 1);
+	CURW = newwin(nr - 3, nc - 2, 1, 1);
 
 	/* big refreshment */
 	refresh();
@@ -659,14 +680,17 @@ init_wins(void)
 static void
 fini_wins(void)
 {
-	delwin(curw);
+	for (size_t i = 0; i < nlob / 2; i++) {
+		delwin(__gwins[i]);
+	}
 	endwin();
 	return;
 }
 
 static void
-render_win(WINDOW *w)
+render_win(lobidx_t wi)
 {
+	WINDOW *w = __gwins[wi];
 	unsigned int nwr = getmaxy(w);
 	unsigned int nwc = getmaxx(w);
 

@@ -106,6 +106,8 @@ struct lob_cli_s {
 
 	char sym[64];
 	size_t ssz;
+
+	int mark;
 };
 
 /* our limit order book, well just level 2 */
@@ -437,6 +439,7 @@ add_cli(ud_sockaddr_t sa, uint16_t id)
 	cli[idx].b = 0;
 	cli[idx].a = 0;
 	cli[idx].ssz = 0;
+	cli[idx].mark = 0;
 
 	/* obtain the address in human readable form */
 	{
@@ -675,7 +678,8 @@ static lobidx_t curw = -1;
 #define JUST_YELLOW	3
 #define JUST_BLUE	4
 #define CLISEL		5
-#define STATUS		6
+#define CLIMARK		6
+#define STATUS		7
 
 static void
 init_lobwin(lobidx_t li)
@@ -782,6 +786,7 @@ init_wins(void)
 	init_pair(JUST_YELLOW, COLOR_YELLOW, -1);
 	init_pair(JUST_BLUE, COLOR_BLUE, -1);
 	init_pair(CLISEL, COLOR_BLACK, COLOR_YELLOW);
+	init_pair(CLIMARK, 2, -1);
 	init_pair(STATUS, COLOR_BLACK, COLOR_GREEN);
 
 	/* instantiate the catch-all window */
@@ -872,6 +877,8 @@ render_win(lobidx_t wi)
 			wattron(w->w, COLOR_PAIR(CLISEL));
 		} else if (c == w->selcli) {
 			wattron(w->w, A_STANDOUT);
+		} else if (CLI(c)->mark) {
+			wattron(w->w, COLOR_PAIR(CLIMARK));
 		}
 		waddstr(w->w, tmp);
 		wattrset(w->w, A_NORMAL);
@@ -903,6 +910,8 @@ render_win(lobidx_t wi)
 			wattron(w->w, COLOR_PAIR(CLISEL));
 		} else if (c == w->selcli) {
 			wattron(w->w, A_STANDOUT);
+		} else if (CLI(c)->mark) {
+			wattron(w->w, COLOR_PAIR(CLIMARK));
 		}
 		waddstr(w->w, tmp);
 		wattrset(w->w, A_NORMAL);
@@ -996,6 +1005,9 @@ reass_selcli(lobidx_t wi)
 	CLI(c)->blob = BIDLOB(wi);
 	CLI(c)->alob = ASKLOB(wi);
 
+	/* unmark client */
+	CLI(c)->mark = 0;
+
 	/* unassign the currently selected client */
 	__gwins[curw].selcli = 0;
 	return;
@@ -1081,6 +1093,12 @@ keypress_cb(EV_P_ ev_io *UNUSED(io), int UNUSED(revents))
 		}
 		goto redraw;
 
+		/* marking */
+	case ' ':
+		CLI(w->selcli)->mark = !CLI(w->selcli)->mark;
+		/* pretend we was a key_down */
+		k = KEY_DOWN;
+		/* fallthrough */
 	case KEY_UP:
 	case KEY_DOWN:
 		if (w->selcli) {

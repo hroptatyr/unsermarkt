@@ -829,8 +829,8 @@ static void
 render_win(lobidx_t wi)
 {
 	lob_win_t w = __gwins + wi;
-	unsigned int nwr = getmaxy(w->w);
-	unsigned int nwc = getmaxx(w->w);
+	const unsigned int nwr = getmaxy(w->w);
+	const unsigned int nwc = getmaxx(w->w);
 
 	/* start with a clear window */
 	wclear(w->w);
@@ -873,7 +873,7 @@ render_win(lobidx_t wi)
 
 	/* go through bids */
 	for (size_t i = lob[BIDLOB(wi)].lob->head, j = 1;
-	     i && j < nwr;
+	     i && j < nwr - 1;
 	     i = NEXT(BIDLOB(wi), i), j++) {
 		char tmp[128], *p = tmp;
 		lobidx_t c = EAT(BIDLOB(wi), i).v.cli;
@@ -906,7 +906,7 @@ render_win(lobidx_t wi)
 	}
 
 	for (size_t i = lob[ASKLOB(wi)].lob->tail, j = 1;
-	     i && j < nwr;
+	     i && j < nwr - 1;
 	     i = PREV(ASKLOB(wi), i), j++) {
 		char tmp[128], *p = tmp;
 		lobidx_t c = EAT(ASKLOB(wi), i).v.cli;

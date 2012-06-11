@@ -458,6 +458,10 @@ main(int argc, char *argv[])
 		goto fr_out;
 	}
 
+	if (argi->beef_given) {
+		port = argi->beef_arg;
+	}
+
 	/* set signal handler */
 	signal(SIGINT, handle_sigint);
 

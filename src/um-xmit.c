@@ -65,11 +65,10 @@
 
 #if defined DEBUG_FLAG
 # define XMIT_DEBUG(args...)	fprintf(stderr, args)
-# define XMIT_STUP(arg)		fputc(arg, stderr)
 #else  /* !DEBUG_FLAG */
 # define XMIT_DEBUG(args...)
-# define XMIT_STUP(arg)
 #endif	/* DEBUG_FLAG */
+#define XMIT_STUP(arg)		fputc(arg, stdout)
 
 #define UD_CMD_QMETA	(0x7572)
 #define PKT(x)		(ud_packet_t){sizeof(x), x}

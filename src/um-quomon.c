@@ -617,6 +617,8 @@ static struct lob_win_s __gwins[countof(lob) / 2];
 static size_t __ngwins = 0;
 static lobidx_t curw = -1;
 #define CURW		(__gwins[curw].w)
+#define BIDLOB(i)	(__gwins[i].bbook)
+#define ASKLOB(i)	(__gwins[i].abook)
 
 #define JUST_RED	1
 #define JUST_GREEN	2
@@ -762,11 +764,11 @@ render_win(lobidx_t wi)
 	}
 
 	/* go through bids */
-	for (size_t i = lob[BIDIDX(0)].lob->head, j = 1;
+	for (size_t i = lob[BIDLOB(wi)].lob->head, j = 1;
 	     i && j < nwr;
-	     i = NEXT(lob[BIDIDX(0)].lob, i), j++) {
+	     i = NEXT(lob[BIDLOB(wi)].lob, i), j++) {
 		char tmp[128], *p = tmp;
-		lobidx_t c = EAT(lob[BIDIDX(0)].lob, i).v.cli;
+		lobidx_t c = EAT(lob[BIDLOB(wi)].lob, i).v.cli;
 		lob_cli_t cp = CLI(c);
 
 		if (cp->ssz) {
@@ -778,9 +780,9 @@ render_win(lobidx_t wi)
 			p += cp->sz;
 			p += sprintf(p, " %04x ", cp->id);
 		}
-		p += ffff_m30_s(p, EAT(lob[BIDIDX(0)].lob, i).v.q);
+		p += ffff_m30_s(p, EAT(lob[BIDLOB(wi)].lob, i).v.q);
 		*p++ = ' ';
-		p += ffff_m30_s(p, EAT(lob[BIDIDX(0)].lob, i).v.p);
+		p += ffff_m30_s(p, EAT(lob[BIDLOB(wi)].lob, i).v.p);
 		*p = '\0';
 
 		wmove(w, j, nwc / 2 - 1 - (p - tmp));
@@ -793,16 +795,16 @@ render_win(lobidx_t wi)
 		wattrset(w, A_NORMAL);
 	}
 
-	for (size_t i = lob[ASKIDX(0)].lob->head, j = 1;
+	for (size_t i = lob[ASKLOB(wi)].lob->head, j = 1;
 	     i && j < nwr;
-	     i = NEXT(lob[ASKIDX(0)].lob, i), j++) {
+	     i = NEXT(lob[ASKLOB(wi)].lob, i), j++) {
 		char tmp[128], *p = tmp;
-		lobidx_t c = EAT(lob[ASKIDX(0)].lob, i).v.cli;
+		lobidx_t c = EAT(lob[ASKLOB(wi)].lob, i).v.cli;
 		lob_cli_t cp = CLI(c);
 
-		p += ffff_m30_s(p, EAT(lob[ASKIDX(0)].lob, i).v.p);
+		p += ffff_m30_s(p, EAT(lob[ASKLOB(wi)].lob, i).v.p);
 		*p++ = ' ';
-		p += ffff_m30_s(p, EAT(lob[ASKIDX(0)].lob, i).v.q);
+		p += ffff_m30_s(p, EAT(lob[ASKLOB(wi)].lob, i).v.q);
 		if (cp->ssz) {
 			*p++ = ' ';
 			memcpy(p, cp->sym, cp->ssz);
@@ -922,10 +924,10 @@ keypress_cb(EV_P_ ev_io *UNUSED(w), int UNUSED(revents))
 			lobidx_t nu;
 
 			if (selbidp) {
-				side = lob[BIDIDX(0)].lob;
+				side = lob[BIDLOB(curw)].lob;
 				qidx = CLI(selcli)->b;
 			} else {
-				side = lob[ASKIDX(0)].lob;
+				side = lob[ASKLOB(curw)].lob;
 				qidx = CLI(selcli)->a;
 			}
 

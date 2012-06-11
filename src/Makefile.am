@@ -67,7 +67,7 @@ blood_mm_CPPFLAGS += $(uterus_CFLAGS)
 endif  ## HAVE_MXML
 
 if HAVE_UTERUS
-noinst_PROGRAMS += um-quomon
+bin_PROGRAMS += um-quomon
 um_quomon_SOURCES = um-quomon.c um-quomon-clo.ggo
 BUILT_SOURCES += um-quomon-clo.c um-quomon-clo.h
 um_quomon_CPPFLAGS = $(AM_CPPFLAGS) -D_GNU_SOURCE

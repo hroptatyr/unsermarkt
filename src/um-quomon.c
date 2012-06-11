@@ -88,6 +88,7 @@ typedef uint32_t lobidx_t;
 typedef struct lob_cli_s *lob_cli_t;
 typedef union lob_side_u *lob_side_t;
 typedef struct lob_s *lob_t;
+typedef struct lob_win_s *lob_win_t;
 
 /* the client */
 struct lob_cli_s {
@@ -139,6 +140,11 @@ union lob_side_u {
 struct lob_s {
 	lob_side_t lob;
 	size_t alloc_sz;
+};
+
+/* order book windows */
+struct lob_win_s {
+	WINDOW *w;
 
 	char sym[64];
 	size_t ssz;
@@ -199,29 +205,29 @@ resz_lob(lobidx_t li, size_t at_least)
 }
 
 static lobidx_t
-add_lob(const char *name)
+add_lob(void)
 {
 	const size_t ini_sz = 4096;
 	lobidx_t res = nlob++;
 
 	resz_lob(res, ini_sz / sizeof(struct lob_entnav_s));
-	if (name) {
-		if ((lob[res].ssz = strlen(name)) > countof(lob->sym)) {
-			lob[res].ssz = countof(lob->sym);
-		}
-		memcpy(lob[res].sym, name, lob[res].ssz);
-	} else {
-		lob[res].ssz = 0;
-	}
 	return res;
+}
+
+static void
+rem_lob(lobidx_t li)
+{
+	munmap(lob[li].lob, lob[li].alloc_sz);
+	lob[li].alloc_sz = 0;
+	return;
 }
 
 static void
 init_lob(void)
 {
 	/* start off with one big limit order book */
-	add_lob(NULL);
-	add_lob(NULL);
+	add_lob();
+	add_lob();
 
 	/* and our client list */
 	cli = mmap(NULL, 4096, PROT_MEM, MAP_MEM, -1, 0);
@@ -234,8 +240,7 @@ free_lob(void)
 {
 	/* free the lob blob first */
 	for (size_t i = 0; i < nlob; i++) {
-		munmap(lob[i].lob, lob[i].alloc_sz);
-		lob[i].alloc_sz = 0;
+		rem_lob(i);
 	}
 	/* and the list of clients */
 	munmap(cli, 4096);
@@ -609,9 +614,9 @@ sighup_cb(EV_P_ ev_signal *UNUSED(w), int UNUSED(revents))
 }
 
 
-static WINDOW *__gwins[countof(lob) / 2];
+static struct lob_win_s __gwins[countof(lob) / 2];
 static lobidx_t curw = 0;
-#define CURW		(__gwins[curw])
+#define CURW		(__gwins[curw].w)
 
 #define JUST_RED	1
 #define JUST_GREEN	2
@@ -672,7 +677,8 @@ static void
 fini_wins(void)
 {
 	for (size_t i = 0; i < nlob / 2; i++) {
-		delwin(__gwins[i]);
+		delwin(__gwins[i].w);
+		__gwins[i].ssz = 0;
 	}
 	endwin();
 	return;
@@ -681,7 +687,7 @@ fini_wins(void)
 static void
 render_win(lobidx_t wi)
 {
-	WINDOW *w = __gwins[wi];
+	WINDOW *w = __gwins[wi].w;
 	unsigned int nwr = getmaxy(w);
 	unsigned int nwc = getmaxx(w);
 
@@ -690,6 +696,10 @@ render_win(lobidx_t wi)
 
 	/* box with the name */
 	box(w, 0, 0);
+	if (__gwins[wi].ssz) {
+		wmove(w, 0, 4);
+		waddstr(w, __gwins[wi].sym);
+	}
 
 	/* go through bids */
 	for (size_t i = lob[BIDIDX(0)].lob->head, j = 1;
@@ -808,16 +818,13 @@ handle_el(char *line)
 		goto out;
 	}
 
-#if 0
 	/* stuff up our history */
 	add_history(line);
 
+#if 0
 	/* parse him, blocks until a reply is nigh */
 	handle_cb(line, rl_end);
 #endif	/* 0 */
-
-	move(0, 4);
-	printw(line);
 
 out:
 	/* ah, user entered something? */

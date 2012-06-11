@@ -135,6 +135,7 @@ union lob_side_u {
 
 	struct {
 		lobidx_t head;
+		lobidx_t tail;
 		lobidx_t free;
 	};
 };
@@ -327,12 +328,18 @@ lob_ins_at(lobidx_t li, lobidx_t pr, struct lob_entry_s v)
 		NEXT(li, pr) = nu;
 		if (nx) {
 			PREV(li, nx) = nu;
+		} else {
+			/* set tail pointer also */
+			s->tail = nu;
 		}
 	} else {
 		/* ins at head */
 		PREV(li, nu) = 0;
 		if ((NEXT(li, nu) = s->head)) {
 			PREV(li, s->head) = nu;
+		} else {
+			/* head == tail */
+			s->tail = nu;
 		}
 		s->head = nu;
 	}
@@ -357,6 +364,9 @@ lob_rem_at(lobidx_t li, lobidx_t idx)
 
 		if (NEXT(li, idx)) {
 			PREV(li, NEXT(li, idx)) = PREV(li, idx);
+		} else {
+			/* tail pointer fucked */
+			s->tail = PREV(li, idx);
 		}
 		NEXT(li, PREV(li, idx)) = NEXT(li, idx);
 	} else {
@@ -365,6 +375,9 @@ lob_rem_at(lobidx_t li, lobidx_t idx)
 
 		if ((s->head = NEXT(li, idx))) {
 			PREV(li, s->head) = 0;
+		} else {
+			/* head is naught, so is tail */
+			s->tail = 0;
 		}
 	}
 
@@ -884,9 +897,9 @@ render_win(lobidx_t wi)
 		wattrset(w->w, A_NORMAL);
 	}
 
-	for (size_t i = lob[ASKLOB(wi)].lob->head, j = 1;
+	for (size_t i = lob[ASKLOB(wi)].lob->tail, j = 1;
 	     i && j < nwr;
-	     i = NEXT(ASKLOB(wi), i), j++) {
+	     i = PREV(ASKLOB(wi), i), j++) {
 		char tmp[128], *p = tmp;
 		lobidx_t c = EAT(ASKLOB(wi), i).v.cli;
 		lob_cli_t cp = CLI(c);
@@ -1116,22 +1129,24 @@ keypress_cb(EV_P_ ev_io *UNUSED(io), int UNUSED(revents))
 			lobidx_t side;
 			lobidx_t qidx;
 			lobidx_t nu;
+			int prevnext;
 
 			if (w->selside == 0) {
 				side = BIDLOB(curw);
 				qidx = CLI(w->selcli)->b;
+				prevnext = 0;
 			} else {
 				side = ASKLOB(curw);
 				qidx = CLI(w->selcli)->a;
+				prevnext = 1;
 			}
 
-			switch (k) {
-			case KEY_UP:
+			if (k == KEY_UP && prevnext == 0 ||
+			    k == KEY_DOWN && prevnext == 1) {
 				nu = EAT(side, qidx).prev;
-				break;
-			case KEY_DOWN:
+			} else if (k == KEY_DOWN && prevnext == 0 ||
+				   k == KEY_UP && prevnext == 1) {
 				nu = EAT(side, qidx).next;
-				break;
 			}
 
 			if (nu) {

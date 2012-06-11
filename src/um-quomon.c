@@ -151,6 +151,9 @@ struct lob_win_s {
 
 	char sym[64];
 	size_t ssz;
+
+	lobidx_t selcli;
+	int selside;
 };
 
 
@@ -432,8 +435,6 @@ snarf_syms(job_t j)
 
 /* the actual worker function */
 static int changep = 0;
-static lobidx_t selcli = 0;
-static int selbidp = 1;
 
 static void
 mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
@@ -470,19 +471,6 @@ mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
 
 		if (UNLIKELY(plen == 0)) {
 			break;
-		} else if (UNLIKELY(selcli == 0)) {
-			/* peek into the first scom */
-			scom_t sp = (void*)pbuf;
-			uint16_t id = scom_thdr_tblidx(sp);
-			uint16_t ttf = scom_thdr_ttf(sp);
-
-			if (ttf == SL1T_TTF_ASK) {
-				selbidp = 0;
-			}
-			if ((c = find_cli(&j->sa, id)) == 0) {
-				c = add_cli(&j->sa, id);
-			}
-			selcli = c;
 		}
 
 		for (scom_t sp = (void*)pbuf, ep = (void*)(pbuf + plen);
@@ -685,6 +673,9 @@ add_lobwin(const char *name)
 	/* oh, and get us some order books */
 	__gwins[res].bbook = add_lob();
 	__gwins[res].abook = add_lob();
+
+	__gwins[res].selcli = 0;
+	__gwins[res].selside = 0;
 	return res;
 }
 
@@ -749,18 +740,33 @@ fini_wins(void)
 static void
 render_win(lobidx_t wi)
 {
-	WINDOW *w = __gwins[wi].w;
-	unsigned int nwr = getmaxy(w);
-	unsigned int nwc = getmaxx(w);
+	lob_win_t w = __gwins + wi;
+	unsigned int nwr = getmaxy(w->w);
+	unsigned int nwc = getmaxx(w->w);
 
 	/* start with a clear window */
-	wclear(w);
+	wclear(w->w);
 
 	/* box with the name */
-	box(w, 0, 0);
-	if (__gwins[wi].ssz) {
-		wmove(w, 0, 4);
-		waddstr(w, __gwins[wi].sym);
+	box(w->w, 0, 0);
+	if (w->ssz) {
+		wmove(w->w, 0, 4);
+		waddstr(w->w, w->sym);
+	}
+
+	/* check if we've got a selection */
+	if (w->selcli == 0) {
+		lob_side_t s;
+
+		/* just select anything in this case */
+		if ((s = lob[BIDLOB(wi)].lob)->head) {
+			w->selcli = EAT(s, s->head).v.cli;
+		} else if ((s = lob[ASKLOB(wi)].lob)->head) {
+			w->selcli = EAT(s, s->head).v.cli;
+		} else {
+			/* tough luck */
+			;
+		}
 	}
 
 	/* go through bids */
@@ -785,14 +791,14 @@ render_win(lobidx_t wi)
 		p += ffff_m30_s(p, EAT(lob[BIDLOB(wi)].lob, i).v.p);
 		*p = '\0';
 
-		wmove(w, j, nwc / 2 - 1 - (p - tmp));
-		if (c == selcli && selbidp) {
-			wattron(w, COLOR_PAIR(CLISEL));
-		} else if (c == selcli) {
-			wattron(w, A_STANDOUT);
+		wmove(w->w, j, nwc / 2 - 1 - (p - tmp));
+		if (c == w->selcli && w->selside == 0) {
+			wattron(w->w, COLOR_PAIR(CLISEL));
+		} else if (c == w->selcli) {
+			wattron(w->w, A_STANDOUT);
 		}
-		waddstr(w, tmp);
-		wattrset(w, A_NORMAL);
+		waddstr(w->w, tmp);
+		wattrset(w->w, A_NORMAL);
 	}
 
 	for (size_t i = lob[ASKLOB(wi)].lob->head, j = 1;
@@ -816,19 +822,19 @@ render_win(lobidx_t wi)
 		}
 		*p = '\0';
 
-		wmove(w, j, nwc / 2  + 1);
-		if (c == selcli && !selbidp) {
-			wattron(w, COLOR_PAIR(CLISEL));
-		} else if (c == selcli) {
-			wattron(w, A_STANDOUT);
+		wmove(w->w, j, nwc / 2  + 1);
+		if (c == w->selcli && w->selside == 1) {
+			wattron(w->w, COLOR_PAIR(CLISEL));
+		} else if (c == w->selcli) {
+			wattron(w->w, A_STANDOUT);
 		}
-		waddstr(w, tmp);
-		wattrset(w, A_NORMAL);
+		waddstr(w->w, tmp);
+		wattrset(w->w, A_NORMAL);
 	}
 
 	/* actually render the window */
-	wmove(w, nwr - 1, nwc - 1);
-	wrefresh(w);
+	wmove(w->w, nwr - 1, nwc - 1);
+	wrefresh(w->w);
 
 	/* reset state */
 	changep = 0;
@@ -896,9 +902,10 @@ out:
 }
 
 static void
-keypress_cb(EV_P_ ev_io *UNUSED(w), int UNUSED(revents))
+keypress_cb(EV_P_ ev_io *UNUSED(io), int UNUSED(revents))
 {
 	int k;
+	lob_win_t w = __gwins + curw;
 
 	if (UNLIKELY(symw != NULL)) {
 		rl_callback_read_char();
@@ -918,17 +925,17 @@ keypress_cb(EV_P_ ev_io *UNUSED(w), int UNUSED(revents))
 		break;
 	case KEY_UP:
 	case KEY_DOWN:
-		if (selcli) {
+		if (w->selcli) {
 			lob_side_t side;
 			lobidx_t qidx;
 			lobidx_t nu;
 
-			if (selbidp) {
+			if (w->selside == 0) {
 				side = lob[BIDLOB(curw)].lob;
-				qidx = CLI(selcli)->b;
+				qidx = CLI(w->selcli)->b;
 			} else {
 				side = lob[ASKLOB(curw)].lob;
-				qidx = CLI(selcli)->a;
+				qidx = CLI(w->selcli)->a;
 			}
 
 			switch (k) {
@@ -941,20 +948,20 @@ keypress_cb(EV_P_ ev_io *UNUSED(w), int UNUSED(revents))
 			}
 
 			if (nu) {
-				selcli = EAT(side, nu).v.cli;
+				w->selcli = EAT(side, nu).v.cli;
 				goto redraw;
 			}
 		}
 		break;
 	case KEY_RIGHT:
-		if (selbidp) {
-			selbidp = 0;
+		if (w->selside == 0) {
+			w->selside = 1;
 			goto redraw;
 		}
 		break;
 	case KEY_LEFT:
-		if (!selbidp) {
-			selbidp = 1;
+		if (w->selside == 1) {
+			w->selside = 0;
 			goto redraw;
 		}
 		break;

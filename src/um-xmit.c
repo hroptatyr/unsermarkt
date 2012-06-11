@@ -273,6 +273,52 @@ party(const struct xmit_s *ctx, useconds_t tm)
 	return;
 }
 
+static void
+shout_syms(const struct xmit_s *ctx)
+{
+/* convenience has us shouting out all the symbols (along with their
+ * indices) in advance so that logging monitors actually know what
+ * we're on about */
+	struct udpc_seria_s ser[1];
+	static char buf[UDPC_PKTLEN];
+	size_t nsyms = ute_nsyms(ctx->ute);
+
+#define MAKE_PKT							\
+	udpc_make_pkt(PKT(buf), -1, pno++, UDPC_PKT_RPL(UD_CMD_QMETA));	\
+	udpc_seria_init(ser, UDPC_PAYLOAD(buf), UDPC_PAYLLEN(sizeof(buf)))
+#define SEND_PKT				\
+	if (udpc_seria_msglen(ser)) {					\
+		ud_packet_t p = {UDPC_HDRLEN + udpc_seria_msglen(ser), buf}; \
+		ud_chan_send(ctx->ud, p);				\
+	}
+
+	MAKE_PKT;
+	for (size_t i = 1; i <= nsyms; i++) {
+		const char *sym;
+		size_t len;
+
+		if ((sym = ute_idx2sym(ctx->ute, i)) &&
+		    (len = strlen(sym),
+		     udpc_seria_msglen(ser) + len + 2 + 4 > UDPC_PLLEN)) {
+			/* send the old guy off */
+			SEND_PKT;
+			/* and init the new guy */
+			MAKE_PKT;
+		}
+		if (sym) {
+			udpc_seria_add_ui16(ser, i);
+			udpc_seria_add_str(ser, sym, len);
+		}
+	}
+	/* and send the remains now */
+	SEND_PKT;
+
+#undef SEND_PKT
+#undef MAKE_PKT
+	return;
+}
+
+
 /* ute services come in 2 flavours little endian "ut" and big endian "UT" */
 #define UTE_CMD_LE	0x7574
 #define UTE_CMD_BE	0x5554
@@ -282,6 +328,9 @@ party(const struct xmit_s *ctx, useconds_t tm)
 # define UTE_CMD	UTE_CMD_LE
 #endif	/* WORDS_BIGENDIAN */
 
+/* in usecs */
+#define SHOUT_INTV	(10 * 1000 * 1000)
+
 static void
 work(const struct xmit_s *ctx)
 {
@@ -290,6 +339,7 @@ work(const struct xmit_s *ctx)
 	static ud_packet_t pkt = {0, buf};
 	time_t reft = 0;
 	unsigned int refm = 0;
+	unsigned int sleep_since_last_shout = 0;
 	const unsigned int speed = (unsigned int)(1000 * ctx->speed);
 
 #define RESET_SER						\
@@ -332,6 +382,10 @@ work(const struct xmit_s *ctx)
 			XMIT_STUP('\n');
 
 			party(ctx, slp);
+			if ((sleep_since_last_shout += slp) > SHOUT_INTV) {
+				shout_syms(ctx);
+				sleep_since_last_shout = 0;
+			}
 
 			refm = msec;
 			reft = stmp;
@@ -369,45 +423,7 @@ work(const struct xmit_s *ctx)
 static int
 pre_work(const struct xmit_s *ctx)
 {
-/* convenience has us shouting out all the symbols (along with their
- * indices) in advance so that logging monitors actually know what
- * we're on about */
-	struct udpc_seria_s ser[1];
-	static char buf[UDPC_PKTLEN];
-	size_t nsyms = ute_nsyms(ctx->ute);
-
-#define MAKE_PKT							\
-	udpc_make_pkt(PKT(buf), -1, pno++, UDPC_PKT_RPL(UD_CMD_QMETA));	\
-	udpc_seria_init(ser, UDPC_PAYLOAD(buf), UDPC_PAYLLEN(sizeof(buf)))
-#define SEND_PKT				\
-	if (udpc_seria_msglen(ser)) {					\
-		ud_packet_t p = {UDPC_HDRLEN + udpc_seria_msglen(ser), buf}; \
-		ud_chan_send(ctx->ud, p);				\
-	}
-
-	MAKE_PKT;
-	for (size_t i = 1; i <= nsyms; i++) {
-		const char *sym;
-		size_t len;
-
-		if ((sym = ute_idx2sym(ctx->ute, i)) &&
-		    (len = strlen(sym),
-		     udpc_seria_msglen(ser) + len + 2 + 4 > UDPC_PLLEN)) {
-			/* send the old guy off */
-			SEND_PKT;
-			/* and init the new guy */
-			MAKE_PKT;
-		}
-		if (sym) {
-			udpc_seria_add_ui16(ser, i);
-			udpc_seria_add_str(ser, sym, len);
-		}
-	}
-	/* and send the remains now */
-	SEND_PKT;
-
-#undef SEND_PKT
-#undef MAKE_PKT
+	shout_syms(ctx);
 	return 0;
 }
 

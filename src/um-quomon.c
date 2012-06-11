@@ -82,25 +82,32 @@
 
 #include <ncurses.h>
 
+#include "nifty.h"
+
 typedef uint32_t lobidx_t;
 typedef struct lob_cli_s *lob_cli_t;
 typedef union lob_side_u *lob_side_t;
 typedef struct lob_s *lob_t;
+typedef struct lob_win_s *lob_win_t;
 
 /* the client */
 struct lob_cli_s {
 	union ud_sockaddr_u sa;
 	uint16_t id;
 
-	lobidx_t lob;
+	lobidx_t blob;
+	lobidx_t alob;
 	lobidx_t b;
 	lobidx_t a;
 
+	/* helpers for the renderer */
 	char ss[INET6_ADDRSTRLEN + 2 + 6];
 	size_t sz;
 
 	char sym[64];
 	size_t ssz;
+
+	int mark;
 };
 
 /* our limit order book, well just level 2 */
@@ -128,6 +135,7 @@ union lob_side_u {
 
 	struct {
 		lobidx_t head;
+		lobidx_t tail;
 		lobidx_t free;
 	};
 };
@@ -138,20 +146,32 @@ struct lob_s {
 	size_t alloc_sz;
 };
 
+/* order book windows */
+struct lob_win_s {
+	WINDOW *w;
+
+	lobidx_t bbook;
+	lobidx_t abook;
+
+	char sym[64];
+	size_t ssz;
+
+	lobidx_t selcli;
+	int selside;
+};
+
 
 /* we support a maximum of 64 order books atm */
 static struct lob_s lob[128] = {0};
-size_t nlob = 0;
+static size_t nlob = 0;
 static lob_cli_t cli = NULL;
 static size_t ncli = 0;
 static size_t alloc_cli = 0;
 
 #define CLI(x)		(assert(x), assert(x <= ncli), cli + x - 1)
-#define EAT(y, x)	y->e[x]
+#define EAT(y, x)	(lob[y].lob->e[x])
 #define NEXT(y, x)	EAT(y, x).next
 #define PREV(y, x)	EAT(y, x).prev
-#define BIDIDX(i)	(2 * i)
-#define ASKIDX(i)	(2 * i + 1)
 
 #if defined MAP_ANON && !defined MAP_ANONYMOUS
 # define MAP_ANONYMOUS	MAP_ANON
@@ -177,33 +197,42 @@ resz_lob(lobidx_t li, size_t at_least)
 	lob[li].alloc_sz = new_sz;
 
 	for (last_free = l->free;
-	     last_free && NEXT(l, last_free);
-	     last_free = NEXT(l, last_free));
+	     last_free && NEXT(li, last_free);
+	     last_free = NEXT(li, last_free));
 
 	/* i should now point to the last guy */
 	if (last_free) {
-		NEXT(l, last_free) = ol_nidx + 1;
+		NEXT(li, last_free) = ol_nidx + 1;
 	} else {
 		l->free = ol_nidx + 1;
 	}
 	for (last_free = ol_nidx + 1; last_free < nu_nidx - 1; last_free++) {
-		NEXT(l, last_free) = last_free + 1;
+		NEXT(li, last_free) = last_free + 1;
 	}
+	return;
+}
+
+static lobidx_t
+add_lob(void)
+{
+	const size_t ini_sz = 4096;
+	lobidx_t res = nlob++;
+
+	resz_lob(res, ini_sz / sizeof(struct lob_entnav_s));
+	return res;
+}
+
+static void
+rem_lob(lobidx_t li)
+{
+	munmap(lob[li].lob, lob[li].alloc_sz);
+	lob[li].alloc_sz = 0;
 	return;
 }
 
 static void
 init_lob(void)
 {
-	size_t lobi;
-	const size_t ini_sz = 4096;
-
-	/* start off with one big limit order book */
-	lobi = nlob++;
-	resz_lob(lobi, ini_sz / sizeof(struct lob_entnav_s));
-	lobi = nlob++;
-	resz_lob(lobi, ini_sz / sizeof(struct lob_entnav_s));
-
 	/* and our client list */
 	cli = mmap(NULL, 4096, PROT_MEM, MAP_MEM, -1, 0);
 	alloc_cli = 4096;
@@ -215,13 +244,62 @@ free_lob(void)
 {
 	/* free the lob blob first */
 	for (size_t i = 0; i < nlob; i++) {
-		munmap(lob[i].lob, lob[i].alloc_sz);
-		lob[i].alloc_sz = 0;
+		rem_lob(i);
 	}
 	/* and the list of clients */
 	munmap(cli, 4096);
 	return;
 }
+
+#if defined DEBUG_FLAG
+static void
+check_lob(lobidx_t li)
+{
+	lob_t l = lob + li;
+	lob_side_t ls = l->lob;
+	size_t nbeef = 0;
+	size_t nfree = 0;
+
+	/* count beef list */
+	for (size_t i = ls->head; i; i = NEXT(li, i)) {
+		nbeef++;
+	}
+	/* count free list */
+	for (size_t i = ls->free; i; i = NEXT(li, i)) {
+		nfree++;
+	}
+	assert(nbeef + nfree == l->alloc_sz / sizeof(*ls->e) - 1);
+
+	/* no client must be listed twice */
+	for (size_t i = ls->head; i; i = NEXT(li, i)) {
+		lobidx_t ic = EAT(li, i).v.cli;
+
+		for (size_t j = ls->head; j; j = NEXT(li, j)) {
+			lobidx_t jc = EAT(li, j).v.cli;
+
+			if (j != i && ic == jc) {
+				endwin();
+				fprintf(stderr, "\
+DOUBLE LISTING: cli %u at both %zu and %zu\n", ic, i, j);
+				abort();
+			}
+		}
+	}
+
+	/* entries in the chain must not be in the free list */
+	for (size_t i = ls->head; i; i = NEXT(li, i)) {
+		for (size_t j = ls->free; j; j = NEXT(li, j)) {
+			if (j == i) {
+				endwin();
+				fprintf(stderr, "\
+FREE AND NOT: %zu is both in the beef and the free list\n", i);
+				abort();
+			}
+		}
+	}
+	return;
+}
+#endif	/* DEBUG_FLAG */
 
 static lobidx_t
 lob_ins_at(lobidx_t li, lobidx_t pr, struct lob_entry_s v)
@@ -237,30 +315,39 @@ lob_ins_at(lobidx_t li, lobidx_t pr, struct lob_entry_s v)
 	assert(nu);
 	assert(nu != pr);
 	assert(s->head != s->free);
-	s->free = NEXT(s, s->free);
+	s->free = NEXT(li, s->free);
 
 	/* populate the cell */
-	EAT(s, nu).v = v;
+	EAT(li, nu).v = v;
 	/* update navigators */
 	if (pr) {
-		lobidx_t nx = NEXT(s, pr);
+		lobidx_t nx = NEXT(li, pr);
 
-		NEXT(s, nu) = nx;
-		PREV(s, nu) = pr;
-		NEXT(s, pr) = nu;
+		NEXT(li, nu) = nx;
+		PREV(li, nu) = pr;
+		NEXT(li, pr) = nu;
 		if (nx) {
-			PREV(s, nx) = nu;
+			PREV(li, nx) = nu;
+		} else {
+			/* set tail pointer also */
+			s->tail = nu;
 		}
 	} else {
 		/* ins at head */
-		PREV(s, nu) = 0;
-		if ((NEXT(s, nu) = s->head)) {
-			PREV(s, s->head) = nu;
+		PREV(li, nu) = 0;
+		if ((NEXT(li, nu) = s->head)) {
+			PREV(li, s->head) = nu;
+		} else {
+			/* head == tail */
+			s->tail = nu;
 		}
 		s->head = nu;
 	}
 
 	assert(pr != nu);
+#if defined DEBUG_FLAG
+	check_lob(li);
+#endif	/* DEBUG_FLAG */
 	return nu;
 }
 
@@ -273,23 +360,29 @@ lob_rem_at(lobidx_t li, lobidx_t idx)
 
 	/* fix up navigators */
 	if (s->head != idx) {
-		assert(PREV(s, idx));
+		assert(PREV(li, idx));
 
-		if (NEXT(s, idx)) {
-			PREV(s, NEXT(s, idx)) = PREV(s, idx);
+		if (NEXT(li, idx)) {
+			PREV(li, NEXT(li, idx)) = PREV(li, idx);
+		} else {
+			/* tail pointer fucked */
+			s->tail = PREV(li, idx);
 		}
-		NEXT(s, PREV(s, idx)) = NEXT(s, idx);
+		NEXT(li, PREV(li, idx)) = NEXT(li, idx);
 	} else {
 		/* head fiddling */
 		assert(s->head);
 
-		if ((s->head = NEXT(s, idx))) {
-			PREV(s, s->head) = 0;
+		if ((s->head = NEXT(li, idx))) {
+			PREV(li, s->head) = 0;
+		} else {
+			/* head is naught, so is tail */
+			s->tail = 0;
 		}
 	}
 
 	assert(idx != s->free);
-	NEXT(s, idx) = s->free;
+	NEXT(li, idx) = s->free;
 	s->free = idx;
 	assert(s->head != s->free);
 	return;
@@ -301,10 +394,14 @@ find_quote(lobidx_t li, m30_t p)
 	lobidx_t idx = 0;
 	lob_side_t l = lob[li].lob;
 
-	for (size_t i = l->head; i; idx = i, i = NEXT(l, i)) {
-		if (EAT(l, i).v.p.v < p.v) {
+#if defined DEBUG_FLAG
+	check_lob(li);
+#endif	/* DEBUG_FLAG */
+
+	for (size_t i = l->head; i; idx = i, i = NEXT(li, i)) {
+		if (EAT(li, i).v.p.v < p.v) {
 			return idx;
-		} else if (EAT(l, i).v.p.v == p.v) {
+		} else if (EAT(li, i).v.p.v == p.v) {
 			return i;
 		}
 	}
@@ -339,6 +436,8 @@ static lobidx_t
 add_cli(ud_sockaddr_t sa, uint16_t id)
 {
 	size_t idx = ncli++;
+#define CATCHALL_BIDLOB	(0)
+#define CATCHALL_ASKLOB	(1)
 
 	if (ncli * sizeof(*cli) > alloc_cli) {
 		size_t nu = alloc_cli + 4096;
@@ -348,10 +447,12 @@ add_cli(ud_sockaddr_t sa, uint16_t id)
 
 	cli[idx].sa = *sa;
 	cli[idx].id = id;
-	cli[idx].lob = 0;
+	cli[idx].blob = CATCHALL_BIDLOB;
+	cli[idx].alob = CATCHALL_ASKLOB;
 	cli[idx].b = 0;
 	cli[idx].a = 0;
 	cli[idx].ssz = 0;
+	cli[idx].mark = 0;
 
 	/* obtain the address in human readable form */
 	{
@@ -409,8 +510,6 @@ snarf_syms(job_t j)
 
 /* the actual worker function */
 static int changep = 0;
-static lobidx_t selcli = 0;
-static int selbidp = 1;
 
 static void
 mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
@@ -447,19 +546,6 @@ mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
 
 		if (UNLIKELY(plen == 0)) {
 			break;
-		} else if (UNLIKELY(selcli == 0)) {
-			/* peek into the first scom */
-			scom_t sp = (void*)pbuf;
-			uint16_t id = scom_thdr_tblidx(sp);
-			uint16_t ttf = scom_thdr_ttf(sp);
-
-			if (ttf == SL1T_TTF_ASK) {
-				selbidp = 0;
-			}
-			if ((c = find_cli(&j->sa, id)) == 0) {
-				c = add_cli(&j->sa, id);
-			}
-			selcli = c;
 		}
 
 		for (scom_t sp = (void*)pbuf, ep = (void*)(pbuf + plen);
@@ -483,30 +569,31 @@ mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
 
 			switch (ttf) {
 				lobidx_t e;
+				lobidx_t book;
 			case SL1T_TTF_BID:
+				/* get the book we're talking */
+				book = CLI(c)->blob;
 				/* delete the former bid first */
 				if (CLI(c)->b) {
-					lob_rem_at(BIDIDX(0), CLI(c)->b);
+					lob_rem_at(book, CLI(c)->b);
 				}
 				/* find our spot in the lob */
-				e = find_quote(BIDIDX(0), v.p);
+				e = find_quote(book, v.p);
 				/* and insert */
-				e = lob_ins_at(BIDIDX(0), e, v);
-				/* update client info */
-				CLI(c)->b = e;
+				CLI(c)->b = lob_ins_at(book, e, v);
 				changep = 1;
 				break;
 			case SL1T_TTF_ASK:
+				/* get the book we're talking */
+				book = CLI(c)->alob;
 				/* delete the former ask first */
 				if (CLI(c)->a) {
-					lob_rem_at(ASKIDX(0), CLI(c)->a);
+					lob_rem_at(book, CLI(c)->a);
 				}
 				/* find our spot in the lob */
-				e = find_quote(ASKIDX(0), v.p);
+				e = find_quote(book, v.p);
 				/* and insert */
-				e = lob_ins_at(ASKIDX(0), e, v);
-				/* update client info */
-				CLI(c)->a = e;
+				CLI(c)->a = lob_ins_at(book, e, v);
 				changep = 1;
 				break;
 			case SL1T_TTF_TRA:
@@ -522,20 +609,22 @@ mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
 				/* snaps */
 			case SSNP_FLAVOUR:
 			case SBAP_FLAVOUR:
+				/* get the book we're talking */
+				book = CLI(c)->blob;
 				if (CLI(c)->b) {
-					lob_rem_at(BIDIDX(0), CLI(c)->b);
+					lob_rem_at(book, CLI(c)->b);
 				}
-				e = find_quote(BIDIDX(0), v.p);
-				e = lob_ins_at(BIDIDX(0), e, v);
-				CLI(c)->b = e;
+				e = find_quote(book, v.p);
+				CLI(c)->b = lob_ins_at(book, e, v);
 
+				/* get the other book */
+				book = CLI(c)->alob;
 				if (CLI(c)->a) {
-					lob_rem_at(ASKIDX(0), CLI(c)->a);
+					lob_rem_at(book, CLI(c)->a);
 				}
 				v.p = v.q;
-				e = find_quote(ASKIDX(0), v.q);
-				e = lob_ins_at(ASKIDX(0), e, v);
-				CLI(c)->a = e;
+				e = find_quote(book, v.q);
+				CLI(c)->a = lob_ins_at(book, e, v);
 				changep = 1;
 				break;
 
@@ -590,28 +679,90 @@ sighup_cb(EV_P_ ev_signal *UNUSED(w), int UNUSED(revents))
 }
 
 
-static WINDOW *curw = NULL;
+static struct lob_win_s __gwins[countof(lob) / 2];
+static size_t __ngwins = 0;
+static lobidx_t curw = -1;
+#define CURW		(__gwins[curw].w)
+#define BIDLOB(i)	(__gwins[i].bbook)
+#define ASKLOB(i)	(__gwins[i].abook)
 
 #define JUST_RED	1
 #define JUST_GREEN	2
 #define JUST_YELLOW	3
 #define JUST_BLUE	4
 #define CLISEL		5
-#define STATUS		6
+#define CLIMARK		6
+#define STATUS		7
+
+static void
+init_lobwin(lobidx_t li)
+{
+	unsigned int nr = getmaxy(stdscr);
+	unsigned int nc = getmaxx(stdscr);
+
+	__gwins[li].w = newwin(nr - 1, nc, 0, 0);
+	return;
+}
+
+static void
+fini_lobwin(lobidx_t li)
+{
+	if (__gwins[li].w) {
+		delwin(__gwins[li].w);
+		__gwins[li].w = NULL;
+	}
+	return;
+}
+
+static void
+rem_lobwin(lobidx_t li)
+{
+	fini_lobwin(li);
+	__gwins[li].ssz = 0;
+
+	rem_lob(__gwins[li].bbook);
+	rem_lob(__gwins[li].abook);
+	return;
+}
+
+static lobidx_t
+add_lobwin(const char *name)
+{
+	lobidx_t res = __ngwins++;
+
+	/* just to make sure */
+	fini_lobwin(res);
+	/* get the new one */
+	init_lobwin(res);
+
+	if (name) {
+		size_t sz = strlen(name);
+
+		if (sz > countof(__gwins->sym)) {
+			sz = countof(__gwins->sym) - 1;
+		}
+		memcpy(__gwins[res].sym, name, sz);
+		__gwins[res].sym[sz] = '\0';
+		__gwins[res].ssz = sz;
+	} else {
+		__gwins[res].sym[0] = '\0';
+		__gwins[res].ssz = 0;
+	}
+
+	/* oh, and get us some order books */
+	__gwins[res].bbook = add_lob();
+	__gwins[res].abook = add_lob();
+
+	__gwins[res].selcli = 0;
+	__gwins[res].selside = 0;
+	return res;
+}
 
 static void
 render_scr(void)
 {
 	unsigned int nr = getmaxy(stdscr);
 	unsigned int nc = getmaxx(stdscr);
-
-	/* box the whole screen */
-	box(stdscr, 0, 0);
-	move(nr - 2, 0);
-	addch(ACS_LLCORNER);
-	hline(0, nc - 1);
-	move(nr - 2, nc - 1);
-	addch(ACS_LRCORNER);
 
 	/* also leave a note on how to exit */
 	move(nr - 1, 0);
@@ -621,12 +772,12 @@ render_scr(void)
 	addstr(" Press q to quit ");
 	attrset(A_NORMAL);
 
-	/* delete old beef window */
-	if (curw) {
-		delwin(curw);
+	for (size_t i = 0; i < __ngwins; i++) {
+		/* delete old beef window */
+		fini_lobwin(i);
+		/* start with the beef window */
+		init_lobwin(i);
 	}
-	/* start with the beef window */
-	curw = newwin(nr - 3, nc - 2, 1, 1);
 
 	/* big refreshment */
 	refresh();
@@ -636,7 +787,6 @@ render_scr(void)
 static void
 init_wins(void)
 {
-
 	initscr();
 	keypad(stdscr, TRUE);
 	noecho();
@@ -649,72 +799,114 @@ init_wins(void)
 	init_pair(JUST_YELLOW, COLOR_YELLOW, -1);
 	init_pair(JUST_BLUE, COLOR_BLUE, -1);
 	init_pair(CLISEL, COLOR_BLACK, COLOR_YELLOW);
+	init_pair(CLIMARK, 2, -1);
 	init_pair(STATUS, COLOR_BLACK, COLOR_GREEN);
 
-	/* start with a basic layout */
-	render_scr();
+	/* instantiate the catch-all window */
+	curw = add_lobwin("ALL");
 	return;
 }
 
 static void
 fini_wins(void)
 {
-	delwin(curw);
+	for (size_t i = 0; i < __ngwins; i++) {
+		rem_lobwin(i);
+	}
 	endwin();
 	return;
 }
 
 static void
-render_win(WINDOW *w)
+render_win(lobidx_t wi)
 {
-	unsigned int nwr = getmaxy(w);
-	unsigned int nwc = getmaxx(w);
+	lob_win_t w = __gwins + wi;
+	unsigned int nwr = getmaxy(w->w);
+	unsigned int nwc = getmaxx(w->w);
 
 	/* start with a clear window */
-	wclear(w);
+	wclear(w->w);
 
-	/* go through bids */
-	for (size_t i = lob[BIDIDX(0)].lob->head, j = 1;
-	     i && j < nwr;
-	     i = NEXT(lob[BIDIDX(0)].lob, i), j++) {
-		char tmp[128], *p = tmp;
-		lobidx_t c = EAT(lob[BIDIDX(0)].lob, i).v.cli;
-		lob_cli_t cp = CLI(c);
+	/* box with the name */
+	box(w->w, 0, 0);
 
-		if (cp->ssz) {
-			memcpy(p, cp->sym, cp->ssz);
-			p += cp->ssz;
-			*p++ = ' ';
-		} else {
-			memcpy(p, cp->ss, cp->sz);
-			p += cp->sz;
-			p += sprintf(p, " %04x ", cp->id);
+	/* draw the window `tabs' */
+	wmove(w->w, 0, 4);
+	for (size_t i = 0; i < __ngwins; i++) {
+		if (w->ssz) {
+			if (i == curw) {
+				wattron(w->w, COLOR_PAIR(CLISEL));
+			}
+			waddstr(w->w, __gwins[i].sym);
+			wattrset(w->w, A_NORMAL);
+			waddch(w->w, ' ');
 		}
-		p += ffff_m30_s(p, EAT(lob[BIDIDX(0)].lob, i).v.q);
-		*p++ = ' ';
-		p += ffff_m30_s(p, EAT(lob[BIDIDX(0)].lob, i).v.p);
-		*p = '\0';
-
-		wmove(w, j, nwc / 2 - 1 - (p - tmp));
-		if (c == selcli && selbidp) {
-			wattron(w, COLOR_PAIR(CLISEL));
-		} else if (c == selcli) {
-			wattron(w, A_STANDOUT);
-		}
-		waddstr(w, tmp);
-		wattrset(w, A_NORMAL);
 	}
 
-	for (size_t i = lob[ASKIDX(0)].lob->head, j = 1;
+	/* check if we've got a selection */
+	if (w->selcli == 0) {
+		lob_side_t s;
+
+		/* just select anything in this case */
+		if ((s = lob[BIDLOB(wi)].lob)->head) {
+			w->selcli = EAT(BIDLOB(wi), s->head).v.cli;
+		} else if ((s = lob[ASKLOB(wi)].lob)->head) {
+			w->selcli = EAT(ASKLOB(wi), s->head).v.cli;
+		} else {
+			/* tough luck */
+			;
+		}
+	}
+
+#if defined DEBUG_FLAG
+	check_lob(BIDLOB(wi));
+	check_lob(ASKLOB(wi));
+#endif	/* DEBUG_FLAG */
+
+	/* go through bids */
+	for (size_t i = lob[BIDLOB(wi)].lob->head, j = 1;
 	     i && j < nwr;
-	     i = NEXT(lob[ASKIDX(0)].lob, i), j++) {
+	     i = NEXT(BIDLOB(wi), i), j++) {
 		char tmp[128], *p = tmp;
-		lobidx_t c = EAT(lob[ASKIDX(0)].lob, i).v.cli;
+		lobidx_t c = EAT(BIDLOB(wi), i).v.cli;
 		lob_cli_t cp = CLI(c);
 
-		p += ffff_m30_s(p, EAT(lob[ASKIDX(0)].lob, i).v.p);
+		if (cp->ssz) {
+			memcpy(p, cp->sym, cp->ssz);
+			p += cp->ssz;
+			*p++ = ' ';
+		} else {
+			memcpy(p, cp->ss, cp->sz);
+			p += cp->sz;
+			p += sprintf(p, " %04x ", cp->id);
+		}
+		p += ffff_m30_s(p, EAT(BIDLOB(wi), i).v.q);
 		*p++ = ' ';
-		p += ffff_m30_s(p, EAT(lob[ASKIDX(0)].lob, i).v.q);
+		p += ffff_m30_s(p, EAT(BIDLOB(wi), i).v.p);
+		*p = '\0';
+
+		wmove(w->w, j, nwc / 2 - 1 - (p - tmp));
+		if (c == w->selcli && w->selside == 0) {
+			wattron(w->w, COLOR_PAIR(CLISEL));
+		} else if (c == w->selcli) {
+			wattron(w->w, A_STANDOUT);
+		} else if (CLI(c)->mark) {
+			wattron(w->w, COLOR_PAIR(CLIMARK));
+		}
+		waddstr(w->w, tmp);
+		wattrset(w->w, A_NORMAL);
+	}
+
+	for (size_t i = lob[ASKLOB(wi)].lob->tail, j = 1;
+	     i && j < nwr;
+	     i = PREV(ASKLOB(wi), i), j++) {
+		char tmp[128], *p = tmp;
+		lobidx_t c = EAT(ASKLOB(wi), i).v.cli;
+		lob_cli_t cp = CLI(c);
+
+		p += ffff_m30_s(p, EAT(ASKLOB(wi), i).v.p);
+		*p++ = ' ';
+		p += ffff_m30_s(p, EAT(ASKLOB(wi), i).v.q);
 		if (cp->ssz) {
 			*p++ = ' ';
 			memcpy(p, cp->sym, cp->ssz);
@@ -726,19 +918,21 @@ render_win(WINDOW *w)
 		}
 		*p = '\0';
 
-		wmove(w, j, nwc / 2  + 1);
-		if (c == selcli && !selbidp) {
-			wattron(w, COLOR_PAIR(CLISEL));
-		} else if (c == selcli) {
-			wattron(w, A_STANDOUT);
+		wmove(w->w, j, nwc / 2  + 1);
+		if (c == w->selcli && w->selside == 1) {
+			wattron(w->w, COLOR_PAIR(CLISEL));
+		} else if (c == w->selcli) {
+			wattron(w->w, A_STANDOUT);
+		} else if (CLI(c)->mark) {
+			wattron(w->w, COLOR_PAIR(CLIMARK));
 		}
-		waddstr(w, tmp);
-		wattrset(w, A_NORMAL);
+		waddstr(w->w, tmp);
+		wattrset(w->w, A_NORMAL);
 	}
 
 	/* actually render the window */
-	wmove(w, nwr - 1, nwc - 1);
-	wrefresh(w);
+	wmove(w->w, nwr - 1, nwc - 1);
+	wrefresh(w->w);
 
 	/* reset state */
 	changep = 0;
@@ -775,31 +969,106 @@ sigwinch_cb(EV_P_ ev_signal *UNUSED(w), int UNUSED(revents))
 	return;
 }
 
+static void
+reass_cli(lobidx_t ci, lobidx_t wi)
+{
+	/* rem from the old books */
+	assert(CLI(ci)->b || CLI(ci)->a);
+	if (CLI(ci)->b) {
+		lobidx_t book = CLI(ci)->blob;
+
+		assert(EAT(book, CLI(ci)->b).v.cli == ci);
+		lob_rem_at(book, CLI(ci)->b);
+	}
+	if (CLI(ci)->a) {
+		lobidx_t book = CLI(ci)->alob;
+
+		assert(EAT(book, CLI(ci)->a).v.cli == ci);
+		lob_rem_at(book, CLI(ci)->a);
+	}
+
+	/* assert */
+	assert(ASKLOB(wi) == BIDLOB(wi) + 1);
+
+	/* find the entry in the new book */
+	if (CLI(ci)->b) {
+		lobidx_t ol_book = CLI(ci)->blob;
+		lobidx_t nu_book = BIDLOB(wi);
+		struct lob_entry_s v = EAT(ol_book, CLI(ci)->b).v;
+		lobidx_t e;
+
+		assert(v.cli == ci);
+		e = find_quote(nu_book, v.p);
+		CLI(ci)->b = lob_ins_at(nu_book, e, v);
+	}
+	if (CLI(ci)->a) {
+		lobidx_t ol_book = CLI(ci)->alob;
+		lobidx_t nu_book = ASKLOB(wi);
+		struct lob_entry_s v = EAT(ol_book, CLI(ci)->a).v;
+		lobidx_t e;
+
+		assert(v.cli == ci);
+		e = find_quote(nu_book, v.p);
+		CLI(ci)->a = lob_ins_at(nu_book, e, v);
+	}
+
+	/* assign the new books */
+	CLI(ci)->blob = BIDLOB(wi);
+	CLI(ci)->alob = ASKLOB(wi);
+
+	/* unmark client */
+	CLI(ci)->mark = 0;
+
+	/* unassign the currently selected client */
+	__gwins[curw].selcli = 0;
+	return;
+}
+
+static void
+reass_clis(lobidx_t wi)
+{
+	int markp = 0;
+
+	/* if there's no marks, just use the currently selected cli */
+	for (size_t i = 1; i <= ncli; i++) {
+		if (CLI(i)->mark) {
+			reass_cli(i, wi);
+			markp = 1;
+		}
+	}
+	if (!markp) {
+		/* no marks found, reass the current selection */
+		reass_cli(__gwins[curw].selcli, wi);
+	}
+	return;
+}
+
 /* readline glue */
 static void
 handle_el(char *line)
 {
-	/* print newline */
-	if (UNLIKELY(line == NULL)) {
-		/* and finally kick the event loop */
-		ev_unloop(EV_DEFAULT_ EVUNLOOP_ALL);
-		return;
-	}
+	lobidx_t wi;
 
-	if (UNLIKELY(line[0] == '\0' || line[0] == ' ')) {
+	/* print newline */
+	if (UNLIKELY(line == NULL || line[0] == '\0' || line[0] == ' ')) {
 		goto out;
 	}
 
-#if 0
 	/* stuff up our history */
 	add_history(line);
 
-	/* parse him, blocks until a reply is nigh */
-	handle_cb(line, rl_end);
-#endif	/* 0 */
-
-	move(0, 4);
-	printw(line);
+	/* quick check */
+	for (size_t i = 0; i < __ngwins; i++) {
+		if (strcmp(line, __gwins[i].sym) == 0) {
+			wi = i;
+			goto reass;
+		}
+	}
+	/* otherwise we need to create a window */
+	wi = add_lobwin(line);
+reass:
+	/* the selected client gets a new lob */
+	reass_clis(wi);
 
 out:
 	/* ah, user entered something? */
@@ -814,9 +1083,10 @@ out:
 }
 
 static void
-keypress_cb(EV_P_ ev_io *UNUSED(w), int UNUSED(revents))
+keypress_cb(EV_P_ ev_io *UNUSED(io), int UNUSED(revents))
 {
 	int k;
+	lob_win_t w = __gwins + curw;
 
 	if (UNLIKELY(symw != NULL)) {
 		rl_callback_read_char();
@@ -834,45 +1104,66 @@ keypress_cb(EV_P_ ev_io *UNUSED(w), int UNUSED(revents))
 	case 'q':
 		ev_unloop(EV_A_ EVUNLOOP_ALL);
 		break;
+
+		/* flick between windows */
+	case '\t':
+		if (++curw >= __ngwins) {
+			curw = 0;
+		}
+		goto redraw;
+	case KEY_BTAB:
+		if (curw-- == 0) {
+			curw = __ngwins - 1;
+		}
+		goto redraw;
+
+		/* marking */
+	case ' ':
+		CLI(w->selcli)->mark = !CLI(w->selcli)->mark;
+		/* pretend we was a key_down */
+		k = KEY_DOWN;
+		/* fallthrough */
 	case KEY_UP:
 	case KEY_DOWN:
-		if (selcli) {
-			lob_side_t side;
+		if (w->selcli) {
+			lobidx_t side;
 			lobidx_t qidx;
 			lobidx_t nu;
+			int prevnext;
 
-			if (selbidp) {
-				side = lob[BIDIDX(0)].lob;
-				qidx = CLI(selcli)->b;
+			if (w->selside == 0) {
+				side = BIDLOB(curw);
+				qidx = CLI(w->selcli)->b;
+				prevnext = 0;
 			} else {
-				side = lob[ASKIDX(0)].lob;
-				qidx = CLI(selcli)->a;
+				side = ASKLOB(curw);
+				qidx = CLI(w->selcli)->a;
+				prevnext = 1;
 			}
 
-			switch (k) {
-			case KEY_UP:
+			if (k == KEY_UP && prevnext == 0 ||
+			    k == KEY_DOWN && prevnext == 1) {
 				nu = EAT(side, qidx).prev;
-				break;
-			case KEY_DOWN:
+			} else if (k == KEY_DOWN && prevnext == 0 ||
+				   k == KEY_UP && prevnext == 1) {
 				nu = EAT(side, qidx).next;
-				break;
 			}
 
 			if (nu) {
-				selcli = EAT(side, nu).v.cli;
+				w->selcli = EAT(side, nu).v.cli;
 				goto redraw;
 			}
 		}
 		break;
 	case KEY_RIGHT:
-		if (selbidp) {
-			selbidp = 0;
+		if (w->selside == 0) {
+			w->selside = 1;
 			goto redraw;
 		}
 		break;
 	case KEY_LEFT:
-		if (!selbidp) {
-			selbidp = 1;
+		if (w->selside == 1) {
+			w->selside = 0;
 			goto redraw;
 		}
 		break;
@@ -1033,6 +1324,9 @@ main(int argc, char *argv[])
 
 	/* init the limit order book */
 	init_lob();
+
+	/* give him a sigwinch, so everything gets rerendered */
+	sigwinch_cb(EV_A_ sigwinch_watcher, 0);
 
 	/* now wait for events to arrive */
 	ev_loop(EV_A_ 0);

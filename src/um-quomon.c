@@ -253,6 +253,7 @@ free_lob(void)
 
 #if defined DEBUG_FLAG
 static void
+__attribute__((noinline))
 check_lob(lobidx_t li)
 {
 	lob_t l = lob + li;
@@ -268,7 +269,14 @@ check_lob(lobidx_t li)
 	for (size_t i = ls->free; i; i = NEXT(li, i)) {
 		nfree++;
 	}
-	assert(nbeef + nfree == l->alloc_sz / sizeof(*ls->e) - 1);
+	if (nbeef + nfree != l->alloc_sz / 4096 * (4096 / sizeof(*ls->e)) - 1) {
+		endwin();
+		fprintf(stderr, "\
+book %u: nbeef (%zu) nfree (%zu) and alloc_sz (%zu (%zu)) don't match\n",
+			li, nbeef, nfree,
+			l->alloc_sz, l->alloc_sz / sizeof(*ls->e));
+		abort();
+	}
 
 	/* no client must be listed twice */
 	for (size_t i = ls->head; i; i = NEXT(li, i)) {

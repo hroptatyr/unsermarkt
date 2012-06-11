@@ -957,59 +957,76 @@ sigwinch_cb(EV_P_ ev_signal *UNUSED(w), int UNUSED(revents))
 }
 
 static void
-reass_selcli(lobidx_t wi)
+reass_cli(lobidx_t ci, lobidx_t wi)
 {
-	lobidx_t c = __gwins[curw].selcli;
-
 	/* rem from the old books */
-	assert(CLI(c)->b || CLI(c)->a);
-	if (CLI(c)->b) {
-		lobidx_t book = CLI(c)->blob;
+	assert(CLI(ci)->b || CLI(ci)->a);
+	if (CLI(ci)->b) {
+		lobidx_t book = CLI(ci)->blob;
 
-		assert(EAT(book, CLI(c)->b).v.cli == c);
-		lob_rem_at(book, CLI(c)->b);
+		assert(EAT(book, CLI(ci)->b).v.cli == ci);
+		lob_rem_at(book, CLI(ci)->b);
 	}
-	if (CLI(c)->a) {
-		lobidx_t book = CLI(c)->alob;
+	if (CLI(ci)->a) {
+		lobidx_t book = CLI(ci)->alob;
 
-		assert(EAT(book, CLI(c)->a).v.cli == c);
-		lob_rem_at(book, CLI(c)->a);
+		assert(EAT(book, CLI(ci)->a).v.cli == ci);
+		lob_rem_at(book, CLI(ci)->a);
 	}
 
 	/* assert */
 	assert(ASKLOB(wi) == BIDLOB(wi) + 1);
 
 	/* find the entry in the new book */
-	if (CLI(c)->b) {
-		lobidx_t ol_book = CLI(c)->blob;
+	if (CLI(ci)->b) {
+		lobidx_t ol_book = CLI(ci)->blob;
 		lobidx_t nu_book = BIDLOB(wi);
-		struct lob_entry_s v = EAT(ol_book, CLI(c)->b).v;
+		struct lob_entry_s v = EAT(ol_book, CLI(ci)->b).v;
 		lobidx_t e;
 
-		assert(v.cli == c);
+		assert(v.cli == ci);
 		e = find_quote(nu_book, v.p);
-		CLI(c)->b = lob_ins_at(nu_book, e, v);
+		CLI(ci)->b = lob_ins_at(nu_book, e, v);
 	}
-	if (CLI(c)->a) {
-		lobidx_t ol_book = CLI(c)->alob;
+	if (CLI(ci)->a) {
+		lobidx_t ol_book = CLI(ci)->alob;
 		lobidx_t nu_book = ASKLOB(wi);
-		struct lob_entry_s v = EAT(ol_book, CLI(c)->a).v;
+		struct lob_entry_s v = EAT(ol_book, CLI(ci)->a).v;
 		lobidx_t e;
 
-		assert(v.cli == c);
+		assert(v.cli == ci);
 		e = find_quote(nu_book, v.p);
-		CLI(c)->a = lob_ins_at(nu_book, e, v);
+		CLI(ci)->a = lob_ins_at(nu_book, e, v);
 	}
 
 	/* assign the new books */
-	CLI(c)->blob = BIDLOB(wi);
-	CLI(c)->alob = ASKLOB(wi);
+	CLI(ci)->blob = BIDLOB(wi);
+	CLI(ci)->alob = ASKLOB(wi);
 
 	/* unmark client */
-	CLI(c)->mark = 0;
+	CLI(ci)->mark = 0;
 
 	/* unassign the currently selected client */
 	__gwins[curw].selcli = 0;
+	return;
+}
+
+static void
+reass_clis(lobidx_t wi)
+{
+	int markp = 0;
+
+	/* if there's no marks, just use the currently selected cli */
+	for (size_t i = 1; i <= ncli; i++) {
+		if (CLI(i)->mark) {
+			reass_cli(i, wi);
+			markp = 1;
+		}
+	}
+	if (!markp) {
+		/* no marks found, reass the current selection */
+		reass_cli(__gwins[curw].selcli, wi);
+	}
 	return;
 }
 
@@ -1020,13 +1037,7 @@ handle_el(char *line)
 	lobidx_t wi;
 
 	/* print newline */
-	if (UNLIKELY(line == NULL)) {
-		/* and finally kick the event loop */
-		ev_unloop(EV_DEFAULT_ EVUNLOOP_ALL);
-		return;
-	}
-
-	if (UNLIKELY(line[0] == '\0' || line[0] == ' ')) {
+	if (UNLIKELY(line == NULL || line[0] == '\0' || line[0] == ' ')) {
 		goto out;
 	}
 
@@ -1044,7 +1055,7 @@ handle_el(char *line)
 	wi = add_lobwin(line);
 reass:
 	/* the selected client gets a new lob */
-	reass_selcli(wi);
+	reass_clis(wi);
 
 out:
 	/* ah, user entered something? */

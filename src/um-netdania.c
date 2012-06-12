@@ -512,25 +512,29 @@ fput_sub(uint16_t sub, char **p, const char *ep, FILE *out)
 	return 0;
 }
 
-static int
+static int MAYBE_NOINLINE
 dump_TF_MSG(char **q, size_t len)
 {
 	char *p = *q;
 	char *ep = p + len;
-	/* next up the identifier */
-	uint32_t rid = read_u32(&p);
-	/* number of records */
-	uint8_t nrec = read_u8(&p);
+	uint32_t rid;
+	uint8_t nrec;
 	uint8_t i;
 
-	if (rid-- > ngsyms) {
+	if (UNLIKELY(p + 5 >= ep)) {
+		/* no need to continue */
+		return -1;
+	} else if (UNLIKELY((rid = read_u32(&p) - 1) > ngsyms)) {
 		/* we're fucked */
 		return -1;
 	}
 
-	/* record count */
+	/* print the symbol so we know what this was supposed to be */
 	fputs(gsyms[rid], stdout);
 	fputc('\t', stdout);
+
+	/* and the number of records */
+	nrec = read_u8(&p);
 	for (i = 0; i < nrec && p <= ep - 4; i++) {
 		uint16_t sub = read_u16(&p);
 

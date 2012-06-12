@@ -100,7 +100,16 @@ tws_snarf_la_CPPFLAGS += $(twstools_CFLAGS)
 tws_snarf_la_CPPFLAGS += $(uterus_CFLAGS)
 tws_snarf_la_CPPFLAGS += $(unserding_CFLAGS)
 tws_snarf_la_LDFLAGS += $(unserding_LIBS)
-endif
+
+noinst_LTLIBRARIES += tws-order.la
+tws_order_la_LDFLAGS = -module -rpath /none
+tws_order_la_SOURCES = tws-order.cpp
+tws_order_la_CPPFLAGS = $(AM_CPPFLAGS)
+tws_order_la_CPPFLAGS += $(twstools_CFLAGS)
+tws_order_la_CPPFLAGS += $(uterus_CFLAGS)
+tws_order_la_CPPFLAGS += $(unserding_CFLAGS)
+tws_order_la_LDFLAGS += $(unserding_LIBS)
+endif  ## HAVE_TWSTOOLS
 
 bin_PROGRAMS += um-netdania
 um_netdania_SOURCES = um-netdania.c um-netdania.h um-netdania-clo.ggo

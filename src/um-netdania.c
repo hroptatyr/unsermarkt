@@ -562,7 +562,7 @@ dump_job(nd_pkt_t j)
 	while (p < ep) {
 		switch (*p++) {
 		case TF_UNK: {
-			uint8_t len = read_u8(&p);
+			uint8_t len = p + 1 < ep ? read_u8(&p) : 0;
 
 			fputs("GENERIC\t", stdout);
 			fwrite(p, sizeof(char), len, stdout);

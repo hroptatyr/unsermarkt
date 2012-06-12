@@ -60,6 +60,9 @@ extern void fini(void*);
 extern void work(void*);
 }
 
+#if !defined UNLIKELY
+# define UNLIKELY(x)	__builtin_expect((x), 0)
+#endif	/* !UNLIKELY */
 #if !defined UNUSED
 # define UNUSED(x)	__attribute__((unused)) x
 #endif	/* UNUSED */
@@ -100,6 +103,8 @@ typedef long unsigned int *bitset_t;
 
 static level_t mkt_bid = NULL;
 static level_t mkt_ask = NULL;
+static char *syms = NULL;
+static size_t *offs = NULL;
 static bitset_t change = NULL;
 static size_t npos = 0U;
 
@@ -217,6 +222,45 @@ party(const char *buf, size_t bsz)
 	return;
 }
 
+static void
+pmeta(char *buf, size_t bsz)
+{
+	struct udpc_seria_s ser[1];
+	uint8_t tag;
+
+	udpc_seria_init(ser, buf, bsz);
+	while (ser->msgoff < bsz && (tag = udpc_seria_tag(ser))) {
+		const char *p;
+		uint16_t idx;
+		size_t sz;
+
+		if (UNLIKELY(tag != UDPC_TYPE_UI16)) {
+			break;
+		}
+		/* otherwise find us the id */
+		idx = udpc_seria_des_ui16(ser);
+
+		/* next up is the symbol */
+		tag = udpc_seria_tag(ser);
+		if (UNLIKELY(tag != UDPC_TYPE_STR)) {
+			break;
+		}
+		// fuck error checking, just bang the info we've got
+		sz = udpc_seria_des_str(ser, &p);
+
+		// check for resizes
+		check_resz(idx);
+		offs[idx] = sz + 1 + offs[idx - 1];
+
+		{
+			size_t rdsz = __roundup_2pow(offs[idx]);
+			syms = (char*)realloc(syms, rdsz);
+			strncpy(syms + offs[idx - 1], p, sz);
+		}
+	}
+	return;
+}
+
 
 /* public exposure for the DSO, C linkage */
 void init(void *UNUSED(clo))
@@ -265,8 +309,6 @@ void work(void *clo)
 		;
 	} else if (!udpc_pkt_valid_p((ud_packet_t){nrd, buf})) {
 		;
-	} else if (udpc_pkt_cmd((ud_packet_t){nrd, buf}) != UTE_CMD) {
-		;
 	} else {
 		// YAAAY
 		char ia[INET6_ADDRSTRLEN];
@@ -275,7 +317,29 @@ void work(void *clo)
 		short unsigned int port = ntohs(sa.sa6.sin6_port);
 
 		fprintf(stderr, "[%s]:%hu -> %d\t%zd\n", a, port, mcfd, nrd);
-		party(UDPC_PAYLOAD(buf), UDPC_PAYLLEN(nrd));
+
+		switch (udpc_pkt_cmd((ud_packet_t){nrd, buf})) {
+		case UDPC_PKT_RPL(UTE_QMETA):
+			pmeta(UDPC_PAYLOAD(buf), UDPC_PAYLLEN(nrd));
+			break;
+		case UTE_CMD:
+			// that's what we need!
+			party(UDPC_PAYLOAD(buf), UDPC_PAYLLEN(nrd));
+
+			for (size_t i = 0; i < npos; i++) {
+				if (bitset_get(change, i)) {
+					if (offs[i]) {
+						fprintf(stderr, "\
+%s %f %f\n", syms + offs[i - 1], mkt_bid[i].p, mkt_ask[i].p);
+					} else {
+						fprintf(stderr, "\
+%d %f %f\n", i, mkt_bid[i].p, mkt_ask[i].p);
+					}
+				}
+			}
+		default:
+			break;
+		}
 	}
 	return;
 }

@@ -245,15 +245,18 @@ pmeta(char *buf, size_t bsz)
 		if (UNLIKELY(tag != UDPC_TYPE_STR)) {
 			break;
 		}
-		// fuck error checking, just bang the info we've got
+		// deser the string
 		sz = udpc_seria_des_str(ser, &p);
 
-		// check for resizes
-		check_resz(idx);
-		offs[idx] = sz + 1 + offs[idx - 1];
+		if (idx) {
+			size_t rdsz;
 
-		{
-			size_t rdsz = __roundup_2pow(offs[idx]);
+			// check for resizes
+			check_resz(idx);
+			offs[idx] = sz + 1 + offs[idx - 1];
+
+			// bang the info into syms array
+			rdsz = __roundup_2pow(offs[idx]);
 			syms = (char*)realloc(syms, rdsz);
 			strncpy(syms + offs[idx - 1], p, sz);
 		}

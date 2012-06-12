@@ -568,6 +568,10 @@ dump_job(nd_pkt_t j)
 		case TF_UNK: {
 			uint8_t len = p + 1 < ep ? read_u8(&p) : 0;
 
+			if (UNLIKELY(p + len > ep)) {
+				len = ep - p;
+			}
+
 			fputs("GENERIC\t", stdout);
 			fwrite(p, sizeof(char), len, stdout);
 			fputc('\n', stdout);

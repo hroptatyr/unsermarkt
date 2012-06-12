@@ -74,6 +74,12 @@
 #include "nifty.h"
 #include "um-netdania.h"
 
+#if defined DEBUG_FLAG
+# define MAYBE_NOINLINE		__attribute__((noinline))
+#else  /* !DEBUG_FLAG */
+# define MAYBE_NOINLINE
+#endif	/* DEBUG_FLAG */
+
 typedef const struct nd_pkt_s *nd_pkt_t;
 
 struct nd_pkt_s {
@@ -540,7 +546,7 @@ dump_TF_MSG(char **q, size_t len)
 	}
 }
 
-static size_t
+static size_t MAYBE_NOINLINE
 dump_job(nd_pkt_t j)
 {
 	enum {

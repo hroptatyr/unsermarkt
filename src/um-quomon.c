@@ -1237,7 +1237,7 @@ keypress_cb(EV_P_ ev_io *UNUSED(io), int UNUSED(revents))
 	return;
 
 redraw:
-	render_win(curw);
+	changep = 1;
 	return;
 }
 

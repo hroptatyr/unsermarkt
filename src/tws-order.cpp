@@ -253,6 +253,8 @@ pmeta(char *buf, size_t bsz)
 
 			// check for resizes
 			check_resz(idx);
+			// this assumes that QMETA stuff will be sent in order!
+			// i.e. we break if we get index 5 before index 2
 			offs[idx] = sz + 1 + offs[idx - 1];
 
 			// bang the info into syms array

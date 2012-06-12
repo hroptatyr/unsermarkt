@@ -98,6 +98,11 @@ typedef struct {
 
 typedef long unsigned int *bitset_t;
 
+static level_t mkt_bid = NULL;
+static level_t mkt_ask = NULL;
+static bitset_t change = NULL;
+static size_t npos = 0U;
+
 static inline void
 bitset_set(bitset_t bs, unsigned int bit)
 {
@@ -143,13 +148,37 @@ __roundup_2pow(long unsigned int n)
 }
 
 static void
+check_resz(uint16_t idx)
+{
+	// check for resizes
+	if (idx >= npos) {
+		size_t nu = __roundup_2pow(idx + 1);
+
+#define DIFF		(nu - npos)
+#define REALL(x, y)	x = (typeof(x))realloc(x, (nu / (y)) * sizeof(*x))
+#define RINSE(x, y)	memset(x + npos / (y), 0, (DIFF / (y)) * sizeof(*x))
+
+		// make the stuff bigger
+		REALL(mkt_bid, 1);
+		REALL(mkt_ask, 1);
+		REALL(offs, 1);
+		REALL(change, sizeof(*change) * CHAR_BIT);
+
+		// rinse
+		RINSE(mkt_bid, 1);
+		RINSE(mkt_ask, 1);
+		RINSE(offs, 1);
+		RINSE(change, sizeof(*change) * CHAR_BIT);
+
+		// reassign npos
+		npos = nu;
+	}
+	return;
+}
+
+static void
 party(const char *buf, size_t bsz)
 {
-	static level_t mkt_bid = NULL;
-	static level_t mkt_ask = NULL;
-	static bitset_t change = NULL;
-	static size_t npos = 0U;
-
 	// start with a clean sheet
 	bitset_clear(change, npos);
 
@@ -163,26 +192,7 @@ party(const char *buf, size_t bsz)
 		m30_t q = {((const_sl1t_t)sp)->v[1]};
 
 		// check for resizes
-		if (idx >= npos) {
-			size_t nu = __roundup_2pow(idx + 1);
-
-#define DIFF		(nu - npos)
-#define REALL(x, y)	x = (typeof(x))realloc(x, (nu / (y)) * sizeof(*x))
-#define RINSE(x, y)	memset(x + npos / (y), 0, (DIFF / (y)) * sizeof(*x))
-
-			// make the stuff bigger
-			REALL(mkt_bid, 1);
-			REALL(mkt_ask, 1);
-			REALL(change, sizeof(*change) * CHAR_BIT);
-
-			// rinse
-			RINSE(mkt_bid, 1);
-			RINSE(mkt_ask, 1);
-			RINSE(change, sizeof(*change) * CHAR_BIT);
-
-			// reassign npos
-			npos = nu;
-		}
+		check_resz(idx);
 
 		switch (ttf) {
 		case SL1T_TTF_BID:

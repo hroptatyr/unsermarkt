@@ -84,6 +84,13 @@
 
 #include "nifty.h"
 
+#if defined __INTEL_COMPILER
+# pragma warning (disable:981)
+#endif	/* __INTEL_COMPILER */
+
+#define PURE		__attribute__((pure))
+#define PURE_CONST	__attribute__((const, pure))
+
 typedef uint32_t lobidx_t;
 typedef struct lob_cli_s *lob_cli_t;
 typedef union lob_side_u *lob_side_t;
@@ -108,6 +115,7 @@ struct lob_cli_s {
 	size_t ssz;
 
 	int mark;
+	unsigned int last_seen;
 };
 
 /* our limit order book, well just level 2 */
@@ -167,6 +175,10 @@ static size_t nlob = 0;
 static lob_cli_t cli = NULL;
 static size_t ncli = 0;
 static size_t alloc_cli = 0;
+
+/* renderer counter will be inc'd with each render_cb call */
+static unsigned int nrend = 0;
+#define NOW		(nrend)
 
 #define CLI(x)		(assert(x), assert(x <= ncli), cli + x - 1)
 #define EAT(y, x)	(lob[y].lob->e[x])
@@ -253,6 +265,7 @@ free_lob(void)
 
 #if defined DEBUG_FLAG
 static void
+__attribute__((noinline))
 check_lob(lobidx_t li)
 {
 	lob_t l = lob + li;
@@ -268,7 +281,14 @@ check_lob(lobidx_t li)
 	for (size_t i = ls->free; i; i = NEXT(li, i)) {
 		nfree++;
 	}
-	assert(nbeef + nfree == l->alloc_sz / sizeof(*ls->e) - 1);
+	if (nbeef + nfree != l->alloc_sz / 4096 * (4096 / sizeof(*ls->e)) - 1) {
+		endwin();
+		fprintf(stderr, "\
+book %u: nbeef (%zu) nfree (%zu) and alloc_sz (%zu (%zu)) don't match\n",
+			li, nbeef, nfree,
+			l->alloc_sz, l->alloc_sz / sizeof(*ls->e));
+		abort();
+	}
 
 	/* no client must be listed twice */
 	for (size_t i = ls->head; i; i = NEXT(li, i)) {
@@ -388,8 +408,72 @@ lob_rem_at(lobidx_t li, lobidx_t idx)
 	return;
 }
 
+static inline bool PURE_CONST
+m30_less_p(m30_t a, m30_t b)
+{
+	switch (a.expo - b.expo) {
+	case 0:
+		return a.mant < b.mant;
+	case 1:
+		if (UNLIKELY(a.mant == b.mant / 10000)) {
+			return a.mant * 10000 < b.mant;
+		}
+		return a.mant < b.mant / 10000;
+
+	case -1:
+		if (UNLIKELY(a.mant / 10000 == b.mant)) {
+			return a.mant < b.mant * 10000;
+		}
+		return a.mant / 10000 < b.mant;
+	case 2:
+	case 3:
+		/* a is too large to be less than b */
+		return false;
+	case -2:
+	case -3:
+		/* a is too small to not be less than b */
+		return true;
+	default:
+		break;
+	}
+	/* should not be reached */
+	assert(0 == 1);
+	return false;
+}
+
+static inline bool PURE_CONST
+m30_eq_p(m30_t a, m30_t b)
+{
+	switch (a.expo - b.expo) {
+	case 0:
+		return a.mant == b.mant;
+	case 1:
+		if (UNLIKELY(a.mant == b.mant / 10000)) {
+			return a.mant * 10000 == b.mant;
+		}
+		return false;
+
+	case -1:
+		if (UNLIKELY(a.mant / 10000 == b.mant)) {
+			return a.mant == b.mant * 10000;
+		}
+		return false;
+	case 2:
+	case -2:
+	case 3:
+	case -3:
+		/* a or b is too large to equal b or a */
+		return false;
+	default:
+		break;
+	}
+	/* we're fucked when we get here */
+	assert(0 == 1);
+	return false;
+}
+
 static lobidx_t
-find_quote(lobidx_t li, m30_t p)
+find_quote(lobidx_t li, m30_t ref)
 {
 	lobidx_t idx = 0;
 	lob_side_t l = lob[li].lob;
@@ -399,9 +483,10 @@ find_quote(lobidx_t li, m30_t p)
 #endif	/* DEBUG_FLAG */
 
 	for (size_t i = l->head; i; idx = i, i = NEXT(li, i)) {
-		if (EAT(li, i).v.p.v < p.v) {
+		m30_t p = EAT(li, i).v.p;
+		if (m30_less_p(p, ref)) {
 			return idx;
-		} else if (EAT(li, i).v.p.v == p.v) {
+		} else if (m30_eq_p(p, ref)) {
 			return i;
 		}
 	}
@@ -453,6 +538,7 @@ add_cli(ud_sockaddr_t sa, uint16_t id)
 	cli[idx].a = 0;
 	cli[idx].ssz = 0;
 	cli[idx].mark = 0;
+	cli[idx].last_seen = 0;
 
 	/* obtain the address in human readable form */
 	{
@@ -566,6 +652,9 @@ mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
 			v.cli = c;
 			v.p = (m30_t)l1t->v[0];
 			v.q = (m30_t)l1t->v[1];
+
+			/* update last seen */
+			CLI(c)->last_seen = NOW;
 
 			switch (ttf) {
 				lobidx_t e;
@@ -821,8 +910,8 @@ static void
 render_win(lobidx_t wi)
 {
 	lob_win_t w = __gwins + wi;
-	unsigned int nwr = getmaxy(w->w);
-	unsigned int nwc = getmaxx(w->w);
+	const unsigned int nwr = getmaxy(w->w);
+	const unsigned int nwc = getmaxx(w->w);
 
 	/* start with a clear window */
 	wclear(w->w);
@@ -843,6 +932,10 @@ render_win(lobidx_t wi)
 		}
 	}
 
+	/* check if selection points to pruned cli */
+	if (w->selcli && UNLIKELY(!CLI(w->selcli)->b && !CLI(w->selcli)->a)) {
+		w->selcli = 0;
+	}
 	/* check if we've got a selection */
 	if (w->selcli == 0) {
 		lob_side_t s;
@@ -865,7 +958,7 @@ render_win(lobidx_t wi)
 
 	/* go through bids */
 	for (size_t i = lob[BIDLOB(wi)].lob->head, j = 1;
-	     i && j < nwr;
+	     i && j < nwr - 1;
 	     i = NEXT(BIDLOB(wi), i), j++) {
 		char tmp[128], *p = tmp;
 		lobidx_t c = EAT(BIDLOB(wi), i).v.cli;
@@ -898,7 +991,7 @@ render_win(lobidx_t wi)
 	}
 
 	for (size_t i = lob[ASKLOB(wi)].lob->tail, j = 1;
-	     i && j < nwr;
+	     i && j < nwr - 1;
 	     i = PREV(ASKLOB(wi), i), j++) {
 		char tmp[128], *p = tmp;
 		lobidx_t c = EAT(ASKLOB(wi), i).v.cli;
@@ -939,6 +1032,27 @@ render_win(lobidx_t wi)
 	return;
 }
 
+static void
+prune_clis(void)
+{
+/* max age of ticks in renderings */
+#define MAX_AGE		(600U)
+	for (size_t c = 1; c <= ncli; c++) {
+		if (CLI(c)->last_seen + MAX_AGE < NOW) {
+			/* client needs kicking */
+			if (CLI(c)->b) {
+				lob_rem_at(CLI(c)->blob, CLI(c)->b);
+				CLI(c)->b = 0;
+			}
+			if (CLI(c)->a) {
+				lob_rem_at(CLI(c)->alob, CLI(c)->a);
+				CLI(c)->a = 0;
+			}
+		}
+	}
+	return;
+}
+
 
 static WINDOW *symw = NULL;
 static const char symw_prompt[] = " Enter symbol:";
@@ -956,6 +1070,10 @@ render_cb(EV_P_ ev_timer *w, int UNUSED(revents))
 		}
 	}
 
+	/* prune old clients */
+	prune_clis();
+	/* update the rendering counter*/
+	nrend++;
 	/* and then set the timer again */
 	ev_timer_again(EV_A_ w);
 	return;
@@ -1187,7 +1305,7 @@ keypress_cb(EV_P_ ev_io *UNUSED(io), int UNUSED(revents))
 	return;
 
 redraw:
-	render_win(curw);
+	changep = 1;
 	return;
 }
 

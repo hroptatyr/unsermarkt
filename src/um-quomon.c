@@ -88,6 +88,9 @@
 # pragma warning (disable:981)
 #endif	/* __INTEL_COMPILER */
 
+#define PURE		__attribute__((pure))
+#define PURE_CONST	__attribute__((const, pure))
+
 typedef uint32_t lobidx_t;
 typedef struct lob_cli_s *lob_cli_t;
 typedef union lob_side_u *lob_side_t;
@@ -405,8 +408,72 @@ lob_rem_at(lobidx_t li, lobidx_t idx)
 	return;
 }
 
+static inline bool PURE_CONST
+m30_less_p(m30_t a, m30_t b)
+{
+	switch (a.expo - b.expo) {
+	case 0:
+		return a.mant < b.mant;
+	case 1:
+		if (UNLIKELY(a.mant == b.mant / 10000)) {
+			return a.mant * 10000 < b.mant;
+		}
+		return a.mant < b.mant / 10000;
+
+	case -1:
+		if (UNLIKELY(a.mant / 10000 == b.mant)) {
+			return a.mant < b.mant * 10000;
+		}
+		return a.mant / 10000 < b.mant;
+	case 2:
+	case 3:
+		/* a is too large to be less than b */
+		return false;
+	case -2:
+	case -3:
+		/* a is too small to not be less than b */
+		return true;
+	default:
+		break;
+	}
+	/* should not be reached */
+	assert(0 == 1);
+	return false;
+}
+
+static inline bool PURE_CONST
+m30_eq_p(m30_t a, m30_t b)
+{
+	switch (a.expo - b.expo) {
+	case 0:
+		return a.mant == b.mant;
+	case 1:
+		if (UNLIKELY(a.mant == b.mant / 10000)) {
+			return a.mant * 10000 == b.mant;
+		}
+		return false;
+
+	case -1:
+		if (UNLIKELY(a.mant / 10000 == b.mant)) {
+			return a.mant == b.mant * 10000;
+		}
+		return false;
+	case 2:
+	case -2:
+	case 3:
+	case -3:
+		/* a or b is too large to equal b or a */
+		return false;
+	default:
+		break;
+	}
+	/* we're fucked when we get here */
+	assert(0 == 1);
+	return false;
+}
+
 static lobidx_t
-find_quote(lobidx_t li, m30_t p)
+find_quote(lobidx_t li, m30_t ref)
 {
 	lobidx_t idx = 0;
 	lob_side_t l = lob[li].lob;
@@ -416,9 +483,10 @@ find_quote(lobidx_t li, m30_t p)
 #endif	/* DEBUG_FLAG */
 
 	for (size_t i = l->head; i; idx = i, i = NEXT(li, i)) {
-		if (EAT(li, i).v.p.v < p.v) {
+		m30_t p = EAT(li, i).v.p;
+		if (m30_less_p(p, ref)) {
 			return idx;
-		} else if (EAT(li, i).v.p.v == p.v) {
+		} else if (m30_eq_p(p, ref)) {
 			return i;
 		}
 	}

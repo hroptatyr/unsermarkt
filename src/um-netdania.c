@@ -74,6 +74,12 @@
 #include "nifty.h"
 #include "um-netdania.h"
 
+#if defined DEBUG_FLAG
+# define MAYBE_NOINLINE		__attribute__((noinline))
+#else  /* !DEBUG_FLAG */
+# define MAYBE_NOINLINE
+#endif	/* DEBUG_FLAG */
+
 typedef const struct nd_pkt_s *nd_pkt_t;
 
 struct nd_pkt_s {
@@ -175,16 +181,19 @@ Host: balancer.netdania.com\r\n\
 ";
 	static const char trick[] = "1;2;3;4;5;6;7;8;9;10;11;12;13;14;15;16;\
 17;18;19;20;21;22;23;24;25;26;27;28;29;30;31;32;33;34;35;36;37;38;39;40;\
-41;42;43;44;45;46;47;48;49;50;51;52;53;54;55;56;57;58;59;60;61;62;63;64;";
+41;42;43;44;45;46;47;48;49;50;51;52;53;54;55;56;57;58;59;60;61;62;63;64;\
+65;66;67;68;69;70;71;72;73;74;75;76;77;78;79;80;81;82;83;84;85;86;87;88;\
+89;90;91;92;93;94;95;96;97;98;99;";
+#define MAX_NSYMS	(99)
 	static const char sym[] = "&sym=";
 	char *p = iobuf;
 	unsigned int len;
 
 	if (nsyms == 0) {
 		return -1;
-	} else if (nsyms > 64) {
+	} else if (nsyms > MAX_NSYMS) {
 		/* for now */
-		nsyms = 64;
+		nsyms = MAX_NSYMS;
 	}
 
 	/* for later */
@@ -503,25 +512,29 @@ fput_sub(uint16_t sub, char **p, const char *ep, FILE *out)
 	return 0;
 }
 
-static int
+static int MAYBE_NOINLINE
 dump_TF_MSG(char **q, size_t len)
 {
 	char *p = *q;
 	char *ep = p + len;
-	/* next up the identifier */
-	uint32_t rid = read_u32(&p);
-	/* number of records */
-	uint8_t nrec = read_u8(&p);
+	uint32_t rid;
+	uint8_t nrec;
 	uint8_t i;
 
-	if (rid-- > ngsyms) {
+	if (UNLIKELY(p + 5 >= ep)) {
+		/* no need to continue */
+		return -1;
+	} else if (UNLIKELY((rid = read_u32(&p) - 1) > ngsyms)) {
 		/* we're fucked */
 		return -1;
 	}
 
-	/* record count */
+	/* print the symbol so we know what this was supposed to be */
 	fputs(gsyms[rid], stdout);
 	fputc('\t', stdout);
+
+	/* and the number of records */
+	nrec = read_u8(&p);
 	for (i = 0; i < nrec && p <= ep - 4; i++) {
 		uint16_t sub = read_u16(&p);
 
@@ -540,7 +553,7 @@ dump_TF_MSG(char **q, size_t len)
 	}
 }
 
-static size_t
+static size_t MAYBE_NOINLINE
 dump_job(nd_pkt_t j)
 {
 	enum {
@@ -553,7 +566,11 @@ dump_job(nd_pkt_t j)
 	while (p < ep) {
 		switch (*p++) {
 		case TF_UNK: {
-			uint8_t len = read_u8(&p);
+			uint8_t len = p + 1 < ep ? read_u8(&p) : 0;
+
+			if (UNLIKELY(p + len > ep)) {
+				len = ep - p;
+			}
 
 			fputs("GENERIC\t", stdout);
 			fwrite(p, sizeof(char), len, stdout);

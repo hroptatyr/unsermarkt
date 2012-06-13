@@ -80,8 +80,6 @@ struct act_s {
 // unserding guts
 static int mcfd = -1;
 static int epfd = -1;
-// conversation number
-static unsigned int pno = 0;
 
 /* ute services come in 2 flavours little endian "ut" and big endian "UT" */
 #define UTE_CMD_LE	0x7574
@@ -96,10 +94,12 @@ static unsigned int pno = 0;
 #define UTE_QMETA	0x7572
 
 // glue
-typedef struct {
+typedef struct level_s *level_t;
+
+struct level_s {
 	double p;
 	double q;
-} *level_t;
+};
 
 typedef long unsigned int *bitset_t;
 
@@ -229,7 +229,7 @@ party(const char *buf, size_t bsz)
 }
 
 static void
-asm_ibcntr(IB::Contract **ibcntr, const char *sym, size_t ssz)
+asm_ibcntr(IB::Contract **ibcntr, const char *sym, size_t UNUSED(ssz))
 {
 	// assume BAS.TRM
 	const_iso_4217_t bas =
@@ -293,6 +293,58 @@ pmeta(char *buf, size_t bsz)
 	return;
 }
 
+static void
+adapt_b(TwsDL *tws, const IB::Contract &cntr, struct level_s b)
+{
+	static int oid = 0;
+	PlaceOrder o;
+	const double qdist = 0.0001;
+
+	o.contract = cntr;
+	o.order.orderType = "LMT";
+	o.order.totalQuantity = 25000;
+
+	// new bid that we're ready to risk
+	b.p -= qdist;
+
+	if (tws->p_orders.find(oid) == tws->p_orders.end()) {
+		/* new buy order */
+		oid = tws->fetch_inc_order_id();
+		o.orderId = oid;
+		o.order.action = "BUY";
+		o.order.lmtPrice = b.p;
+	} else {
+		/* modify buy order */
+		PacketPlaceOrder *ppo = tws->p_orders[oid];
+		const PlaceOrder &po = ppo->getRequest();
+
+		if (po.order.lmtPrice == b.p) {
+			return;
+		}
+		// otherwise, business as usual
+		o.orderId = oid;
+		o.order.action = "BUY";
+		o.order.lmtPrice = b.p;
+	}
+	tws->workTodo->placeOrderTodo()->add(o);
+	return;
+}
+
+static void
+adapt(TwsDL *tws, size_t idx)
+{
+	if (ibcntr[idx] == NULL) {
+		return;
+	} else if (idx != 1) {
+		return;
+	}
+
+	// adapt the order
+	fprintf(stderr, "we think tws is %p\n", tws);
+	adapt_b(tws, *ibcntr[idx], mkt_bid[idx]);
+	return;
+}
+
 
 /* public exposure for the DSO, C linkage */
 void init(void *UNUSED(clo))
@@ -326,7 +378,7 @@ void fini(void *UNUSED(clo))
 		free(offs);
 		free(change);
 
-		for (size_t i = 0; i <= npos; i++) {
+		for (size_t i = 0; i < npos; i++) {
 			if (ibcntr[i]) {
 				delete ibcntr[i];
 			}
@@ -371,15 +423,17 @@ void work(void *clo)
 			// that's what we need!
 			party(UDPC_PAYLOAD(buf), UDPC_PAYLLEN(nrd));
 
-			for (size_t i = 1; i <= npos; i++) {
+			for (size_t i = 1; i < npos; i++) {
 				if (bitset_get(change, i)) {
 					if (offs[i]) {
 						fprintf(stderr, "\
 %s %f %f\n", syms + offs[i - 1], mkt_bid[i].p, mkt_ask[i].p);
 					} else {
 						fprintf(stderr, "\
-%d %f %f\n", i, mkt_bid[i].p, mkt_ask[i].p);
+%zu %f %f\n", i, mkt_bid[i].p, mkt_ask[i].p);
 					}
+					// adapt our orders
+					adapt((TwsDL*)clo, i);
 				}
 			}
 		default:

@@ -20,6 +20,7 @@ EXTRA_DIST = $(BUILT_SOURCES)
 noinst_HEADERS += boobs.h
 noinst_HEADERS += nifty.h
 
+if HAVE_MXML
 mod_LTLIBRARIES += dso-unsermarkt.la
 dso_unsermarkt_la_LDFLAGS = -module
 dso_unsermarkt_la_LDFLAGS += $(unserding_LDFLAGS) -lsqlite3 -lmxml
@@ -41,6 +42,7 @@ dso_unsermarkt_la_CPPFLAGS += $(uterus_CFLAGS)
 EXTRA_dso_unsermarkt_la_SOURCES =
 EXTRA_dso_unsermarkt_la_SOURCES += con6ity.c
 EXTRA_dso_unsermarkt_la_SOURCES += mmls.c
+endif  ## HAVE_MXML
 
 noinst_PROGRAMS += umoc
 umoc_LDFLAGS = $(unserding_LDFLAGS)

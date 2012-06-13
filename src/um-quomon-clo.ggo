@@ -3,6 +3,11 @@ package "um-quomon"
 usage "um-quomon [OPTION]..."
 description "monitor quotes on unserding beef channels"
 
+section "Display options"
+option "fps" -
+	"Rerender the screen NUM times a second."
+	int default="10" typestr="NUM" optional
+
 section "Network options"
 option "port" p
 	"Multicast control channel port"

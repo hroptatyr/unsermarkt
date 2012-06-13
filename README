@@ -1,0 +1,7 @@
+unsermarkt is a set of tools, snippets, modules that utilise unserding
+beef channels (ad-hoc multicast networks) to produce meaningful chains
+of business processes  like tick data acquisition, data consolidation,
+trading strategies, and order processing.
+
+Should there be gems in this repository one day, chances are they will
+be refactored into dedicated projects.

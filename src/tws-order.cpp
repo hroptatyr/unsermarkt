@@ -80,8 +80,6 @@ struct act_s {
 // unserding guts
 static int mcfd = -1;
 static int epfd = -1;
-// conversation number
-static unsigned int pno = 0;
 
 /* ute services come in 2 flavours little endian "ut" and big endian "UT" */
 #define UTE_CMD_LE	0x7574

@@ -69,13 +69,6 @@ extern void work(void*);
 # define UNUSED(x)	__attribute__((unused)) x
 #endif	/* UNUSED */
 
-struct act_s {
-	m30_t bid;
-	m30_t ask;
-	m30_t bsz;
-	m30_t asz;
-};
-
 
 // unserding guts
 static int mcfd = -1;
@@ -95,6 +88,7 @@ static int epfd = -1;
 
 // glue
 typedef struct level_s *level_t;
+typedef long int oid_t;
 
 struct level_s {
 	double p;
@@ -111,6 +105,8 @@ static bitset_t change = NULL;
 static size_t npos = 0U;
 // ib contracts
 static IB::Contract **ibcntr = NULL;
+static oid_t *oid_b = NULL;
+static oid_t *oid_a = NULL;
 
 static inline void
 bitset_set(bitset_t bs, unsigned int bit)
@@ -173,6 +169,8 @@ check_resz(uint16_t idx)
 		REALL(offs, 1);
 		REALL(change, sizeof(*change) * CHAR_BIT);
 		REALL(ibcntr, 1);
+		REALL(oid_b, 1);
+		REALL(oid_a, 1);
 
 		// rinse
 		RINSE(mkt_bid, 1);
@@ -180,6 +178,8 @@ check_resz(uint16_t idx)
 		RINSE(offs, 1);
 		RINSE(change, sizeof(*change) * CHAR_BIT);
 		RINSE(ibcntr, 1);
+		RINSE(oid_b, 1);
+		RINSE(oid_a, 1);
 
 		// reassign npos
 		npos = nu;
@@ -293,10 +293,9 @@ pmeta(char *buf, size_t bsz)
 	return;
 }
 
-static void
-adapt_b(TwsDL *tws, const IB::Contract &cntr, struct level_s b)
+static oid_t
+adapt_b(TwsDL *tws, const IB::Contract &cntr, oid_t oid, struct level_s b)
 {
-	static int oid = 0;
 	PlaceOrder o;
 	const double qdist = 0.0001;
 
@@ -319,7 +318,7 @@ adapt_b(TwsDL *tws, const IB::Contract &cntr, struct level_s b)
 		const PlaceOrder &po = ppo->getRequest();
 
 		if (po.order.lmtPrice == b.p) {
-			return;
+			return oid;
 		}
 		// otherwise, business as usual
 		o.orderId = oid;
@@ -327,7 +326,43 @@ adapt_b(TwsDL *tws, const IB::Contract &cntr, struct level_s b)
 		o.order.lmtPrice = b.p;
 	}
 	tws->workTodo->placeOrderTodo()->add(o);
-	return;
+	return oid;
+}
+
+static oid_t
+adapt_a(TwsDL *tws, const IB::Contract &cntr, oid_t oid, struct level_s a)
+{
+	PlaceOrder o;
+	const double qdist = 0.0001;
+
+	o.contract = cntr;
+	o.order.orderType = "LMT";
+	o.order.totalQuantity = 25000;
+
+	// new bid that we're ready to risk
+	a.p += qdist;
+
+	if (tws->p_orders.find(oid) == tws->p_orders.end()) {
+		/* new buy order */
+		oid = tws->fetch_inc_order_id();
+		o.orderId = oid;
+		o.order.action = "SELL";
+		o.order.lmtPrice = a.p;
+	} else {
+		/* modify buy order */
+		PacketPlaceOrder *ppo = tws->p_orders[oid];
+		const PlaceOrder &po = ppo->getRequest();
+
+		if (po.order.lmtPrice == a.p) {
+			return oid;
+		}
+		// otherwise, business as usual
+		o.orderId = oid;
+		o.order.action = "SELL";
+		o.order.lmtPrice = a.p;
+	}
+	tws->workTodo->placeOrderTodo()->add(o);
+	return oid;
 }
 
 static void
@@ -338,7 +373,8 @@ adapt(TwsDL *tws, size_t idx)
 	}
 
 	// adapt the order
-	adapt_b(tws, *ibcntr[idx], mkt_bid[idx]);
+	oid_b[idx] = adapt_b(tws, *ibcntr[idx], oid_b[idx], mkt_bid[idx]);
+	oid_a[idx] = adapt_a(tws, *ibcntr[idx], oid_a[idx], mkt_bid[idx]);
 	return;
 }
 

@@ -178,7 +178,7 @@ void work(void *clo)
 				MAKE_PKT;
 			}
 			// add the new guy
-			udpc_seria_add_ui16(ser, i);
+			udpc_seria_add_ui16(ser, i + 1);
 			udpc_seria_add_str(ser, tmp, len);
 		}
 		// send remainder also
@@ -209,7 +209,7 @@ void work(void *clo)
 
 		if ((l1t[0].bid = ffff_m30_get_d(bid).u) != act[i].bid.u ||
 		    (l1t[0].bsz = ffff_m30_get_d(bsz).u) != act[i].bsz.u) {
-			sl1t_set_tblidx(l1t + 0, i);
+			sl1t_set_tblidx(l1t + 0, i + 1);
 			// and shove it up the seria
 			udpc_seria_add_scom(
 				ser, AS_SCOM(l1t + 0), sizeof(l1t[0]));
@@ -220,7 +220,7 @@ void work(void *clo)
 
 		if ((l1t[1].ask = ffff_m30_get_d(ask).u) != act[i].ask.u ||
 		    (l1t[1].asz = ffff_m30_get_d(asz).u) != act[i].asz.u) {
-			sl1t_set_tblidx(l1t + 1, i);
+			sl1t_set_tblidx(l1t + 1, i + 1);
 			// and shove it up the seria
 			udpc_seria_add_scom(
 				ser, AS_SCOM(l1t + 1), sizeof(l1t[1]));

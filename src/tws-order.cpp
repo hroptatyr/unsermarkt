@@ -273,6 +273,7 @@ pmeta(char *buf, size_t bsz)
 		sz = udpc_seria_des_str(ser, &p);
 
 		if (idx) {
+			static size_t syms_alloc_sz = 0;
 			size_t rdsz;
 
 			// check for resizes
@@ -282,8 +283,11 @@ pmeta(char *buf, size_t bsz)
 			offs[idx] = sz + 1 + offs[idx - 1];
 
 			// bang the info into syms array
-			rdsz = __roundup_2pow(offs[idx]);
-			syms = (char*)realloc(syms, rdsz);
+			rdsz = __roundup_2pow(offs[idx] + 64);
+			if (rdsz > syms_alloc_sz) {
+				syms = (char*)realloc(syms, rdsz);
+				syms_alloc_sz = rdsz;
+			}
 			strncpy(syms + offs[idx - 1], p, sz);
 
 			// assemble a contract

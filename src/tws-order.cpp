@@ -229,7 +229,7 @@ party(const char *buf, size_t bsz)
 }
 
 static void
-asm_ibcntr(IB::Contract **ibcntr, const char *sym, size_t ssz)
+asm_ibcntr(IB::Contract **ibcntr, const char *sym, size_t UNUSED(ssz))
 {
 	// assume BAS.TRM
 	const_iso_4217_t bas =

@@ -335,12 +335,9 @@ adapt(TwsDL *tws, size_t idx)
 {
 	if (ibcntr[idx] == NULL) {
 		return;
-	} else if (idx != 1) {
-		return;
 	}
 
 	// adapt the order
-	fprintf(stderr, "we think tws is %p\n", tws);
 	adapt_b(tws, *ibcntr[idx], mkt_bid[idx]);
 	return;
 }

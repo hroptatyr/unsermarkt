@@ -324,7 +324,7 @@ void fini(void *UNUSED(clo))
 		free(offs);
 		free(change);
 
-		for (size_t i = 0; i <= npos; i++) {
+		for (size_t i = 0; i < npos; i++) {
 			if (ibcntr[i]) {
 				delete ibcntr[i];
 			}
@@ -369,7 +369,7 @@ void work(void *clo)
 			// that's what we need!
 			party(UDPC_PAYLOAD(buf), UDPC_PAYLLEN(nrd));
 
-			for (size_t i = 1; i <= npos; i++) {
+			for (size_t i = 1; i < npos; i++) {
 				if (bitset_get(change, i)) {
 					if (offs[i]) {
 						fprintf(stderr, "\

@@ -53,6 +53,8 @@
 #include <uterus.h>
 #include <m30.h>
 
+#include "iso4217.h"
+
 extern "C" {
 /* libtool needs C symbols */
 extern void init(void*);
@@ -107,6 +109,8 @@ static char *syms = NULL;
 static size_t *offs = NULL;
 static bitset_t change = NULL;
 static size_t npos = 0U;
+// ib contracts
+static IB::Contract **ibcntr = NULL;
 
 static inline void
 bitset_set(bitset_t bs, unsigned int bit)
@@ -168,12 +172,14 @@ check_resz(uint16_t idx)
 		REALL(mkt_ask, 1);
 		REALL(offs, 1);
 		REALL(change, sizeof(*change) * CHAR_BIT);
+		REALL(ibcntr, 1);
 
 		// rinse
 		RINSE(mkt_bid, 1);
 		RINSE(mkt_ask, 1);
 		RINSE(offs, 1);
 		RINSE(change, sizeof(*change) * CHAR_BIT);
+		RINSE(ibcntr, 1);
 
 		// reassign npos
 		npos = nu;
@@ -223,6 +229,24 @@ party(const char *buf, size_t bsz)
 }
 
 static void
+asm_ibcntr(IB::Contract **ibcntr, const char *sym, size_t ssz)
+{
+	// assume BAS.TRM
+	const_iso_4217_t bas =
+		find_iso_4217_by_name(sym);
+	const_iso_4217_t trm =
+		find_iso_4217_by_name(sym + 4);
+	IB::Contract *tmp = new IB::Contract();
+
+	tmp->symbol = bas ? std::string(bas->sym) : NULL;
+	tmp->currency = trm ? std::string(trm->sym) : NULL;
+	tmp->secType = std::string("CASH");
+	tmp->exchange = std::string("IDEALPRO");
+	*ibcntr = tmp;
+	return;
+}
+
+static void
 pmeta(char *buf, size_t bsz)
 {
 	struct udpc_seria_s ser[1];
@@ -261,6 +285,9 @@ pmeta(char *buf, size_t bsz)
 			rdsz = __roundup_2pow(offs[idx]);
 			syms = (char*)realloc(syms, rdsz);
 			strncpy(syms + offs[idx - 1], p, sz);
+
+			// assemble a contract
+			asm_ibcntr(ibcntr + idx, p, sz);
 		}
 	}
 	return;
@@ -291,6 +318,19 @@ void fini(void *UNUSED(clo))
 	}
 	if (mcfd >= 0) {
 		ud_mcast_fini(mcfd);
+	}
+	if (npos > 0) {
+		free(mkt_bid);
+		free(mkt_ask);
+		free(syms);
+		free(offs);
+		free(change);
+
+		for (size_t i = 0; i <= npos; i++) {
+			if (ibcntr[i]) {
+				delete ibcntr[i];
+			}
+		}
 	}
 	return;
 }

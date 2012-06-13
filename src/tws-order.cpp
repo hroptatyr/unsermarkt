@@ -231,11 +231,11 @@ party(const char *buf, size_t bsz)
 static void
 asm_ibcntr(IB::Contract **ibcntr, const char *sym, size_t UNUSED(ssz))
 {
-	// assume BAS.TRM
+	// assume BASTRM
 	const_iso_4217_t bas =
 		find_iso_4217_by_name(sym);
 	const_iso_4217_t trm =
-		find_iso_4217_by_name(sym + 4);
+		find_iso_4217_by_name(sym + 3);
 	IB::Contract *tmp = new IB::Contract();
 
 	tmp->symbol = bas ? std::string(bas->sym) : NULL;
@@ -291,7 +291,9 @@ pmeta(char *buf, size_t bsz)
 			strncpy(syms + offs[idx - 1], p, sz);
 
 			// assemble a contract
-			asm_ibcntr(ibcntr + idx, p, sz);
+			if (memmem(p, sz, "EURUSD|rexfo_rt", 9)) {
+				asm_ibcntr(ibcntr + idx, p, sz);
+			}
 		}
 	}
 	return;
@@ -308,7 +310,7 @@ adapt_b(TwsDL *tws, const IB::Contract &cntr, oid_t oid, struct level_s b)
 	o.order.totalQuantity = 25000;
 
 	// new bid that we're ready to risk
-	b.p -= qdist;
+	b.p = round(b.p * 2.0 * 10000.0) / 2.0 / 10000.0 - qdist;
 
 	if (tws->p_orders.find(oid) == tws->p_orders.end()) {
 		/* new buy order */
@@ -337,14 +339,14 @@ static oid_t
 adapt_a(TwsDL *tws, const IB::Contract &cntr, oid_t oid, struct level_s a)
 {
 	PlaceOrder o;
-	const double qdist = 0.0001;
+	const double qdist = 0.00005;
 
 	o.contract = cntr;
 	o.order.orderType = "LMT";
 	o.order.totalQuantity = 25000;
 
 	// new bid that we're ready to risk
-	a.p += qdist;
+	a.p = round(a.p * 2.0 * 10000.0) / 2.0 / 10000.0 + qdist;
 
 	if (tws->p_orders.find(oid) == tws->p_orders.end()) {
 		/* new buy order */
@@ -387,7 +389,7 @@ adapt(TwsDL *tws, size_t idx)
 void init(void *UNUSED(clo))
 {
 	/* yep, one handle please */
-	if ((mcfd = ud_mcast_init(8584/*UT*/)) >= 0) {
+	if ((mcfd = ud_mcast_init(7868/*ND*/)) >= 0) {
 		struct epoll_event ev[1];
 
 		ev->events = EPOLLIN;

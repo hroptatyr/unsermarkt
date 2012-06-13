@@ -1404,8 +1404,11 @@ main(int argc, char *argv[])
 	ev_signal_init(sigwinch_watcher, sigwinch_cb, SIGWINCH);
 	ev_signal_start(EV_A_ sigwinch_watcher);
 	/* initialise a timer */
-	ev_timer_init(render, render_cb, 0.1, 0.1);
-	ev_timer_start(EV_A_ render);
+	{
+		double slp = 1.0 / (double)argi->fps_arg;
+		ev_timer_init(render, render_cb, slp, slp);
+		ev_timer_start(EV_A_ render);
+	}
 
 	/* make some room for the control channel and the beef chans */
 	nbeef = argi->beef_given + 1 + 1;

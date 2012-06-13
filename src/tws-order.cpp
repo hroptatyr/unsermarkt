@@ -293,6 +293,58 @@ pmeta(char *buf, size_t bsz)
 	return;
 }
 
+static void
+adapt_b(TwsDL *tws, const IB::Contract &cntr, struct level_s b)
+{
+	static int oid = 0;
+	PlaceOrder o;
+	const double qdist = 0.0001;
+
+	o.contract = cntr;
+	o.order.orderType = "LMT";
+	o.order.totalQuantity = 25000;
+
+	// new bid that we're ready to risk
+	b.p -= qdist;
+
+	if (tws->p_orders.find(oid) == tws->p_orders.end()) {
+		/* new buy order */
+		oid = tws->fetch_inc_order_id();
+		o.orderId = oid;
+		o.order.action = "BUY";
+		o.order.lmtPrice = b.p;
+	} else {
+		/* modify buy order */
+		PacketPlaceOrder *ppo = tws->p_orders[oid];
+		const PlaceOrder &po = ppo->getRequest();
+
+		if (po.order.lmtPrice == b.p) {
+			return;
+		}
+		// otherwise, business as usual
+		o.orderId = oid;
+		o.order.action = "BUY";
+		o.order.lmtPrice = b.p;
+	}
+	tws->workTodo->placeOrderTodo()->add(o);
+	return;
+}
+
+static void
+adapt(TwsDL *tws, size_t idx)
+{
+	if (ibcntr[idx] == NULL) {
+		return;
+	} else if (idx != 1) {
+		return;
+	}
+
+	// adapt the order
+	fprintf(stderr, "we think tws is %p\n", tws);
+	adapt_b(tws, *ibcntr[idx], mkt_bid[idx]);
+	return;
+}
+
 
 /* public exposure for the DSO, C linkage */
 void init(void *UNUSED(clo))
@@ -380,6 +432,8 @@ void work(void *clo)
 						fprintf(stderr, "\
 %zu %f %f\n", i, mkt_bid[i].p, mkt_ask[i].p);
 					}
+					// adapt our orders
+					adapt((TwsDL*)clo, i);
 				}
 			}
 		default:

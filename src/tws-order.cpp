@@ -94,10 +94,12 @@ static int epfd = -1;
 #define UTE_QMETA	0x7572
 
 // glue
-typedef struct {
+typedef struct level_s *level_t;
+
+struct level_s {
 	double p;
 	double q;
-} *level_t;
+};
 
 typedef long unsigned int *bitset_t;
 

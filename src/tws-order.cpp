@@ -378,7 +378,7 @@ void work(void *clo)
 %s %f %f\n", syms + offs[i - 1], mkt_bid[i].p, mkt_ask[i].p);
 					} else {
 						fprintf(stderr, "\
-%d %f %f\n", i, mkt_bid[i].p, mkt_ask[i].p);
+%zu %f %f\n", i, mkt_bid[i].p, mkt_ask[i].p);
 					}
 				}
 			}

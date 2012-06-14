@@ -303,11 +303,11 @@ static oid_t
 adapt_b(TwsDL *tws, const IB::Contract &cntr, oid_t oid, struct level_s b)
 {
 	PlaceOrder o;
-	const double qdist = 0.0001;
+	const double qdist = 0.00005;
 
 	o.contract = cntr;
 	o.order.orderType = "LMT";
-	o.order.totalQuantity = 25000;
+	o.order.totalQuantity = 100000;
 
 	// new bid that we're ready to risk
 	b.p = round(b.p * 2.0 * 10000.0) / 2.0 / 10000.0 - qdist;
@@ -340,7 +340,7 @@ adapt_a(TwsDL *tws, const IB::Contract &cntr, oid_t oid, struct level_s a)
 
 	o.contract = cntr;
 	o.order.orderType = "LMT";
-	o.order.totalQuantity = 25000;
+	o.order.totalQuantity = 100000;
 
 	// new bid that we're ready to risk
 	a.p = round(a.p * 2.0 * 10000.0) / 2.0 / 10000.0 + qdist;

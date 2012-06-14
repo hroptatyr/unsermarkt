@@ -438,12 +438,7 @@ void fini(void *clo)
 		ud_mcast_fini(mcfd);
 	}
 	if (npos > 0) {
-		free(mkt_bid);
-		free(mkt_ask);
-		free(syms);
-		free(offs);
-		free(change);
-
+		// clean up
 		for (size_t i = 0; i < npos; i++) {
 			if (ibcntr[i]) {
 				// see if there's orders and whatnot
@@ -451,6 +446,23 @@ void fini(void *clo)
 				disasm_ibcntr(ibcntr[i]);
 			}
 		}
+
+		free(mkt_bid);
+		free(mkt_ask);
+		free(offs);
+		free(change);
+		free(oid_a);
+		free(oid_b);
+		free(ibcntr);
+
+		mkt_bid = NULL;
+		mkt_ask = NULL;
+		offs = NULL;
+		change = NULL;
+		ibcntr = NULL;
+		oid_a = NULL;
+		oid_b = NULL;
+		npos = 0U;
 	}
 	return;
 }

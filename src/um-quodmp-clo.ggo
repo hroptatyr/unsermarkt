@@ -1,0 +1,17 @@
+args "--unamed-opts --no-handle-error --long-help -a umqd_args_info -f umqd_parser"
+package "um-quodmp"
+usage "um-quodmp [OPTION]..."
+description "dump quotes off unserding beef channels"
+
+section "Output options"
+
+
+section "Network options"
+option "port" p
+	"Multicast control channel port"
+	int default="8653" optional
+
+option "beef" -
+	"Multicast payload channels, can be used multiple times"
+	int optional multiple
+

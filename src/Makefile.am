@@ -82,6 +82,17 @@ um_quomon_LDFLAGS += $(libev_LIBS)
 um_quomon_LDFLAGS += $(unserding_LIBS)
 um_quomon_LDFLAGS += -lreadline
 
+bin_PROGRAMS += um-quodmp
+um_quodmp_SOURCES = um-quodmp.c um-quodmp-clo.ggo
+BUILT_SOURCES += um-quodmp-clo.c um-quodmp-clo.h
+um_quodmp_CPPFLAGS = $(AM_CPPFLAGS) -D_GNU_SOURCE
+um_quodmp_CPPFLAGS += $(libev_CFLAGS)
+um_quodmp_CPPFLAGS += $(unserding_CFLAGS)
+um_quodmp_CPPFLAGS += $(uterus_CFLAGS)
+um_quodmp_LDFLAGS = $(AM_LDFLAGS)
+um_quodmp_LDFLAGS += $(libev_LIBS)
+um_quodmp_LDFLAGS += $(unserding_LIBS)
+
 bin_PROGRAMS += um-xmit
 um_xmit_SOURCES = um-xmit.c
 BUILT_SOURCES += um-xmit-clo.c um-xmit-clo.h

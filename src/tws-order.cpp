@@ -315,9 +315,6 @@ adapt_b(TwsDL *tws, const IB::Contract &cntr, oid_t oid, struct level_s b)
 	if (tws->p_orders.find(oid) == tws->p_orders.end()) {
 		/* new buy order */
 		oid = tws->fetch_inc_order_id();
-		o.orderId = oid;
-		o.order.action = "BUY";
-		o.order.lmtPrice = b.p;
 	} else {
 		/* modify buy order */
 		PacketPlaceOrder *ppo = tws->p_orders[oid];
@@ -326,11 +323,11 @@ adapt_b(TwsDL *tws, const IB::Contract &cntr, oid_t oid, struct level_s b)
 		if (po.order.lmtPrice == b.p) {
 			return oid;
 		}
-		// otherwise, business as usual
-		o.orderId = oid;
-		o.order.action = "BUY";
-		o.order.lmtPrice = b.p;
 	}
+	// otherwise, business as usual
+	o.orderId = oid;
+	o.order.action = "BUY";
+	o.order.lmtPrice = b.p;
 	tws->workTodo->placeOrderTodo()->add(o);
 	return oid;
 }
@@ -351,9 +348,6 @@ adapt_a(TwsDL *tws, const IB::Contract &cntr, oid_t oid, struct level_s a)
 	if (tws->p_orders.find(oid) == tws->p_orders.end()) {
 		/* new buy order */
 		oid = tws->fetch_inc_order_id();
-		o.orderId = oid;
-		o.order.action = "SELL";
-		o.order.lmtPrice = a.p;
 	} else {
 		/* modify buy order */
 		PacketPlaceOrder *ppo = tws->p_orders[oid];
@@ -362,11 +356,11 @@ adapt_a(TwsDL *tws, const IB::Contract &cntr, oid_t oid, struct level_s a)
 		if (po.order.lmtPrice == a.p) {
 			return oid;
 		}
-		// otherwise, business as usual
-		o.orderId = oid;
-		o.order.action = "SELL";
-		o.order.lmtPrice = a.p;
 	}
+	// business as usual
+	o.orderId = oid;
+	o.order.action = "SELL";
+	o.order.lmtPrice = a.p;
 	tws->workTodo->placeOrderTodo()->add(o);
 	return oid;
 }

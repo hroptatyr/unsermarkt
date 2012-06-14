@@ -375,10 +375,13 @@ adapt_a(TwsDL *tws, const IB::Contract &cntr, oid_t oid, struct level_s a)
 static void
 cancel_o(TwsDL *tws, oid_t oid)
 {
-	CancelOrder o;
+	PlaceOrder o;
 
 	o.orderId = oid;
-	tws->workTodo->cancelOrderTodo()->add(o);
+	o.order.orderType = "MKT";
+	o.order.action = "CANCEL";
+	o.order.totalQuantity = 0;
+	tws->workTodo->placeOrderTodo()->add(o);
 	return;
 }
 

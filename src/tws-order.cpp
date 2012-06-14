@@ -247,6 +247,13 @@ asm_ibcntr(IB::Contract **con, const char *sym, size_t UNUSED(ssz))
 }
 
 static void
+disasm_ibcntr(IB::Contract *con)
+{
+	delete con;
+	return;
+}
+
+static void
 pmeta(char *buf, size_t bsz)
 {
 	struct udpc_seria_s ser[1];
@@ -366,6 +373,16 @@ adapt_a(TwsDL *tws, const IB::Contract &cntr, oid_t oid, struct level_s a)
 }
 
 static void
+cancel_o(TwsDL *tws, oid_t oid)
+{
+	CancelOrder o;
+
+	o.orderId = oid;
+	tws->workTodo->cancelOrderTodo()->add(o);
+	return;
+}
+
+static void
 adapt(TwsDL *tws, size_t idx)
 {
 	if (ibcntr[idx] == NULL) {
@@ -375,6 +392,18 @@ adapt(TwsDL *tws, size_t idx)
 	// adapt the order
 	oid_b[idx] = adapt_b(tws, *ibcntr[idx], oid_b[idx], mkt_bid[idx]);
 	oid_a[idx] = adapt_a(tws, *ibcntr[idx], oid_a[idx], mkt_bid[idx]);
+	return;
+}
+
+static void
+cancel(TwsDL *tws, size_t idx)
+{
+	if (oid_b[idx]) {
+		cancel_o(tws, oid_b[idx]);
+	}
+	if (oid_a[idx]) {
+		cancel_o(tws, oid_a[idx]);
+	}
 	return;
 }
 
@@ -395,7 +424,7 @@ void init(void *UNUSED(clo))
 	return;
 }
 
-void fini(void *UNUSED(clo))
+void fini(void *clo)
 {
 	if (epfd >= 0) {
 		epoll_ctl(epfd, EPOLL_CTL_DEL, mcfd, NULL);
@@ -413,7 +442,9 @@ void fini(void *UNUSED(clo))
 
 		for (size_t i = 0; i < npos; i++) {
 			if (ibcntr[i]) {
-				delete ibcntr[i];
+				// see if there's orders and whatnot
+				cancel((TwsDL*)clo, i);
+				disasm_ibcntr(ibcntr[i]);
 			}
 		}
 	}

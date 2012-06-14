@@ -69,13 +69,6 @@ extern void work(void*);
 # define UNUSED(x)	__attribute__((unused)) x
 #endif	/* UNUSED */
 
-struct act_s {
-	m30_t bid;
-	m30_t ask;
-	m30_t bsz;
-	m30_t asz;
-};
-
 
 // unserding guts
 static int mcfd = -1;
@@ -95,6 +88,7 @@ static int epfd = -1;
 
 // glue
 typedef struct level_s *level_t;
+typedef long int oid_t;
 
 struct level_s {
 	double p;
@@ -111,6 +105,8 @@ static bitset_t change = NULL;
 static size_t npos = 0U;
 // ib contracts
 static IB::Contract **ibcntr = NULL;
+static oid_t *oid_b = NULL;
+static oid_t *oid_a = NULL;
 
 static inline void
 bitset_set(bitset_t bs, unsigned int bit)
@@ -173,6 +169,8 @@ check_resz(uint16_t idx)
 		REALL(offs, 1);
 		REALL(change, sizeof(*change) * CHAR_BIT);
 		REALL(ibcntr, 1);
+		REALL(oid_b, 1);
+		REALL(oid_a, 1);
 
 		// rinse
 		RINSE(mkt_bid, 1);
@@ -180,6 +178,8 @@ check_resz(uint16_t idx)
 		RINSE(offs, 1);
 		RINSE(change, sizeof(*change) * CHAR_BIT);
 		RINSE(ibcntr, 1);
+		RINSE(oid_b, 1);
+		RINSE(oid_a, 1);
 
 		// reassign npos
 		npos = nu;
@@ -229,20 +229,27 @@ party(const char *buf, size_t bsz)
 }
 
 static void
-asm_ibcntr(IB::Contract **ibcntr, const char *sym, size_t UNUSED(ssz))
+asm_ibcntr(IB::Contract **con, const char *sym, size_t UNUSED(ssz))
 {
-	// assume BAS.TRM
+	// assume BASTRM
 	const_iso_4217_t bas =
 		find_iso_4217_by_name(sym);
 	const_iso_4217_t trm =
-		find_iso_4217_by_name(sym + 4);
+		find_iso_4217_by_name(sym + 3);
 	IB::Contract *tmp = new IB::Contract();
 
 	tmp->symbol = bas ? std::string(bas->sym) : NULL;
 	tmp->currency = trm ? std::string(trm->sym) : NULL;
 	tmp->secType = std::string("CASH");
 	tmp->exchange = std::string("IDEALPRO");
-	*ibcntr = tmp;
+	*con = tmp;
+	return;
+}
+
+static void
+disasm_ibcntr(IB::Contract *con)
+{
+	delete con;
 	return;
 }
 
@@ -273,6 +280,7 @@ pmeta(char *buf, size_t bsz)
 		sz = udpc_seria_des_str(ser, &p);
 
 		if (idx) {
+			static size_t syms_alloc_sz = 0;
 			size_t rdsz;
 
 			// check for resizes
@@ -282,50 +290,98 @@ pmeta(char *buf, size_t bsz)
 			offs[idx] = sz + 1 + offs[idx - 1];
 
 			// bang the info into syms array
-			rdsz = __roundup_2pow(offs[idx]);
-			syms = (char*)realloc(syms, rdsz);
+			rdsz = __roundup_2pow(offs[idx] + 64);
+			if (rdsz > syms_alloc_sz) {
+				syms = (char*)realloc(syms, rdsz);
+				syms_alloc_sz = rdsz;
+			}
 			strncpy(syms + offs[idx - 1], p, sz);
 
 			// assemble a contract
-			asm_ibcntr(ibcntr + idx, p, sz);
+			if (memmem(p, sz, "|rexfo_rt", 9) ||
+			    memmem(p, sz, "|netdania", 9)) {
+				asm_ibcntr(ibcntr + idx, p, sz);
+			}
 		}
 	}
 	return;
 }
 
-static void
-adapt_b(TwsDL *tws, const IB::Contract &cntr, struct level_s b)
+static oid_t
+adapt_b(TwsDL *tws, const IB::Contract &cntr, oid_t oid, struct level_s b)
 {
-	static int oid = 0;
 	PlaceOrder o;
 	const double qdist = 0.0001;
 
 	o.contract = cntr;
 	o.order.orderType = "LMT";
-	o.order.totalQuantity = 25000;
+	o.order.totalQuantity = 100000;
 
 	// new bid that we're ready to risk
-	b.p -= qdist;
+	b.p = round(b.p * 2.0 * 10000.0) / 2.0 / 10000.0 - qdist;
 
 	if (tws->p_orders.find(oid) == tws->p_orders.end()) {
 		/* new buy order */
 		oid = tws->fetch_inc_order_id();
-		o.orderId = oid;
-		o.order.action = "BUY";
-		o.order.lmtPrice = b.p;
 	} else {
 		/* modify buy order */
 		PacketPlaceOrder *ppo = tws->p_orders[oid];
 		const PlaceOrder &po = ppo->getRequest();
 
 		if (po.order.lmtPrice == b.p) {
-			return;
+			return oid;
 		}
-		// otherwise, business as usual
-		o.orderId = oid;
-		o.order.action = "BUY";
-		o.order.lmtPrice = b.p;
 	}
+	// otherwise, business as usual
+	o.orderId = oid;
+	o.order.action = "BUY";
+	o.order.lmtPrice = b.p;
+	tws->workTodo->placeOrderTodo()->add(o);
+	return oid;
+}
+
+static oid_t
+adapt_a(TwsDL *tws, const IB::Contract &cntr, oid_t oid, struct level_s a)
+{
+	PlaceOrder o;
+	const double qdist = 0.0001;
+
+	o.contract = cntr;
+	o.order.orderType = "LMT";
+	o.order.totalQuantity = 100000;
+
+	// new bid that we're ready to risk
+	a.p = round(a.p * 2.0 * 10000.0) / 2.0 / 10000.0 + qdist;
+
+	if (tws->p_orders.find(oid) == tws->p_orders.end()) {
+		/* new buy order */
+		oid = tws->fetch_inc_order_id();
+	} else {
+		/* modify buy order */
+		PacketPlaceOrder *ppo = tws->p_orders[oid];
+		const PlaceOrder &po = ppo->getRequest();
+
+		if (po.order.lmtPrice == a.p) {
+			return oid;
+		}
+	}
+	// business as usual
+	o.orderId = oid;
+	o.order.action = "SELL";
+	o.order.lmtPrice = a.p;
+	tws->workTodo->placeOrderTodo()->add(o);
+	return oid;
+}
+
+static void
+cancel_o(TwsDL *tws, oid_t oid)
+{
+	PlaceOrder o;
+
+	o.orderId = oid;
+	o.order.orderType = "MKT";
+	o.order.action = "CANCEL";
+	o.order.totalQuantity = 0;
 	tws->workTodo->placeOrderTodo()->add(o);
 	return;
 }
@@ -335,13 +391,23 @@ adapt(TwsDL *tws, size_t idx)
 {
 	if (ibcntr[idx] == NULL) {
 		return;
-	} else if (idx != 1) {
-		return;
 	}
 
 	// adapt the order
-	fprintf(stderr, "we think tws is %p\n", tws);
-	adapt_b(tws, *ibcntr[idx], mkt_bid[idx]);
+	oid_b[idx] = adapt_b(tws, *ibcntr[idx], oid_b[idx], mkt_bid[idx]);
+	oid_a[idx] = adapt_a(tws, *ibcntr[idx], oid_a[idx], mkt_bid[idx]);
+	return;
+}
+
+static void
+cancel(TwsDL *tws, size_t idx)
+{
+	if (oid_b[idx]) {
+		cancel_o(tws, oid_b[idx]);
+	}
+	if (oid_a[idx]) {
+		cancel_o(tws, oid_a[idx]);
+	}
 	return;
 }
 
@@ -350,7 +416,7 @@ adapt(TwsDL *tws, size_t idx)
 void init(void *UNUSED(clo))
 {
 	/* yep, one handle please */
-	if ((mcfd = ud_mcast_init(8584/*UT*/)) >= 0) {
+	if ((mcfd = ud_mcast_init(7868/*ND*/)) >= 0) {
 		struct epoll_event ev[1];
 
 		ev->events = EPOLLIN;
@@ -362,7 +428,7 @@ void init(void *UNUSED(clo))
 	return;
 }
 
-void fini(void *UNUSED(clo))
+void fini(void *clo)
 {
 	if (epfd >= 0) {
 		epoll_ctl(epfd, EPOLL_CTL_DEL, mcfd, NULL);
@@ -372,17 +438,31 @@ void fini(void *UNUSED(clo))
 		ud_mcast_fini(mcfd);
 	}
 	if (npos > 0) {
-		free(mkt_bid);
-		free(mkt_ask);
-		free(syms);
-		free(offs);
-		free(change);
-
+		// clean up
 		for (size_t i = 0; i < npos; i++) {
 			if (ibcntr[i]) {
-				delete ibcntr[i];
+				// see if there's orders and whatnot
+				cancel((TwsDL*)clo, i);
+				disasm_ibcntr(ibcntr[i]);
 			}
 		}
+
+		free(mkt_bid);
+		free(mkt_ask);
+		free(offs);
+		free(change);
+		free(oid_a);
+		free(oid_b);
+		free(ibcntr);
+
+		mkt_bid = NULL;
+		mkt_ask = NULL;
+		offs = NULL;
+		change = NULL;
+		ibcntr = NULL;
+		oid_a = NULL;
+		oid_b = NULL;
+		npos = 0U;
 	}
 	return;
 }

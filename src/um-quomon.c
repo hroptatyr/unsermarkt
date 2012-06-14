@@ -259,7 +259,7 @@ free_lob(void)
 		rem_lob(i);
 	}
 	/* and the list of clients */
-	munmap(cli, 4096);
+	munmap(cli, alloc_cli);
 	return;
 }
 

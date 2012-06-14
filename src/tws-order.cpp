@@ -229,7 +229,7 @@ party(const char *buf, size_t bsz)
 }
 
 static void
-asm_ibcntr(IB::Contract **ibcntr, const char *sym, size_t UNUSED(ssz))
+asm_ibcntr(IB::Contract **con, const char *sym, size_t UNUSED(ssz))
 {
 	// assume BASTRM
 	const_iso_4217_t bas =
@@ -242,7 +242,7 @@ asm_ibcntr(IB::Contract **ibcntr, const char *sym, size_t UNUSED(ssz))
 	tmp->currency = trm ? std::string(trm->sym) : NULL;
 	tmp->secType = std::string("CASH");
 	tmp->exchange = std::string("IDEALPRO");
-	*ibcntr = tmp;
+	*con = tmp;
 	return;
 }
 

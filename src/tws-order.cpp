@@ -298,7 +298,8 @@ pmeta(char *buf, size_t bsz)
 			strncpy(syms + offs[idx - 1], p, sz);
 
 			// assemble a contract
-			if (memmem(p, sz, "EURUSD|rexfo_rt", 9)) {
+			if (memmem(p, sz, "|rexfo_rt", 9) ||
+			    memmem(p, sz, "|netdania", 9)) {
 				asm_ibcntr(ibcntr + idx, p, sz);
 			}
 		}
@@ -310,7 +311,7 @@ static oid_t
 adapt_b(TwsDL *tws, const IB::Contract &cntr, oid_t oid, struct level_s b)
 {
 	PlaceOrder o;
-	const double qdist = 0.00005;
+	const double qdist = 0.0001;
 
 	o.contract = cntr;
 	o.order.orderType = "LMT";
@@ -343,7 +344,7 @@ static oid_t
 adapt_a(TwsDL *tws, const IB::Contract &cntr, oid_t oid, struct level_s a)
 {
 	PlaceOrder o;
-	const double qdist = 0.00005;
+	const double qdist = 0.0001;
 
 	o.contract = cntr;
 	o.order.orderType = "LMT";

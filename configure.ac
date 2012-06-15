@@ -44,6 +44,10 @@ SXE_CHECK_CFLAGS
 AC_PROG_CXX([icpc g++])
 CXXFLAGS="${CXXFLAGS} -Wall -Wextra"
 
+## some sizes we need
+AC_CHECK_SIZEOF([long])
+AC_CHECK_SIZEOF([int])
+
 ## check for byteorder utils
 AC_CHECK_HEADERS([endian.h sys/endian.h byteorder.h byteswap.h])
 

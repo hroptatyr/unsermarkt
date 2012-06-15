@@ -82,21 +82,27 @@
 #define PURE		__attribute__((pure))
 #define PURE_CONST	__attribute__((const, pure))
 
-typedef uint32_t lobidx_t;
-typedef struct lob_cli_s *lob_cli_t;
+typedef size_t cli_t;
+typedef intptr_t hx_t;
+
+struct key_s {
+	ud_sockaddr_t sa;
+	uint16_t id;
+};
 
 /* the client */
-struct lob_cli_s {
-	union ud_sockaddr_u sa;
+struct cli_s {
+	union ud_sockaddr_u sa __attribute__((aligned(16)));
 	uint16_t id;
 
-	char sym[64];
 	size_t ssz;
+	char sym[64];
 };
 
 
 /* we support a maximum of 64 order books atm */
-static lob_cli_t cli = NULL;
+static struct cli_s *cli = NULL;
+static hx_t *chx = NULL;
 static size_t ncli = 0;
 static size_t alloc_cli = 0;
 
@@ -109,54 +115,12 @@ static size_t alloc_cli = 0;
 #define MAP_MEM		(MAP_PRIVATE | MAP_ANONYMOUS)
 #define PROT_MEM	(PROT_READ | PROT_WRITE)
 
-static int
-sa_eq_p(ud_sockaddr_t sa1, ud_sockaddr_t sa2)
-{
-	const size_t s6sz = sizeof(sa1->sa6.sin6_addr);
-	return sa1->sa6.sin6_family == sa2->sa6.sin6_family &&
-		sa1->sa6.sin6_port == sa2->sa6.sin6_port &&
-		memcmp(&sa1->sa6.sin6_addr, &sa2->sa6.sin6_addr, s6sz) == 0;
-}
-
-static lobidx_t
-find_cli(ud_sockaddr_t sa, uint16_t id)
-{
-	for (size_t i = 0; i < ncli; i++) {
-		lob_cli_t c = cli + i;
-		ud_sockaddr_t cur_sa = &c->sa;
-		uint16_t cur_id = c->id;
-
-		if (sa_eq_p(cur_sa, sa) && cur_id == id) {
-			return i + 1;
-		}
-	}
-	return 0;
-}
-
-static lobidx_t
-add_cli(ud_sockaddr_t sa, uint16_t id)
-{
-	size_t idx = ncli++;
-#define CATCHALL_BIDLOB	(0)
-#define CATCHALL_ASKLOB	(1)
-
-	if (ncli * sizeof(*cli) > alloc_cli) {
-		size_t nu = alloc_cli + 4096;
-		cli = mremap(cli, alloc_cli, nu, MREMAP_MAYMOVE);
-		alloc_cli = nu;
-	}
-
-	cli[idx].sa = *sa;
-	cli[idx].id = id;
-	cli[idx].ssz = 0;
-	return idx + 1;
-}
-
 static void
 init_cli(void)
 {
 	/* and our client list */
 	cli = mmap(NULL, 4096, PROT_MEM, MAP_MEM, -1, 0);
+	chx = mmap(NULL, 4096, PROT_MEM, MAP_MEM, -1, 0);
 	alloc_cli = 4096;
 	return;
 }
@@ -166,41 +130,131 @@ fini_cli(void)
 {
 	/* and the list of clients */
 	munmap(cli, alloc_cli);
+	munmap(chx, alloc_cli);
 	return;
 }
 
+static void
+resz_cli(size_t nu)
+{
+	cli = mremap(cli, alloc_cli, nu, MREMAP_MAYMOVE);
+	chx = mremap(chx, alloc_cli, nu, MREMAP_MAYMOVE);
+	alloc_cli = nu;
+	return;
+}
+
+static int
+sa_eq_p(ud_const_sockaddr_t sa1, ud_const_sockaddr_t sa2)
+{
+#define s6a8(x)		(x)->sa6.sin6_addr.s6_addr8
+#define s6a16(x)	(x)->sa6.sin6_addr.s6_addr16
+#define s6a32(x)	(x)->sa6.sin6_addr.s6_addr32
+#if SIZEOF_INT == 4
+# define s6a		s6a32
+#elif SIZEOF_INT == 2
+# define s6a		s6a16
+#else
+# error sockaddr comparison will fail
+#endif	/* sizeof(long int) */
+	return sa1->sa6.sin6_family == sa2->sa6.sin6_family &&
+		sa1->sa6.sin6_port == sa2->sa6.sin6_port &&
+#if SIZEOF_INT <= 4
+		s6a(sa1)[0] == s6a(sa2)[0] &&
+		s6a(sa1)[1] == s6a(sa2)[1] &&
+		s6a(sa1)[2] == s6a(sa2)[2] &&
+		s6a(sa1)[3] == s6a(sa2)[3] &&
+#endif
+#if SIZEOF_INT <= 2
+		s6a(sa1)[4] == s6a(sa2)[4] &&
+		s6a(sa1)[5] == s6a(sa2)[5] &&
+		s6a(sa1)[6] == s6a(sa2)[6] &&
+		s6a(sa1)[7] == s6a(sa2)[7] &&
+#endif
+		1;
+}
+
+static hx_t __attribute__((pure, const))
+compute_hx(struct key_s k)
+{
+	/* we need collision stats from a production run */
+	return k.sa->sa6.sin6_family ^ k.sa->sa6.sin6_port ^
+		s6a32(k.sa)[0] ^
+		s6a32(k.sa)[1] ^
+		s6a32(k.sa)[2] ^
+		s6a32(k.sa)[3] ^
+		k.id;
+}
+
+static cli_t
+find_cli(struct key_s k)
+{
+	hx_t khx = compute_hx(k);
+
+	for (size_t i = 0; i < ncli; i++) {
+		if (chx[i] == khx &&
+		    cli[i].id == k.id &&
+		    sa_eq_p(&cli[i].sa, k.sa)) {
+			return i + 1;
+		}
+	}
+	return 0;
+}
+
+static cli_t
+add_cli(struct key_s k)
+{
+	cli_t idx = ncli++;
+
+	if (ncli * sizeof(*cli) > alloc_cli) {
+		resz_cli(alloc_cli + 4096);
+	}
+
+	cli[idx].sa = *k.sa;
+	cli[idx].id = k.id;
+	chx[idx] = compute_hx(k);
+	cli[idx].ssz = 0;
+	return idx + 1;
+}
+
 
+static utectx_t u = NULL;
+/* number of ticks ignored due to missing symbols */
+static size_t ign = 0;
+
 static void
 snarf_meta(job_t j)
 {
 	char *pbuf = UDPC_PAYLOAD(JOB_PACKET(j).pbuf);
 	size_t plen = UDPC_PAYLLEN(JOB_PACKET(j).plen);
 	struct udpc_seria_s ser[1];
+	struct key_s k = {
+		.sa = &j->sa,
+	};
 	uint8_t tag;
 
 	udpc_seria_init(ser, pbuf, plen);
 	while (ser->msgoff < plen && (tag = udpc_seria_tag(ser))) {
-		lobidx_t c;
-		uint16_t id;
+		cli_t c;
 
 		if (UNLIKELY(tag != UDPC_TYPE_UI16)) {
 			break;
 		}
 		/* otherwise find us the id */
-		id = udpc_seria_des_ui16(ser);
+		k.id = udpc_seria_des_ui16(ser);
 		/* and the cli, if any */
-		if ((c = find_cli(&j->sa, id)) == 0) {
-			c = add_cli(&j->sa, id);
+		if ((c = find_cli(k)) == 0) {
+			c = add_cli(k);
 		}
 		/* next up is the symbol */
 		tag = udpc_seria_tag(ser);
 		if (UNLIKELY(tag != UDPC_TYPE_STR || c == 0)) {
-
 			break;
 		}
 		/* fuck error checking */
 		CLI(c)->ssz = udpc_seria_des_str_into(
 			CLI(c)->sym, sizeof(CLI(c)->sym), ser);
+
+		ute_bang_symidx(u, CLI(c)->sym, c);
 	}
 	return;
 }
@@ -210,7 +264,9 @@ snarf_data(job_t j)
 {
 	char *pbuf = UDPC_PAYLOAD(JOB_PACKET(j).pbuf);
 	size_t plen = UDPC_PAYLLEN(JOB_PACKET(j).plen);
-	lobidx_t c;
+	struct key_s k = {
+		.sa = &j->sa,
+	};
 
 	if (UNLIKELY(plen == 0)) {
 		return;
@@ -220,16 +276,21 @@ snarf_data(job_t j)
 	     sp < ep;
 	     sp += scom_tick_size(sp) *
 		     (sizeof(struct sndwch_s) / sizeof(*sp))) {
-		uint16_t id = scom_thdr_tblidx(sp);
+		cli_t c;
 
-		if ((c = find_cli(&j->sa, id)) == 0) {
-			c = add_cli(&j->sa, id);
+		k.id = scom_thdr_tblidx(sp);
+		if ((c = find_cli(k)) == 0) {
+			c = add_cli(k);
+		}
+		if (CLI(c)->ssz == 0) {
+			ign++;
+			continue;
 		}
 
 		/* fiddle with the tblidx */
 		scom_thdr_set_tblidx(sp, CLI(c)->id);
 		/* and pump the tick to ute */
-		;
+		ute_add_tick(u, sp);
 	}
 	return;
 }
@@ -388,6 +449,9 @@ main(int argc, char *argv[])
 	/* init cli space */
 	init_cli();
 
+	/* init ute */
+	u = ute_mktemp(0);
+
 	/* now wait for events to arrive */
 	ev_loop(EV_A_ 0);
 
@@ -397,6 +461,12 @@ main(int argc, char *argv[])
 		ev_io_stop(EV_A_ beef + i);
 		ud_mcast_fini(s);
 	}
+
+	fprintf(stderr, "dumped %zu ticks, %zu ignored\n", ute_nticks(u), ign);
+	/* deal with the file */
+	fputs(ute_fn(u), stdout);
+	fputc('\n', stdout);
+	ute_close(u);
 
 	/* finish cli space */
 	fini_cli();

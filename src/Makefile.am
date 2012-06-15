@@ -92,6 +92,7 @@ um_quodmp_CPPFLAGS += $(uterus_CFLAGS)
 um_quodmp_LDFLAGS = $(AM_LDFLAGS)
 um_quodmp_LDFLAGS += $(libev_LIBS)
 um_quodmp_LDFLAGS += $(unserding_LIBS)
+um_quodmp_LDFLAGS += $(uterus_LIBS)
 
 bin_PROGRAMS += um-xmit
 um_xmit_SOURCES = um-xmit.c

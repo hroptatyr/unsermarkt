@@ -82,6 +82,9 @@
 #define PURE		__attribute__((pure))
 #define PURE_CONST	__attribute__((const, pure))
 
+#define ONE_DAY		86400.0
+#define MIDNIGHT	0.0
+
 typedef size_t cli_t;
 typedef intptr_t hx_t;
 
@@ -218,6 +221,8 @@ add_cli(struct key_s k)
 
 
 static utectx_t u = NULL;
+static const char *u_fn = NULL;
+static size_t u_nt = 0;
 /* number of ticks ignored due to missing symbols */
 static size_t ign = 0;
 
@@ -295,6 +300,51 @@ snarf_data(job_t j)
 	return;
 }
 
+static void
+rotate_outfile(EV_P)
+{
+	struct tm tm[1];
+	static char nu[256];
+	char *n = nu;
+	time_t now;
+
+	fprintf(stderr, "rotate...\n");
+
+	/* snarf the name */
+	u_fn = ute_fn(u);
+
+	/* get a recent time stamp */
+	now = time(NULL);
+	gmtime_r(&now, tm);
+	strncpy(n, u_fn, sizeof(nu));
+	n += strlen(u_fn);
+	*n++ = '-';
+	strftime(n, sizeof(nu) - (n - nu), "%Y-%m-%dT%H:%M:%S.ute\0", tm);
+	rename(u_fn, nu);
+
+	/* magic */
+	switch (fork()) {
+	case -1:
+		fprintf(stderr, "cannot fork :O\n");
+		return;
+
+	default:
+		/* i am the parent */
+		u = ute_open(u_fn, UO_CREAT | UO_RDWR | UO_TRUNC);
+		ign = 0;
+		return;
+
+	case 0:
+		/* i am the child, just update the file name and nticks
+		 * and let unroll do the work */
+		u_fn = nu;
+		/* then exit */
+		ev_unloop(EV_A_ EVUNLOOP_ALL);
+		return;
+	}
+	/* not reached */
+}
+
 
 #define UTE_LE		(0x7574)
 #define UTE_BE		(0x5554)
@@ -367,7 +417,14 @@ sigpipe_cb(EV_P_ ev_signal *UNUSED(w), int UNUSED(revents))
 static void
 sighup_cb(EV_P_ ev_signal *UNUSED(w), int UNUSED(revents))
 {
-	ev_unloop(EV_A_ EVUNLOOP_ALL);
+	rotate_outfile(EV_A);
+	return;
+}
+
+static void
+midnight_cb(EV_P_ ev_periodic *UNUSED(w), int UNUSED(r))
+{
+	rotate_outfile(EV_A);
 	return;
 }
 
@@ -403,6 +460,7 @@ main(int argc, char *argv[])
 	ev_signal sighup_watcher[1];
 	ev_signal sigterm_watcher[1];
 	ev_signal sigpipe_watcher[1];
+	ev_periodic midnight[1];
 
 	/* parse the command line */
 	if (umqd_parser(argc, argv, argi)) {
@@ -424,6 +482,10 @@ main(int argc, char *argv[])
 	/* initialise a SIGHUP handler */
 	ev_signal_init(sighup_watcher, sighup_cb, SIGHUP);
 	ev_signal_start(EV_A_ sighup_watcher);
+
+	/* the midnight tick for file rotation, also upon sighup */
+	ev_periodic_init(midnight, midnight_cb, MIDNIGHT, ONE_DAY, NULL);
+	ev_periodic_start(EV_A_ midnight);
 
 	/* make some room for the control channel and the beef chans */
 	nbeef = argi->beef_given + 1;
@@ -450,7 +512,8 @@ main(int argc, char *argv[])
 	init_cli();
 
 	/* init ute */
-	u = ute_mktemp(0);
+	u = ute_mktemp(UO_RDWR);
+	u_fn = ute_fn(u);
 
 	/* now wait for events to arrive */
 	ev_loop(EV_A_ 0);
@@ -462,11 +525,17 @@ main(int argc, char *argv[])
 		ud_mcast_fini(s);
 	}
 
-	fprintf(stderr, "dumped %zu ticks, %zu ignored\n", ute_nticks(u), ign);
-	/* deal with the file */
-	fputs(ute_fn(u), stdout);
+	/* close the file, might take a while due to sorting */
+	if (u) {
+		/* get the number of ticks */
+		u_nt = ute_nticks(u);
+		/* deal with the file */
+		ute_close(u);
+	}
+	/* print name and stats */
+	fprintf(stderr, "dumped %zu ticks, %zu ignored\n", u_nt, ign);
+	fputs(u_fn, stdout);
 	fputc('\n', stdout);
-	ute_close(u);
 
 	/* finish cli space */
 	fini_cli();

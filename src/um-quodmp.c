@@ -461,10 +461,17 @@ main(int argc, char *argv[])
 	ev_signal sigterm_watcher[1];
 	ev_signal sigpipe_watcher[1];
 	ev_periodic midnight[1];
+	int res = 0;
 
 	/* parse the command line */
 	if (umqd_parser(argc, argv, argi)) {
 		exit(1);
+	}
+
+	if (argi->output_given && argi->into_given) {
+		fputs("only one of --output and --into can be given\n", stderr);
+		res = 1;
+		goto out;
 	}
 
 	/* initialise the main loop */
@@ -512,18 +519,29 @@ main(int argc, char *argv[])
 	init_cli();
 
 	/* init ute */
-	u = ute_mktemp(UO_RDWR);
-	u_fn = ute_fn(u);
+	if (!argi->output_given && !argi->into_given) {
+		if ((u = ute_mktemp(UO_RDWR)) == NULL) {
+			res = 1;
+			goto past_ute;
+		}
+		u_fn = ute_fn(u);
+	} else {
+		int u_fl = UO_CREAT | UO_RDWR;
+
+		if (argi->output_given) {
+			u_fn = argi->output_arg;
+			u_fl |= UO_TRUNC;
+		} else if (argi->into_given) {
+			u_fn = argi->into_arg;
+		}
+		if ((u = ute_open(u_fn, u_fl)) == NULL) {
+			res = 1;
+			goto past_ute;
+		}
+	}
 
 	/* now wait for events to arrive */
 	ev_loop(EV_A_ 0);
-
-	/* detaching beef channels */
-	for (unsigned int i = 0; i < nbeef; i++) {
-		int s = beef[i].fd;
-		ev_io_stop(EV_A_ beef + i);
-		ud_mcast_fini(s);
-	}
 
 	/* close the file, might take a while due to sorting */
 	if (u) {
@@ -537,17 +555,26 @@ main(int argc, char *argv[])
 	fputs(u_fn, stdout);
 	fputc('\n', stdout);
 
+past_ute:
+	/* detaching beef channels */
+	for (unsigned int i = 0; i < nbeef; i++) {
+		int s = beef[i].fd;
+		ev_io_stop(EV_A_ beef + i);
+		ud_mcast_fini(s);
+	}
+
 	/* finish cli space */
 	fini_cli();
 
 	/* destroy the default evloop */
 	ev_default_destroy();
 
+out:
 	/* kick the config context */
 	umqd_parser_free(argi);
 
 	/* unloop was called, so exit */
-	return 0;
+	return res;
 }
 
 /* um-quodmp.c ends here */

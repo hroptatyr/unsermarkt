@@ -4,7 +4,13 @@ usage "um-quodmp [OPTION]..."
 description "dump quotes off unserding beef channels"
 
 section "Output options"
+option "output" o
+	"Write result to specified output file"
+	string typestr="FILE" optional
 
+option "into" -
+	"Write result into ute file FILE"
+	string typestr="FILE" optional
 
 section "Network options"
 option "port" p

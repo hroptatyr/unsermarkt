@@ -85,6 +85,12 @@
 #define ONE_DAY		86400.0
 #define MIDNIGHT	0.0
 
+#if defined DEBUG_FLAG
+# define UMQD_DEBUG(args...)	fprintf(stderr, args)
+#else  /* !DEBUG_FLAG */
+# define UMQD_DEBUG(args...)
+#endif	/* DEBUG_FLAG */
+
 typedef size_t cli_t;
 typedef intptr_t hx_t;
 

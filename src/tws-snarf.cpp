@@ -44,11 +44,16 @@
 #include "twstools/twsdo.h"
 #include "twstools/tws_meta.h"
 #include "twstools/tws_query.h"
+#include <assert.h>
 
 #include <unserding/unserding.h>
 #include <unserding/protocore.h>
 #include <uterus.h>
 #include <m30.h>
+
+#if defined __INTEL_COMPILER
+# pragma warning (disable:1419)
+#endif	// __INTEL_COMPILER
 
 extern "C" {
 /* libtool needs C symbols */
@@ -133,9 +138,9 @@ void work(void *clo)
 	struct timeval now[1];
 	static timeval last_brag[1];
 
-	if( hdl == NULL ) {
+	if (hdl == NULL) {
 		return;
-	} else if( gettimeofday( now, NULL ) < 0 ) {
+	} else if (gettimeofday(now, NULL) < 0) {
 		/* bingo, time is fucked, what shall we do? */
 		return;
 	}
@@ -154,12 +159,12 @@ void work(void *clo)
 	udpc_seria_init(ser, UDPC_PAYLOAD(buf), UDPC_PAYLLEN(sizeof(buf)))
 #define SEND_PKT							\
 	if (udpc_seria_msglen(ser)) {					\
-		size_t len = UDPC_HDRLEN + udpc_seria_msglen(ser);	\
-		ud_packet_t p = {len, buf};				\
-		ud_chan_send( hdl, p );					\
+		size_t __l = UDPC_HDRLEN + udpc_seria_msglen(ser);	\
+		ud_packet_t p = {__l, buf};				\
+		ud_chan_send(hdl, p);					\
 	}
 
-	if( now->tv_sec - last_brag->tv_sec > BRAG_INTV) {
+	if (now->tv_sec - last_brag->tv_sec > BRAG_INTV) {
 		MAKE_PKT;
 		for (size_t i = 0; i < mtodo.mktDataRequests.size(); i++) {
 			char tmp[64];
@@ -200,15 +205,17 @@ void work(void *clo)
 
 	udpc_make_pkt(pkt, 0, pno++, UTE_CMD);
 	udpc_seria_init(ser, UDPC_PAYLOAD(pkt.pbuf), UDPC_PLLEN);
-	for( unsigned int i = 0; i < mtodo.mktDataRequests.size(); i++ ) {
+	for (unsigned int i = 0; i < mtodo.mktDataRequests.size(); i++) {
 		IB::Contract c = mtodo.mktDataRequests[i].ibContract;
 		double bid = q->at(i).val[IB::BID];
 		double bsz = q->at(i).val[IB::BID_SIZE];
 		double ask = q->at(i).val[IB::ASK];
 		double asz = q->at(i).val[IB::ASK_SIZE];
 
-		if ((l1t[0].bid = ffff_m30_get_d(bid).u) != act[i].bid.u ||
-		    (l1t[0].bsz = ffff_m30_get_d(bsz).u) != act[i].bsz.u) {
+		l1t[0].bid = ffff_m30_get_d(bid).u;
+		l1t[0].bsz = ffff_m30_get_d(bsz).u;
+		if (l1t[0].bid != act[i].bid.u ||
+		    l1t[0].bsz != act[i].bsz.u) {
 			sl1t_set_tblidx(l1t + 0, i + 1);
 			// and shove it up the seria
 			udpc_seria_add_scom(
@@ -218,8 +225,10 @@ void work(void *clo)
 			act[i].bsz.u = l1t[0].bsz;
 		}
 
-		if ((l1t[1].ask = ffff_m30_get_d(ask).u) != act[i].ask.u ||
-		    (l1t[1].asz = ffff_m30_get_d(asz).u) != act[i].asz.u) {
+		l1t[1].ask = ffff_m30_get_d(ask).u;
+		l1t[1].asz = ffff_m30_get_d(asz).u;
+		if (l1t[1].ask != act[i].ask.u ||
+		    l1t[1].asz != act[i].asz.u) {
 			sl1t_set_tblidx(l1t + 1, i + 1);
 			// and shove it up the seria
 			udpc_seria_add_scom(

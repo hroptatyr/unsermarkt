@@ -39,12 +39,15 @@
 #endif	/* HAVE_CONFIG_H */
 #include <stdlib.h>
 #include <stdio.h>
+#include <fcntl.h>
 #include <stddef.h>
 #include <unistd.h>
 #include <stdbool.h>
 #include <time.h>
 #include <assert.h>
 #include <ctype.h>
+/* for gettimeofday() */
+#include <sys/time.h>
 
 #if defined HAVE_SYS_SOCKET_H
 # include <sys/socket.h>
@@ -85,6 +88,21 @@
 #define ONE_DAY		86400.0
 #define MIDNIGHT	0.0
 
+/* maximum allowed age for clients (in seconds) */
+#if defined DEBUG_FLAG
+# define MAX_CLI_AGE	(60.0)
+# define PRUNE_INTV	(10.0)
+#else  /* !DEBUG_FLAG */
+# define MAX_CLI_AGE	(1800)
+# define PRUNE_INTV	(60.0)
+#endif	/* DEBUG_FLAG */
+
+#if defined DEBUG_FLAG
+# define UMQD_DEBUG(args...)	fprintf(stderr, args)
+#else  /* !DEBUG_FLAG */
+# define UMQD_DEBUG(args...)
+#endif	/* DEBUG_FLAG */
+
 typedef size_t cli_t;
 typedef intptr_t hx_t;
 
@@ -97,8 +115,10 @@ struct key_s {
 struct cli_s {
 	union ud_sockaddr_u sa __attribute__((aligned(16)));
 	uint16_t id;
+	uint16_t tgtid;
 
-	size_t ssz;
+	uint32_t last_seen;
+
 	char sym[64];
 };
 
@@ -214,9 +234,66 @@ add_cli(struct key_s k)
 
 	cli[idx].sa = *k.sa;
 	cli[idx].id = k.id;
+	cli[idx].tgtid = 0;
+	cli[idx].last_seen = 0;
 	chx[idx] = compute_hx(k);
-	cli[idx].ssz = 0;
 	return idx + 1;
+}
+
+static void
+prune_cli(cli_t c)
+{
+	/* wipe it all */
+	memset(CLI(c), 0, sizeof(struct cli_s));
+	return;
+}
+
+static bool
+cli_pruned_p(cli_t c)
+{
+	return CLI(c)->id == 0 && CLI(c)->tgtid == 0;
+}
+
+static void
+prune_clis(void)
+{
+	struct timeval tv[1];
+	size_t nu_ncli = ncli;
+
+	/* what's the time? */
+	gettimeofday(tv, NULL);
+
+	/* prune clis */
+	for (cli_t i = 1, ei = ncli; i <= ei; i++) {
+		if (CLI(i)->last_seen + MAX_CLI_AGE < tv->tv_sec) {
+			UMQD_DEBUG("pruning %zu\n", i);
+			prune_cli(i);
+		}
+	}
+
+	/* condense the cli array a bit */
+	for (cli_t i = 1; i <= ncli; i++) {
+		size_t consec = 0;
+
+		for (; cli_pruned_p(i) && i <= ncli; i++) {
+			consec++;
+		}
+		if (consec && i <= ncli) {
+			/* shrink */
+			size_t nmv = CLI(i) - CLI(i - consec);
+
+			UMQD_DEBUG("condensing %zu clis\n", nmv);
+			memcpy(CLI(i - consec), CLI(i), nmv * sizeof(*cli));
+			nu_ncli -= nmv;
+		} else if (consec) {
+			UMQD_DEBUG("condensing %zu clis\n", consec);
+			nu_ncli -= consec;
+		}
+	}
+
+	/* let everyone know how many clis we've got */
+	ncli = nu_ncli;
+	return;
 }
 
 
@@ -236,10 +313,15 @@ snarf_meta(job_t j)
 		.sa = &j->sa,
 	};
 	uint8_t tag;
+	struct timeval tv[1];
+
+	/* just to make sure that we're not late for dinner tonight */
+	gettimeofday(tv, NULL);
 
 	udpc_seria_init(ser, pbuf, plen);
 	while (ser->msgoff < plen && (tag = udpc_seria_tag(ser))) {
 		cli_t c;
+		uint16_t id;
 
 		if (UNLIKELY(tag != UDPC_TYPE_UI16)) {
 			break;
@@ -256,10 +338,25 @@ snarf_meta(job_t j)
 			break;
 		}
 		/* fuck error checking */
-		CLI(c)->ssz = udpc_seria_des_str_into(
-			CLI(c)->sym, sizeof(CLI(c)->sym), ser);
+		udpc_seria_des_str_into(CLI(c)->sym, sizeof(CLI(c)->sym), ser);
 
-		ute_bang_symidx(u, CLI(c)->sym, c);
+		/* check if we know about the symbol */
+		if ((id = ute_sym2idx(u, CLI(c)->sym)) == CLI(c)->tgtid) {
+			/* yep, known and it's the same id, brilliant */
+			;
+		} else if (CLI(c)->tgtid) {
+			/* known but the wrong id */
+			UMQD_DEBUG("reass %hu -> %hu\n", CLI(c)->tgtid, id);
+			CLI(c)->tgtid = id;
+		} else /*if (CLI(c)->tgtid == 0)*/ {
+			/* unknown */
+			UMQD_DEBUG("ass'ing %s -> %hu\n", CLI(c)->sym, id);
+			CLI(c)->tgtid = id;
+			ute_bang_symidx(u, CLI(c)->sym, CLI(c)->tgtid);
+		}
+
+		/* leave a last_seen note */
+		CLI(c)->last_seen = tv->tv_sec;
 	}
 	return;
 }
@@ -272,10 +369,14 @@ snarf_data(job_t j)
 	struct key_s k = {
 		.sa = &j->sa,
 	};
+	struct timeval tv[1];
 
 	if (UNLIKELY(plen == 0)) {
 		return;
 	}
+
+	/* lest we miss our flight */
+	gettimeofday(tv, NULL);
 
 	for (scom_thdr_t sp = (void*)pbuf, ep = (void*)(pbuf + plen);
 	     sp < ep;
@@ -287,15 +388,18 @@ snarf_data(job_t j)
 		if ((c = find_cli(k)) == 0) {
 			c = add_cli(k);
 		}
-		if (CLI(c)->ssz == 0) {
+		if (CLI(c)->tgtid == 0) {
 			ign++;
 			continue;
 		}
 
 		/* fiddle with the tblidx */
-		scom_thdr_set_tblidx(sp, CLI(c)->id);
+		scom_thdr_set_tblidx(sp, CLI(c)->tgtid);
 		/* and pump the tick to ute */
 		ute_add_tick(u, sp);
+
+		/* leave a last_seen note */
+		CLI(c)->last_seen = tv->tv_sec;
 	}
 	return;
 }
@@ -304,8 +408,8 @@ static void
 rotate_outfile(EV_P)
 {
 	struct tm tm[1];
-	static char nu[256];
-	char *n = nu;
+	static char nu_fn[256];
+	char *n = nu_fn;
 	time_t now;
 
 	fprintf(stderr, "rotate...\n");
@@ -316,11 +420,11 @@ rotate_outfile(EV_P)
 	/* get a recent time stamp */
 	now = time(NULL);
 	gmtime_r(&now, tm);
-	strncpy(n, u_fn, sizeof(nu));
+	strncpy(n, u_fn, sizeof(nu_fn));
 	n += strlen(u_fn);
 	*n++ = '-';
-	strftime(n, sizeof(nu) - (n - nu), "%Y-%m-%dT%H:%M:%S.ute\0", tm);
-	rename(u_fn, nu);
+	strftime(n, sizeof(nu_fn) - (n - nu_fn), "%Y-%m-%dT%H:%M:%S.ute\0", tm);
+	rename(u_fn, nu_fn);
 
 	/* magic */
 	switch (fork()) {
@@ -328,16 +432,19 @@ rotate_outfile(EV_P)
 		fprintf(stderr, "cannot fork :O\n");
 		return;
 
-	default:
+	default: {
 		/* i am the parent */
-		u = ute_open(u_fn, UO_CREAT | UO_RDWR | UO_TRUNC);
+		utectx_t nu = ute_open(u_fn, UO_CREAT | UO_RDWR | UO_TRUNC);
 		ign = 0;
+		ute_clone_slut(nu, u);
+		u = nu;
 		return;
+	}
 
 	case 0:
 		/* i am the child, just update the file name and nticks
 		 * and let unroll do the work */
-		u_fn = nu;
+		u_fn = nu_fn;
 		/* then exit */
 		ev_unloop(EV_A_ EVUNLOOP_ALL);
 		return;
@@ -428,6 +535,14 @@ midnight_cb(EV_P_ ev_periodic *UNUSED(w), int UNUSED(r))
 	return;
 }
 
+static void
+prune_cb(EV_P_ ev_timer *w, int UNUSED(r))
+{
+	prune_clis();
+	ev_timer_again(EV_A_ w);
+	return;
+}
+
 
 #if defined __INTEL_COMPILER
 # pragma warning (disable:593)
@@ -446,6 +561,39 @@ midnight_cb(EV_P_ ev_periodic *UNUSED(w), int UNUSED(r))
 # pragma GCC diagnostic warning "-Wswitch-enum"
 #endif	/* __INTEL_COMPILER */
 
+static pid_t
+detach(void)
+{
+	int fd;
+	pid_t pid;
+
+	switch (pid = fork()) {
+	case -1:
+		return -1;
+	case 0:
+		break;
+	default:
+		/* i am the parent */
+		UMQD_DEBUG("daemonisation successful %d\n", pid);
+		exit(0);
+	}
+
+	if (setsid() == -1) {
+		return -1;
+	}
+	/* close standard tty descriptors */
+	close(STDIN_FILENO);
+	close(STDOUT_FILENO);
+	close(STDERR_FILENO);
+	/* reattach them to /dev/null */
+	if (LIKELY((fd = open("/dev/null", O_RDWR, 0)) >= 0)) {
+		(void)dup2(fd, STDIN_FILENO);
+		(void)dup2(fd, STDOUT_FILENO);
+		(void)dup2(fd, STDERR_FILENO);
+	}
+	return pid;
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -461,6 +609,7 @@ main(int argc, char *argv[])
 	ev_signal sigterm_watcher[1];
 	ev_signal sigpipe_watcher[1];
 	ev_periodic midnight[1];
+	ev_timer prune[1];
 	int res = 0;
 
 	/* parse the command line */
@@ -493,6 +642,10 @@ main(int argc, char *argv[])
 	/* the midnight tick for file rotation, also upon sighup */
 	ev_periodic_init(midnight, midnight_cb, MIDNIGHT, ONE_DAY, NULL);
 	ev_periodic_start(EV_A_ midnight);
+
+	/* prune timer, check occasionally for old unused clients */
+	ev_timer_init(prune, prune_cb, PRUNE_INTV, PRUNE_INTV);
+	ev_timer_start(EV_A_ prune);
 
 	/* make some room for the control channel and the beef chans */
 	nbeef = argi->beef_given + 1;
@@ -540,9 +693,16 @@ main(int argc, char *argv[])
 		}
 	}
 
+	if (argi->daemonise_given && detach() < 0) {
+		perror("daemonisation failed");
+		res = 1;
+		goto past_loop;
+	}
+
 	/* now wait for events to arrive */
 	ev_loop(EV_A_ 0);
 
+past_loop:
 	/* close the file, might take a while due to sorting */
 	if (u) {
 		/* get the number of ticks */

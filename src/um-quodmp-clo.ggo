@@ -3,6 +3,10 @@ package "um-quodmp"
 usage "um-quodmp [OPTION]..."
 description "dump quotes off unserding beef channels"
 
+option "daemonise" d
+	"Detach from tty and runs as daemon"
+	optional
+
 section "Output options"
 option "output" o
 	"Write result to specified output file"

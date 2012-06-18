@@ -310,8 +310,8 @@ static void
 rotate_outfile(EV_P)
 {
 	struct tm tm[1];
-	static char nu[256];
-	char *n = nu;
+	static char nu_fn[256];
+	char *n = nu_fn;
 	time_t now;
 
 	fprintf(stderr, "rotate...\n");
@@ -322,11 +322,11 @@ rotate_outfile(EV_P)
 	/* get a recent time stamp */
 	now = time(NULL);
 	gmtime_r(&now, tm);
-	strncpy(n, u_fn, sizeof(nu));
+	strncpy(n, u_fn, sizeof(nu_fn));
 	n += strlen(u_fn);
 	*n++ = '-';
-	strftime(n, sizeof(nu) - (n - nu), "%Y-%m-%dT%H:%M:%S.ute\0", tm);
-	rename(u_fn, nu);
+	strftime(n, sizeof(nu_fn) - (n - nu_fn), "%Y-%m-%dT%H:%M:%S.ute\0", tm);
+	rename(u_fn, nu_fn);
 
 	/* magic */
 	switch (fork()) {
@@ -334,16 +334,19 @@ rotate_outfile(EV_P)
 		fprintf(stderr, "cannot fork :O\n");
 		return;
 
-	default:
+	default: {
 		/* i am the parent */
-		u = ute_open(u_fn, UO_CREAT | UO_RDWR | UO_TRUNC);
+		utectx_t nu = ute_open(u_fn, UO_CREAT | UO_RDWR | UO_TRUNC);
 		ign = 0;
+		ute_clone_slut(nu, u);
+		u = nu;
 		return;
+	}
 
 	case 0:
 		/* i am the child, just update the file name and nticks
 		 * and let unroll do the work */
-		u_fn = nu;
+		u_fn = nu_fn;
 		/* then exit */
 		ev_unloop(EV_A_ EVUNLOOP_ALL);
 		return;

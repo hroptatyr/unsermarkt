@@ -247,10 +247,17 @@ prune_cli(cli_t c)
 	return;
 }
 
+static bool
+cli_pruned_p(cli_t c)
+{
+	return CLI(c)->id == 0 && CLI(c)->tgtid == 0;
+}
+
 static void
 prune_clis(void)
 {
 	struct timeval tv[1];
+	size_t nu_ncli = ncli;
 
 	/* what's the time? */
 	gettimeofday(tv, NULL);
@@ -262,6 +269,29 @@ prune_clis(void)
 			prune_cli(i);
 		}
 	}
+
+	/* condense the cli array a bit */
+	for (cli_t i = 1; i <= ncli; i++) {
+		size_t consec = 0;
+
+		for (; cli_pruned_p(i) && i <= ncli; i++) {
+			consec++;
+		}
+		if (consec && i <= ncli) {
+			/* shrink */
+			size_t nmv = CLI(i) - CLI(i - consec);
+
+			UMQD_DEBUG("condensing %zu clis\n", nmv);
+			memcpy(CLI(i - consec), CLI(i), nmv * sizeof(*cli));
+			nu_ncli -= nmv;
+		} else if (consec) {
+			UMQD_DEBUG("condensing %zu clis\n", consec);
+			nu_ncli -= consec;
+		}
+	}
+
+	/* let everyone know how many clis we've got */
+	ncli = nu_ncli;
 	return;
 }
 

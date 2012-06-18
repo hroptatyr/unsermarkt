@@ -633,7 +633,7 @@ main(int argc, char *argv[])
 	ev_signal_init(sigpipe_watcher, sigpipe_cb, SIGPIPE);
 	ev_signal_start(EV_A_ sigpipe_watcher);
 	/* initialise a SIGTERM handler */
-	ev_signal_init(sigterm_watcher, sighup_cb, SIGTERM);
+	ev_signal_init(sigterm_watcher, sigint_cb, SIGTERM);
 	ev_signal_start(EV_A_ sigterm_watcher);
 	/* initialise a SIGHUP handler */
 	ev_signal_init(sighup_watcher, sighup_cb, SIGHUP);

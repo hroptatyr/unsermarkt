@@ -45,6 +45,8 @@
 #include <time.h>
 #include <assert.h>
 #include <ctype.h>
+/* for gettimeofday() */
+#include <sys/time.h>
 
 #if defined HAVE_SYS_SOCKET_H
 # include <sys/socket.h>
@@ -104,6 +106,8 @@ struct cli_s {
 	union ud_sockaddr_u sa __attribute__((aligned(16)));
 	uint16_t id;
 	uint16_t tgtid;
+
+	uint32_t last_seen;
 
 	size_t ssz;
 	char sym[64];
@@ -243,6 +247,10 @@ snarf_meta(job_t j)
 		.sa = &j->sa,
 	};
 	uint8_t tag;
+	struct timeval tv[1];
+
+	/* just to make sure that we're not late for dinner tonight */
+	gettimeofday(tv, NULL);
 
 	udpc_seria_init(ser, pbuf, plen);
 	while (ser->msgoff < plen && (tag = udpc_seria_tag(ser))) {
@@ -281,6 +289,9 @@ snarf_meta(job_t j)
 			CLI(c)->tgtid = id;
 			ute_bang_symidx(u, CLI(c)->sym, CLI(c)->tgtid);
 		}
+
+		/* leave a last_seen note */
+		CLI(c)->last_seen = tv->tv_sec;
 	}
 	return;
 }
@@ -293,10 +304,14 @@ snarf_data(job_t j)
 	struct key_s k = {
 		.sa = &j->sa,
 	};
+	struct timeval tv[1];
 
 	if (UNLIKELY(plen == 0)) {
 		return;
 	}
+
+	/* lest we miss our flight */
+	gettimeofday(tv, NULL);
 
 	for (scom_thdr_t sp = (void*)pbuf, ep = (void*)(pbuf + plen);
 	     sp < ep;
@@ -317,6 +332,9 @@ snarf_data(job_t j)
 		scom_thdr_set_tblidx(sp, CLI(c)->tgtid);
 		/* and pump the tick to ute */
 		ute_add_tick(u, sp);
+
+		/* leave a last_seen note */
+		CLI(c)->last_seen = tv->tv_sec;
 	}
 	return;
 }

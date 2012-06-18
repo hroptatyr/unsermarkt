@@ -21,7 +21,6 @@ noinst_HEADERS += boobs.h
 noinst_HEADERS += nifty.h
 
 if HAVE_MXML
-if HAVE_UTERUS
 mod_LTLIBRARIES += dso-unsermarkt.la
 dso_unsermarkt_la_LDFLAGS = -module
 dso_unsermarkt_la_LDFLAGS += $(unserding_LDFLAGS) -lsqlite3 -lmxml
@@ -43,7 +42,6 @@ dso_unsermarkt_la_CPPFLAGS += $(uterus_CFLAGS)
 EXTRA_dso_unsermarkt_la_SOURCES =
 EXTRA_dso_unsermarkt_la_SOURCES += con6ity.c
 EXTRA_dso_unsermarkt_la_SOURCES += mmls.c
-endif  ## HAVE_UTERUS
 endif  ## HAVE_MXML
 
 noinst_PROGRAMS += umoc
@@ -70,7 +68,6 @@ blood_mm_CPPFLAGS += $(unserding_CFLAGS)
 blood_mm_CPPFLAGS += $(uterus_CFLAGS)
 endif  ## HAVE_MXML
 
-if HAVE_UTERUS
 bin_PROGRAMS += um-quomon
 um_quomon_SOURCES = um-quomon.c um-quomon-clo.ggo
 BUILT_SOURCES += um-quomon-clo.c um-quomon-clo.h
@@ -105,7 +102,6 @@ um_xmit_CPPFLAGS += $(unserding_CFLAGS)
 um_xmit_LDFLAGS = $(AM_LDFLAGS)
 um_xmit_LDFLAGS += $(uterus_LIBS)
 um_xmit_LDFLAGS += $(unserding_LIBS)
-endif
 
 if HAVE_TWSTOOLS
 noinst_LTLIBRARIES += tws-snarf.la

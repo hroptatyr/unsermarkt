@@ -44,6 +44,7 @@
 #include "twstools/twsdo.h"
 #include "twstools/tws_meta.h"
 #include "twstools/tws_query.h"
+#include <assert.h>
 
 #include <unserding/unserding.h>
 #include <unserding/protocore.h>

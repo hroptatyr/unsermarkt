@@ -80,6 +80,9 @@
 # define MAYBE_NOINLINE
 #endif	/* DEBUG_FLAG */
 
+/* tolerate this many seconds without quotes */
+#define MAX_AGE			(60.0)
+
 typedef const struct nd_pkt_s *nd_pkt_t;
 
 struct nd_pkt_s {
@@ -802,6 +805,7 @@ send_job(nd_pkt_t j)
 
 /* helpers for the worker function */
 static int rawp = 0;
+static size_t nquo = 0;
 
 /* the actual worker function */
 static void
@@ -859,6 +863,8 @@ mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
 		j->bsz = sizeof(iobuf);
 	}
 
+	/* update the quote counter */
+	nquo++;
 out_revok:
 	return;
 }
@@ -879,6 +885,21 @@ sigpipe_cb(EV_P_ ev_signal *UNUSED(w), int UNUSED(revents))
 static void
 sighup_cb(EV_P_ ev_signal *UNUSED(w), int UNUSED(revents))
 {
+	ev_unloop(EV_A_ EVUNLOOP_ALL);
+	return;
+}
+
+static void
+keep_alive_cb(EV_P_ ev_timer *w, int UNUSED(revents))
+{
+	if (nquo) {
+		/* everything in order */
+		nquo = 0;
+		ev_timer_again(EV_A_ w);
+		return;
+	}
+	/* otherwise there's been no quotes  */
+	UM_DEBUG("no data for %f seconds, unrolling...\n", MAX_AGE);
 	ev_unloop(EV_A_ EVUNLOOP_ALL);
 	return;
 }
@@ -914,6 +935,7 @@ main(int argc, char *argv[])
 	ev_signal sigterm_watcher[1];
 	ev_signal sigpipe_watcher[1];
 	ev_io beef[1];
+	ev_timer keep_alive[1];
 	/* unserding resources */
 	int nd_sock;
 
@@ -950,6 +972,10 @@ main(int argc, char *argv[])
 
 	/* quickly perform the subscription */
 	subs_nd(nd_sock, (const char**)argi->inputs, argi->inputs_num);
+
+	/* set a timer to see if we lack quotes */
+	ev_timer_init(keep_alive, keep_alive_cb, MAX_AGE, MAX_AGE);
+	ev_timer_start(EV_A_ keep_alive);
 
 	/* now wait for events to arrive */
 	ev_loop(EV_A_ 0);

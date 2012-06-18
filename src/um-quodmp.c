@@ -272,13 +272,13 @@ prune_clis(void)
 	}
 
 	/* condense the cli array a bit */
-	for (cli_t i = 1; i <= ncli; i++) {
+	for (cli_t i = 1, ei = ncli; i <= ei; i++) {
 		size_t consec = 0;
 
-		for (; cli_pruned_p(i) && i <= ncli; i++) {
+		for (; i <= ei && cli_pruned_p(i); i++) {
 			consec++;
 		}
-		if (consec && i <= ncli) {
+		if (consec && i <= ei) {
 			/* shrink */
 			size_t nmv = CLI(i) - CLI(i - consec);
 
@@ -633,7 +633,7 @@ main(int argc, char *argv[])
 	ev_signal_init(sigpipe_watcher, sigpipe_cb, SIGPIPE);
 	ev_signal_start(EV_A_ sigpipe_watcher);
 	/* initialise a SIGTERM handler */
-	ev_signal_init(sigterm_watcher, sighup_cb, SIGTERM);
+	ev_signal_init(sigterm_watcher, sigint_cb, SIGTERM);
 	ev_signal_start(EV_A_ sigterm_watcher);
 	/* initialise a SIGHUP handler */
 	ev_signal_init(sighup_watcher, sighup_cb, SIGHUP);

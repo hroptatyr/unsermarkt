@@ -212,8 +212,10 @@ void work(void *clo)
 		double ask = q->at(i).val[IB::ASK];
 		double asz = q->at(i).val[IB::ASK_SIZE];
 
-		if ((l1t[0].bid = ffff_m30_get_d(bid).u) != act[i].bid.u ||
-		    (l1t[0].bsz = ffff_m30_get_d(bsz).u) != act[i].bsz.u) {
+		l1t[0].bid = ffff_m30_get_d(bid).u;
+		l1t[0].bsz = ffff_m30_get_d(bsz).u;
+		if (l1t[0].bid != act[i].bid.u ||
+		    l1t[0].bsz != act[i].bsz.u) {
 			sl1t_set_tblidx(l1t + 0, i + 1);
 			// and shove it up the seria
 			udpc_seria_add_scom(
@@ -223,8 +225,10 @@ void work(void *clo)
 			act[i].bsz.u = l1t[0].bsz;
 		}
 
-		if ((l1t[1].ask = ffff_m30_get_d(ask).u) != act[i].ask.u ||
-		    (l1t[1].asz = ffff_m30_get_d(asz).u) != act[i].asz.u) {
+		l1t[1].ask = ffff_m30_get_d(ask).u;
+		l1t[1].asz = ffff_m30_get_d(asz).u;
+		if (l1t[1].ask != act[i].ask.u ||
+		    l1t[1].asz != act[i].asz.u) {
 			sl1t_set_tblidx(l1t + 1, i + 1);
 			// and shove it up the seria
 			udpc_seria_add_scom(

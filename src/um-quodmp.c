@@ -87,6 +87,15 @@
 #define ONE_DAY		86400.0
 #define MIDNIGHT	0.0
 
+/* maximum allowed age for clients (in seconds) */
+#if defined DEBUG_FLAG
+# define MAX_CLI_AGE	(60.0)
+# define PRUNE_INTV	(10.0)
+#else  /* !DEBUG_FLAG */
+# define MAX_CLI_AGE	(1800)
+# define PRUNE_INTV	(60.0)
+#endif	/* DEBUG_FLAG */
+
 #if defined DEBUG_FLAG
 # define UMQD_DEBUG(args...)	fprintf(stderr, args)
 #else  /* !DEBUG_FLAG */
@@ -109,7 +118,6 @@ struct cli_s {
 
 	uint32_t last_seen;
 
-	size_t ssz;
 	char sym[64];
 };
 
@@ -225,9 +233,36 @@ add_cli(struct key_s k)
 
 	cli[idx].sa = *k.sa;
 	cli[idx].id = k.id;
+	cli[idx].tgtid = 0;
+	cli[idx].last_seen = 0;
 	chx[idx] = compute_hx(k);
-	cli[idx].ssz = 0;
 	return idx + 1;
+}
+
+static void
+prune_cli(cli_t c)
+{
+	/* wipe it all */
+	memset(CLI(c), 0, sizeof(struct cli_s));
+	return;
+}
+
+static void
+prune_clis(void)
+{
+	struct timeval tv[1];
+
+	/* what's the time? */
+	gettimeofday(tv, NULL);
+
+	/* prune clis */
+	for (cli_t i = 1, ei = ncli; i <= ei; i++) {
+		if (CLI(i)->last_seen + MAX_CLI_AGE < tv->tv_sec) {
+			UMQD_DEBUG("pruning %zu\n", i);
+			prune_cli(i);
+		}
+	}
+	return;
 }
 
 
@@ -272,8 +307,7 @@ snarf_meta(job_t j)
 			break;
 		}
 		/* fuck error checking */
-		CLI(c)->ssz = udpc_seria_des_str_into(
-			CLI(c)->sym, sizeof(CLI(c)->sym), ser);
+		udpc_seria_des_str_into(CLI(c)->sym, sizeof(CLI(c)->sym), ser);
 
 		/* check if we know about the symbol */
 		if ((id = ute_sym2idx(u, CLI(c)->sym)) == CLI(c)->tgtid) {
@@ -470,6 +504,14 @@ midnight_cb(EV_P_ ev_periodic *UNUSED(w), int UNUSED(r))
 	return;
 }
 
+static void
+prune_cb(EV_P_ ev_timer *w, int UNUSED(r))
+{
+	prune_clis();
+	ev_timer_again(EV_A_ w);
+	return;
+}
+
 
 #if defined __INTEL_COMPILER
 # pragma warning (disable:593)
@@ -503,6 +545,7 @@ main(int argc, char *argv[])
 	ev_signal sigterm_watcher[1];
 	ev_signal sigpipe_watcher[1];
 	ev_periodic midnight[1];
+	ev_timer prune[1];
 	int res = 0;
 
 	/* parse the command line */
@@ -535,6 +578,10 @@ main(int argc, char *argv[])
 	/* the midnight tick for file rotation, also upon sighup */
 	ev_periodic_init(midnight, midnight_cb, MIDNIGHT, ONE_DAY, NULL);
 	ev_periodic_start(EV_A_ midnight);
+
+	/* prune timer, check occasionally for old unused clients */
+	ev_timer_init(prune, prune_cb, PRUNE_INTV, PRUNE_INTV);
+	ev_timer_start(EV_A_ prune);
 
 	/* make some room for the control channel and the beef chans */
 	nbeef = argi->beef_given + 1;

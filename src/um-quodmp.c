@@ -103,6 +103,7 @@ struct key_s {
 struct cli_s {
 	union ud_sockaddr_u sa __attribute__((aligned(16)));
 	uint16_t id;
+	uint16_t tgtid;
 
 	size_t ssz;
 	char sym[64];
@@ -246,6 +247,7 @@ snarf_meta(job_t j)
 	udpc_seria_init(ser, pbuf, plen);
 	while (ser->msgoff < plen && (tag = udpc_seria_tag(ser))) {
 		cli_t c;
+		uint16_t id;
 
 		if (UNLIKELY(tag != UDPC_TYPE_UI16)) {
 			break;
@@ -265,7 +267,20 @@ snarf_meta(job_t j)
 		CLI(c)->ssz = udpc_seria_des_str_into(
 			CLI(c)->sym, sizeof(CLI(c)->sym), ser);
 
-		ute_bang_symidx(u, CLI(c)->sym, c);
+		/* check if we know about the symbol */
+		if ((id = ute_sym2idx(u, CLI(c)->sym)) == CLI(c)->tgtid) {
+			/* yep, known and it's the same id, brilliant */
+			;
+		} else if (CLI(c)->tgtid) {
+			/* known but the wrong id */
+			UMQD_DEBUG("reass %hu -> %hu\n", CLI(c)->tgtid, id);
+			CLI(c)->tgtid = id;
+		} else /*if (CLI(c)->tgtid == 0)*/ {
+			/* unknown */
+			UMQD_DEBUG("ass'ing %s -> %hu\n", CLI(c)->sym, id);
+			CLI(c)->tgtid = id;
+			ute_bang_symidx(u, CLI(c)->sym, CLI(c)->tgtid);
+		}
 	}
 	return;
 }
@@ -293,7 +308,7 @@ snarf_data(job_t j)
 		if ((c = find_cli(k)) == 0) {
 			c = add_cli(k);
 		}
-		if (CLI(c)->ssz == 0) {
+		if (CLI(c)->tgtid == 0) {
 			ign++;
 			continue;
 		}

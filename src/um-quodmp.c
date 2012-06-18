@@ -272,13 +272,13 @@ prune_clis(void)
 	}
 
 	/* condense the cli array a bit */
-	for (cli_t i = 1; i <= ncli; i++) {
+	for (cli_t i = 1, ei = ncli; i <= ei; i++) {
 		size_t consec = 0;
 
-		for (; cli_pruned_p(i) && i <= ncli; i++) {
+		for (; cli_pruned_p(i) && i <= ei; i++) {
 			consec++;
 		}
-		if (consec && i <= ncli) {
+		if (consec && i <= ei) {
 			/* shrink */
 			size_t nmv = CLI(i) - CLI(i - consec);
 

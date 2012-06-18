@@ -50,6 +50,10 @@
 #include <uterus.h>
 #include <m30.h>
 
+#if defined __INTEL_COMPILER
+# pragma warning (disable:1419)
+#endif	// __INTEL_COMPILER
+
 extern "C" {
 /* libtool needs C symbols */
 extern void init(void*);
@@ -154,8 +158,8 @@ void work(void *clo)
 	udpc_seria_init(ser, UDPC_PAYLOAD(buf), UDPC_PAYLLEN(sizeof(buf)))
 #define SEND_PKT							\
 	if (udpc_seria_msglen(ser)) {					\
-		size_t len = UDPC_HDRLEN + udpc_seria_msglen(ser);	\
-		ud_packet_t p = {len, buf};				\
+		size_t __l = UDPC_HDRLEN + udpc_seria_msglen(ser);	\
+		ud_packet_t p = {__l, buf};				\
 		ud_chan_send(hdl, p);					\
 	}
 

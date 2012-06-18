@@ -68,7 +68,6 @@ blood_mm_CPPFLAGS += $(unserding_CFLAGS)
 blood_mm_CPPFLAGS += $(uterus_CFLAGS)
 endif  ## HAVE_MXML
 
-if HAVE_UTERUS
 bin_PROGRAMS += um-quomon
 um_quomon_SOURCES = um-quomon.c um-quomon-clo.ggo
 BUILT_SOURCES += um-quomon-clo.c um-quomon-clo.h
@@ -103,7 +102,6 @@ um_xmit_CPPFLAGS += $(unserding_CFLAGS)
 um_xmit_LDFLAGS = $(AM_LDFLAGS)
 um_xmit_LDFLAGS += $(uterus_LIBS)
 um_xmit_LDFLAGS += $(unserding_LIBS)
-endif
 
 if HAVE_TWSTOOLS
 noinst_LTLIBRARIES += tws-snarf.la

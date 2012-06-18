@@ -314,7 +314,7 @@ snarf_data(job_t j)
 		}
 
 		/* fiddle with the tblidx */
-		scom_thdr_set_tblidx(sp, CLI(c)->id);
+		scom_thdr_set_tblidx(sp, CLI(c)->tgtid);
 		/* and pump the tick to ute */
 		ute_add_tick(u, sp);
 	}

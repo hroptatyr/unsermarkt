@@ -39,6 +39,7 @@
 #endif	/* HAVE_CONFIG_H */
 #include <stdlib.h>
 #include <stdio.h>
+#include <fcntl.h>
 #include <stddef.h>
 #include <unistd.h>
 #include <stdbool.h>
@@ -560,6 +561,39 @@ prune_cb(EV_P_ ev_timer *w, int UNUSED(r))
 # pragma GCC diagnostic warning "-Wswitch-enum"
 #endif	/* __INTEL_COMPILER */
 
+static pid_t
+detach(void)
+{
+	int fd;
+	pid_t pid;
+
+	switch (pid = fork()) {
+	case -1:
+		return -1;
+	case 0:
+		break;
+	default:
+		/* i am the parent */
+		UMQD_DEBUG("daemonisation successful %d\n", pid);
+		exit(0);
+	}
+
+	if (setsid() == -1) {
+		return -1;
+	}
+	/* close standard tty descriptors */
+	close(STDIN_FILENO);
+	close(STDOUT_FILENO);
+	close(STDERR_FILENO);
+	/* reattach them to /dev/null */
+	if (LIKELY((fd = open("/dev/null", O_RDWR, 0)) >= 0)) {
+		(void)dup2(fd, STDIN_FILENO);
+		(void)dup2(fd, STDOUT_FILENO);
+		(void)dup2(fd, STDERR_FILENO);
+	}
+	return pid;
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -659,9 +693,16 @@ main(int argc, char *argv[])
 		}
 	}
 
+	if (argi->daemonise_given && detach() < 0) {
+		perror("daemonisation failed");
+		res = 1;
+		goto past_loop;
+	}
+
 	/* now wait for events to arrive */
 	ev_loop(EV_A_ 0);
 
+past_loop:
 	/* close the file, might take a while due to sorting */
 	if (u) {
 		/* get the number of ticks */

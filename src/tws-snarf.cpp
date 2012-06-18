@@ -133,9 +133,9 @@ void work(void *clo)
 	struct timeval now[1];
 	static timeval last_brag[1];
 
-	if( hdl == NULL ) {
+	if (hdl == NULL) {
 		return;
-	} else if( gettimeofday( now, NULL ) < 0 ) {
+	} else if (gettimeofday(now, NULL) < 0) {
 		/* bingo, time is fucked, what shall we do? */
 		return;
 	}
@@ -156,10 +156,10 @@ void work(void *clo)
 	if (udpc_seria_msglen(ser)) {					\
 		size_t len = UDPC_HDRLEN + udpc_seria_msglen(ser);	\
 		ud_packet_t p = {len, buf};				\
-		ud_chan_send( hdl, p );					\
+		ud_chan_send(hdl, p);					\
 	}
 
-	if( now->tv_sec - last_brag->tv_sec > BRAG_INTV) {
+	if (now->tv_sec - last_brag->tv_sec > BRAG_INTV) {
 		MAKE_PKT;
 		for (size_t i = 0; i < mtodo.mktDataRequests.size(); i++) {
 			char tmp[64];
@@ -200,7 +200,7 @@ void work(void *clo)
 
 	udpc_make_pkt(pkt, 0, pno++, UTE_CMD);
 	udpc_seria_init(ser, UDPC_PAYLOAD(pkt.pbuf), UDPC_PLLEN);
-	for( unsigned int i = 0; i < mtodo.mktDataRequests.size(); i++ ) {
+	for (unsigned int i = 0; i < mtodo.mktDataRequests.size(); i++) {
 		IB::Contract c = mtodo.mktDataRequests[i].ibContract;
 		double bid = q->at(i).val[IB::BID];
 		double bsz = q->at(i).val[IB::BID_SIZE];

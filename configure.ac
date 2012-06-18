@@ -74,7 +74,7 @@ PKG_CHECK_MODULES([LUA], [lua >= 5.1.0], [:], [:])
 PKG_CHECK_MODULES([unserding], [unserding >= 0.2.2])
 
 ## check for ute
-PKG_CHECK_MODULES([uterus], [libuterus >= 0.2.1],
+PKG_CHECK_MODULES([uterus], [uterus >= 0.2.2],
 	[have_uterus="yes"], [have_uterus="no"])
 if test "${have_uterus}" = "yes"; then
 	## check for the header

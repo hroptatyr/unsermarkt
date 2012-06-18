@@ -199,11 +199,15 @@ party(const char *buf, size_t bsz)
 		     (sizeof(struct sndwch_s) / sizeof(*sp))) {
 		uint16_t idx = scom_thdr_tblidx(sp);
 		uint16_t ttf = scom_thdr_ttf(sp);
-		m30_t p = {((const_sl1t_t)sp)->v[0]};
-		m30_t q = {((const_sl1t_t)sp)->v[1]};
+		m30_t p;
+		m30_t q;
 
 		// check for resizes
 		check_resz(idx);
+
+		// avoid narrowing so define p and q here
+		p.u = ((const_sl1t_t)sp)->v[0];
+		q.u = ((const_sl1t_t)sp)->v[1];
 
 		switch (ttf) {
 		case SL1T_TTF_BID:
@@ -484,7 +488,7 @@ void work(void *clo)
 	} else if ((nrd = recvfrom(
 			    mcfd, buf, sizeof(buf), 0, &sa.sa, &salen)) <= 0) {
 		;
-	} else if (!udpc_pkt_valid_p((ud_packet_t){nrd, buf})) {
+	} else if (!udpc_pkt_valid_p((ud_packet_t){(size_t)nrd, buf})) {
 		;
 	} else {
 		// YAAAY
@@ -495,7 +499,7 @@ void work(void *clo)
 
 		fprintf(stderr, "[%s]:%hu -> %d\t%zd\n", a, port, mcfd, nrd);
 
-		switch (udpc_pkt_cmd((ud_packet_t){nrd, buf})) {
+		switch (udpc_pkt_cmd((ud_packet_t){(size_t)nrd, buf})) {
 		case UDPC_PKT_RPL(UTE_QMETA):
 			pmeta(UDPC_PAYLOAD(buf), UDPC_PAYLLEN(nrd));
 			break;

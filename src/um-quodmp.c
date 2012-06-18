@@ -275,7 +275,7 @@ prune_clis(void)
 	for (cli_t i = 1, ei = ncli; i <= ei; i++) {
 		size_t consec = 0;
 
-		for (; cli_pruned_p(i) && i <= ei; i++) {
+		for (; i <= ei && cli_pruned_p(i); i++) {
 			consec++;
 		}
 		if (consec && i <= ei) {

@@ -130,6 +130,25 @@ struct cli_s {
 };
 
 
+#if !defined HAVE_UTE_FREE
+/* for the moment we provide compatibility with uterus v0.2.2 */
+struct utectx_s {
+	/** file descriptor we're banging on about */
+	int fd;
+};
+
+static void
+ute_free(utectx_t ctx)
+{
+	struct utectx_s *p = ctx;
+	close(p->fd);
+	p->fd = -1;
+	free(ctx);
+	return;
+}
+#endif	/* HAVE_UTE_FREE */
+
+
 /* we support a maximum of 64 order books atm */
 static struct cli_s *cli = NULL;
 static hx_t *chx = NULL;

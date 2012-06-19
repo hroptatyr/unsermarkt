@@ -129,6 +129,10 @@ struct cli_s {
 	char sym[64];
 };
 
+/* children need access to beef resources */
+static ev_io *beef = NULL;
+static size_t nbeef = 0;
+
 
 #if !defined HAVE_UTE_FREE
 /* for the moment we provide compatibility with uterus v0.2.2 */
@@ -475,6 +479,21 @@ rotate_outfile(EV_P)
 		/* i am the child, just update the file name and nticks
 		 * and let unroll do the work */
 		u_fn = nu_fn;
+		/* let libev know we're a fork */
+		ev_default_fork();
+
+		/* close everything but the ute file */
+		for (size_t i = 0; i < nbeef; i++) {
+			int fd = beef[i].fd;
+
+			/* just close the descriptor, as opposed to
+			 * calling ud_mcast_fini() on it */
+			ev_io_stop(EV_A_ beef + i);
+			close(fd);
+		}
+		/* pretend we're through with the beef */
+		nbeef = 0;
+
 		/* then exit */
 		ev_unloop(EV_A_ EVUNLOOP_ALL);
 		return;
@@ -634,8 +653,6 @@ main(int argc, char *argv[])
 {
 	/* use the default event loop unless you have special needs */
 	struct ev_loop *loop;
-	ev_io *beef = NULL;
-	size_t nbeef = 0;
 	/* args */
 	struct umqd_args_info argi[1];
 	/* ev goodies */
@@ -755,11 +772,13 @@ past_loop:
 
 past_ute:
 	/* detaching beef channels */
-	for (unsigned int i = 0; i < nbeef; i++) {
+	for (size_t i = 0; i < nbeef; i++) {
 		int s = beef[i].fd;
 		ev_io_stop(EV_A_ beef + i);
 		ud_mcast_fini(s);
 	}
+	/* free beef resources */
+	free(beef);
 
 	/* finish cli space */
 	fini_cli();

@@ -103,8 +103,9 @@
 # define PRUNE_INTV	(60.0)
 #endif	/* DEBUG_FLAG */
 
+static FILE *logerr;
 #if defined DEBUG_FLAG
-# define UMQD_DEBUG(args...)	fprintf(stderr, args)
+# define UMQD_DEBUG(args...)	fprintf(logerr, args)
 #else  /* !DEBUG_FLAG */
 # define UMQD_DEBUG(args...)
 #endif	/* DEBUG_FLAG */
@@ -418,7 +419,7 @@ rotate_outfile(EV_P)
 	char *n = nu_fn;
 	time_t now;
 
-	fprintf(stderr, "rotate...\n");
+	fprintf(logerr, "rotate...\n");
 
 	/* snarf the name */
 	u_fn = ute_fn(u);
@@ -435,7 +436,7 @@ rotate_outfile(EV_P)
 	/* magic */
 	switch (fork()) {
 	case -1:
-		fprintf(stderr, "cannot fork :O\n");
+		fprintf(logerr, "cannot fork :O\n");
 		return;
 
 	default: {
@@ -601,6 +602,11 @@ detach(void)
 		(void)dup2(fd, STDOUT_FILENO);
 		(void)dup2(fd, STDERR_FILENO);
 	}
+#if defined DEBUG_FLAG
+	logerr = fopen("/tmp/um-quodmp.log", "w");
+#else  /* !DEBUG_FLAG */
+	logerr = fdopen(fd, "w");
+#endif	/* DEBUG_FLAG */
 	return pid;
 }
 
@@ -622,13 +628,16 @@ main(int argc, char *argv[])
 	ev_timer prune[1];
 	int res = 0;
 
+	/* big assignment for logging purposes */
+	logerr = stderr;
+
 	/* parse the command line */
 	if (umqd_parser(argc, argv, argi)) {
 		exit(1);
 	}
 
 	if (argi->output_given && argi->into_given) {
-		fputs("only one of --output and --into can be given\n", stderr);
+		fputs("only one of --output and --into can be given\n", logerr);
 		res = 1;
 		goto out;
 	}
@@ -721,7 +730,7 @@ past_loop:
 		ute_close(u);
 	}
 	/* print name and stats */
-	fprintf(stderr, "dumped %zu ticks, %zu ignored\n", u_nt, ign);
+	fprintf(logerr, "dumped %zu ticks, %zu ignored\n", u_nt, ign);
 	fputs(u_fn, stdout);
 	fputc('\n', stdout);
 

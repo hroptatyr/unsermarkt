@@ -74,7 +74,13 @@
 #include <unserding/unserding.h>
 #include <unserding/protocore.h>
 
-#include <uterus.h>
+#if defined HAVE_UTERUS_UTERUS_H
+# include <uterus/uterus.h>
+#elif defined HAVE_UTERUS_H
+# include <uterus.h>
+#else
+# error uterus headers are mandatory
+#endif	/* HAVE_UTERUS_UTERUS_H || HAVE_UTERUS_H */
 
 #include "nifty.h"
 
@@ -97,8 +103,9 @@
 # define PRUNE_INTV	(60.0)
 #endif	/* DEBUG_FLAG */
 
+static FILE *logerr;
 #if defined DEBUG_FLAG
-# define UMQD_DEBUG(args...)	fprintf(stderr, args)
+# define UMQD_DEBUG(args...)	fprintf(logerr, args)
 #else  /* !DEBUG_FLAG */
 # define UMQD_DEBUG(args...)
 #endif	/* DEBUG_FLAG */
@@ -121,6 +128,29 @@ struct cli_s {
 
 	char sym[64];
 };
+
+/* children need access to beef resources */
+static ev_io *beef = NULL;
+static size_t nbeef = 0;
+
+
+#if !defined HAVE_UTE_FREE
+/* for the moment we provide compatibility with uterus v0.2.2 */
+struct utectx_s {
+	/** file descriptor we're banging on about */
+	int fd;
+};
+
+static void
+ute_free(utectx_t ctx)
+{
+	struct utectx_s *p = ctx;
+	close(p->fd);
+	p->fd = -1;
+	free(ctx);
+	return;
+}
+#endif	/* HAVE_UTE_FREE */
 
 
 /* we support a maximum of 64 order books atm */
@@ -412,10 +442,7 @@ rotate_outfile(EV_P)
 	char *n = nu_fn;
 	time_t now;
 
-	fprintf(stderr, "rotate...\n");
-
-	/* snarf the name */
-	u_fn = ute_fn(u);
+	fprintf(logerr, "rotate...\n");
 
 	/* get a recent time stamp */
 	now = time(NULL);
@@ -429,7 +456,7 @@ rotate_outfile(EV_P)
 	/* magic */
 	switch (fork()) {
 	case -1:
-		fprintf(stderr, "cannot fork :O\n");
+		fprintf(logerr, "cannot fork :O\n");
 		return;
 
 	default: {
@@ -437,6 +464,10 @@ rotate_outfile(EV_P)
 		utectx_t nu = ute_open(u_fn, UO_CREAT | UO_RDWR | UO_TRUNC);
 		ign = 0;
 		ute_clone_slut(nu, u);
+
+		/* free resources */
+		ute_free(u);
+		/* nu u is nu */
 		u = nu;
 		return;
 	}
@@ -445,6 +476,21 @@ rotate_outfile(EV_P)
 		/* i am the child, just update the file name and nticks
 		 * and let unroll do the work */
 		u_fn = nu_fn;
+		/* let libev know we're a fork */
+		ev_default_fork();
+
+		/* close everything but the ute file */
+		for (size_t i = 0; i < nbeef; i++) {
+			int fd = beef[i].fd;
+
+			/* just close the descriptor, as opposed to
+			 * calling ud_mcast_fini() on it */
+			ev_io_stop(EV_A_ beef + i);
+			close(fd);
+		}
+		/* pretend we're through with the beef */
+		nbeef = 0;
+
 		/* then exit */
 		ev_unloop(EV_A_ EVUNLOOP_ALL);
 		return;
@@ -591,6 +637,11 @@ detach(void)
 		(void)dup2(fd, STDOUT_FILENO);
 		(void)dup2(fd, STDERR_FILENO);
 	}
+#if defined DEBUG_FLAG
+	logerr = fopen("/tmp/um-quodmp.log", "w");
+#else  /* !DEBUG_FLAG */
+	logerr = fdopen(fd, "w");
+#endif	/* DEBUG_FLAG */
 	return pid;
 }
 
@@ -599,8 +650,6 @@ main(int argc, char *argv[])
 {
 	/* use the default event loop unless you have special needs */
 	struct ev_loop *loop;
-	ev_io *beef = NULL;
-	size_t nbeef = 0;
 	/* args */
 	struct umqd_args_info argi[1];
 	/* ev goodies */
@@ -612,13 +661,16 @@ main(int argc, char *argv[])
 	ev_timer prune[1];
 	int res = 0;
 
+	/* big assignment for logging purposes */
+	logerr = stderr;
+
 	/* parse the command line */
 	if (umqd_parser(argc, argv, argi)) {
 		exit(1);
 	}
 
 	if (argi->output_given && argi->into_given) {
-		fputs("only one of --output and --into can be given\n", stderr);
+		fputs("only one of --output and --into can be given\n", logerr);
 		res = 1;
 		goto out;
 	}
@@ -677,7 +729,7 @@ main(int argc, char *argv[])
 			res = 1;
 			goto past_ute;
 		}
-		u_fn = ute_fn(u);
+		u_fn = strdup(ute_fn(u));
 	} else {
 		int u_fl = UO_CREAT | UO_RDWR;
 
@@ -711,17 +763,19 @@ past_loop:
 		ute_close(u);
 	}
 	/* print name and stats */
-	fprintf(stderr, "dumped %zu ticks, %zu ignored\n", u_nt, ign);
+	fprintf(logerr, "dumped %zu ticks, %zu ignored\n", u_nt, ign);
 	fputs(u_fn, stdout);
 	fputc('\n', stdout);
 
 past_ute:
 	/* detaching beef channels */
-	for (unsigned int i = 0; i < nbeef; i++) {
+	for (size_t i = 0; i < nbeef; i++) {
 		int s = beef[i].fd;
 		ev_io_stop(EV_A_ beef + i);
 		ud_mcast_fini(s);
 	}
+	/* free beef resources */
+	free(beef);
 
 	/* finish cli space */
 	fini_cli();

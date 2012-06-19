@@ -50,8 +50,15 @@
 
 #include <unserding/unserding.h>
 #include <unserding/protocore.h>
-#include <uterus.h>
-#include <m30.h>
+#if defined HAVE_UTERUS_UTERUS_H
+# include <uterus/uterus.h>
+# include <uterus/m30.h>
+#elif defined HAVE_UTERUS_H
+# include <uterus.h>
+# include <m30.h>
+#else
+# error uterus headers are mandatory
+#endif	// HAVE_UTERUS_UTERUS_H || HAVE_UTERUS_H
 
 #include "iso4217.h"
 

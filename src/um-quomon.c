@@ -71,11 +71,19 @@
 #include <unserding/unserding.h>
 #include <unserding/protocore.h>
 
-#include <uterus.h>
 /* to get a take on them m30s and m62s */
 #define DEFINE_GORY_STUFF
-#include <m30.h>
-#include <m62.h>
+#if defined HAVE_UTERUS_UTERUS_H
+# include <uterus/uterus.h>
+# include <uterus/m30.h>
+# include <uterus/m62.h>
+#elif defined HAVE_UTERUS_H
+# include <uterus.h>
+# include <m30.h>
+# include <m62.h>
+#else
+# error uterus headers are mandatory
+#endif	/* HAVE_UTERUS_UTERUS_H || HAVE_UTERUS_H */
 
 /* for the limit order book */
 #include <sys/mman.h>

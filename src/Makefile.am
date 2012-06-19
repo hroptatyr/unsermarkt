@@ -77,8 +77,8 @@ um_quomon_CPPFLAGS += $(unserding_CFLAGS)
 um_quomon_CPPFLAGS += $(uterus_CFLAGS)
 um_quomon_LDFLAGS = $(AM_LDFLAGS)
 um_quomon_LDFLAGS += $(AM_LDFLAGS) -lncurses
-um_quomon_LDFLAGS += $(libev_LIBS)
 um_quomon_LDFLAGS += $(unserding_LIBS)
+um_quomon_LDFLAGS += $(libev_LIBS)
 um_quomon_LDFLAGS += -lreadline
 
 bin_PROGRAMS += um-quodmp
@@ -89,9 +89,9 @@ um_quodmp_CPPFLAGS += $(libev_CFLAGS)
 um_quodmp_CPPFLAGS += $(unserding_CFLAGS)
 um_quodmp_CPPFLAGS += $(uterus_CFLAGS)
 um_quodmp_LDFLAGS = $(AM_LDFLAGS)
-um_quodmp_LDFLAGS += $(libev_LIBS)
-um_quodmp_LDFLAGS += $(unserding_LIBS)
 um_quodmp_LDFLAGS += $(uterus_LIBS)
+um_quodmp_LDFLAGS += $(unserding_LIBS)
+um_quodmp_LDFLAGS += $(libev_LIBS)
 
 bin_PROGRAMS += um-xmit
 um_xmit_SOURCES = um-xmit.c
@@ -132,8 +132,8 @@ um_netdania_CPPFLAGS += $(uterus_CFLAGS)
 um_netdania_CPPFLAGS += $(unserding_CFLAGS)
 um_netdania_CPPFLAGS += $(libev_CFLAGS)
 um_netdania_LDFLAGS = $(AM_LDFLAGS)
-um_netdania_LDFLAGS += $(libev_LIBS)
 um_netdania_LDFLAGS += $(unserding_LIBS)
+um_netdania_LDFLAGS += $(libev_LIBS)
 
 ## our rule for gengetopt
 %.c %.h: %.ggo

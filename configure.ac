@@ -79,7 +79,7 @@ if test "${have_uterus}" = "yes"; then
 	## check for the header
 	SXE_DUMP_LIBS
 	CPPFLAGS="${CPPFLAGS} ${uterus_CFLAGS}"
-	AC_CHECK_HEADERS([uterus.h])
+	AC_CHECK_HEADERS([uterus.h uterus/uterus.h])
 	SXE_RESTORE_LIBS
 fi
 AM_CONDITIONAL([HAVE_UTERUS], [test "${have_uterus}" = "yes"])

@@ -3,7 +3,7 @@
 #if !defined INCLUDED_dso_oq_match_h_
 #define INCLUDED_dso_oq_match_h_
 
-#include <m30.h>
+#include <uterus/m30.h>
 #include "um-types.h"
 
 typedef struct umm_s *umm_t;

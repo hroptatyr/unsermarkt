@@ -35,6 +35,9 @@
  *
  ***/
 
+#if defined HAVE_CONFIG_H
+# include "config.h"
+#endif	/* HAVE_CONFIG_H */
 #include <unistd.h>
 #include <stdbool.h>
 #include <signal.h>
@@ -46,7 +49,13 @@
 /* for gettimeofday() */
 #include <sys/time.h>
 #include <sys/epoll.h>
-#include <uterus.h>
+#if defined HAVE_UTERUS_UTERUS_H
+# include <uterus/uterus.h>
+#elif defined HAVE_UTERUS_H
+# include <uterus.h>
+#else
+# error uterus headers are mandatory
+#endif	/* HAVE_UTERUS_UTERUS_H || HAVE_UTERUS_H */
 #include <unserding/unserding.h>
 #include <unserding/protocore.h>
 

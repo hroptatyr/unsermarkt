@@ -444,9 +444,6 @@ rotate_outfile(EV_P)
 
 	fprintf(logerr, "rotate...\n");
 
-	/* snarf the name */
-	u_fn = ute_fn(u);
-
 	/* get a recent time stamp */
 	now = time(NULL);
 	gmtime_r(&now, tm);
@@ -732,7 +729,7 @@ main(int argc, char *argv[])
 			res = 1;
 			goto past_ute;
 		}
-		u_fn = ute_fn(u);
+		u_fn = strdup(ute_fn(u));
 	} else {
 		int u_fl = UO_CREAT | UO_RDWR;
 

@@ -443,6 +443,10 @@ rotate_outfile(EV_P)
 		utectx_t nu = ute_open(u_fn, UO_CREAT | UO_RDWR | UO_TRUNC);
 		ign = 0;
 		ute_clone_slut(nu, u);
+
+		/* free resources */
+		ute_free(u);
+		/* nu u is nu */
 		u = nu;
 		return;
 	}

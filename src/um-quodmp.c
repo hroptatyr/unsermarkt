@@ -74,7 +74,13 @@
 #include <unserding/unserding.h>
 #include <unserding/protocore.h>
 
-#include <uterus.h>
+#if defined HAVE_UTERUS_UTERUS_H
+# include <uterus/uterus.h>
+#elif defined HAVE_UTERUS_H
+# include <uterus.h>
+#else
+# error uterus headers are mandatory
+#endif	/* HAVE_UTERUS_UTERUS_H || HAVE_UTERUS_H */
 
 #include "nifty.h"
 

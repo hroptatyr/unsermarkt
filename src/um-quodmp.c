@@ -451,7 +451,12 @@ rotate_outfile(EV_P)
 	n += strlen(u_fn);
 	*n++ = '-';
 	strftime(n, sizeof(nu_fn) - (n - nu_fn), "%Y-%m-%dT%H:%M:%S.ute\0", tm);
+#if defined HAVE_UTE_FREE
+	ute_set_fn(u, nu_fn);
+#else  /* !HAVE_UTE_FREE */
+	/* the next best thing */
 	rename(u_fn, nu_fn);
+#endif	/* HAVE_UTE_FREE */
 
 	/* magic */
 	switch (fork()) {

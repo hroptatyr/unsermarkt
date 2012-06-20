@@ -1,0 +1,18 @@
+args "--unamed-opts --no-handle-error --long-help -a ox_args_info -f ox_parser"
+package "ox-matchall"
+usage "ox-matchall [OPTION]..."
+description "execute orders (trivially) on beef channels"
+
+option "daemonise" d
+	"Detach from tty and runs as daemon"
+	optional
+
+section "Network options"
+option "port" p
+	"Multicast control channel port"
+	int default="8653" optional
+
+option "beef" -
+	"Multicast payload channels, can be used multiple times"
+	int optional multiple
+

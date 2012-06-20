@@ -68,6 +68,78 @@
 static FILE *logerr;
 
 
+/* the actual core */
+#define UTE_LE		(0x7574)
+#define UTE_BE		(0x5554)
+#define QMETA		(0x7572)
+#define QMETA_RPL	(UDPC_PKT_RPL(QMETA))
+#if defined WORDS_BIGENDIAN
+# define UTE		UTE_BE
+#else  /* !WORDS_BIGENDIAN */
+# define UTE		UTE_LE
+#endif	/* WORDS_BIGENDIAN */
+#define UTE_RPL		(UDPC_PKT_RPL(UTE))
+
+static inline void
+udpc_seria_add_scom(udpc_seria_t sctx, scom_t s, size_t len)
+{
+	memcpy(sctx->msg + sctx->msgoff, s, len);
+	sctx->msgoff += len;
+	return;
+}
+
+static void
+snarf_data(job_t j, ud_chan_t c)
+{
+	static char rpl[UDPC_PKTLEN];
+	struct udpc_seria_s ser[1];
+	char *pbuf = UDPC_PAYLOAD(JOB_PACKET(j).pbuf);
+	size_t plen = UDPC_PAYLLEN(JOB_PACKET(j).plen);
+	uint8_t cno;
+	uint32_t pno;
+
+	if (UNLIKELY(plen == 0)) {
+		return;
+	}
+
+#define PKT		((ud_packet_t){sizeof(rpl), rpl})
+	cno = udpc_pkt_cno(PKT);
+	pno = udpc_pkt_pno(PKT);
+	udpc_make_pkt(PKT, cno, pno, UTE_RPL);
+	udpc_seria_init(ser, UDPC_PAYLOAD(rpl), UDPC_PAYLLEN(sizeof(rpl)));
+	for (scom_thdr_t sp = (void*)pbuf, ep = (void*)(pbuf + plen);
+	     sp < ep;
+	     sp += scom_tick_size(sp) *
+		     (sizeof(struct sndwch_s) / sizeof(*sp))) {
+		uint16_t ttf = scom_thdr_ttf(sp);
+
+		switch (ttf) {
+			struct sl1t_s tmp[1];
+			struct timeval now[1];
+		case SL1T_TTF_BID:
+		case SL1T_TTF_ASK:
+			/* get current stamp */
+			gettimeofday(now, NULL);
+
+			memcpy(tmp, sp, sizeof(*tmp));
+			sl1t_set_ttf(tmp, SL1T_TTF_TRA);
+			sl1t_set_stmp_sec(tmp, now->tv_sec)
+;			sl1t_set_stmp_msec(tmp, now->tv_usec / 1000);
+
+			/* and off it goes */
+			udpc_seria_add_scom(ser, AS_SCOM(tmp), sizeof(*tmp));
+			break;
+		default:
+			break;
+		}
+	}
+	if ((plen = udpc_seria_msglen(ser))) {
+		ud_chan_send(c, (ud_packet_t){UDPC_HDRLEN + plen, rpl});
+	}
+	return;
+}
+
+
 static void
 beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
 {
@@ -86,6 +158,18 @@ beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
 		goto out_revok;
 	} else if (!udpc_pkt_valid_p((ud_packet_t){nrd, j->buf})) {
 		goto out_revok;
+	}
+
+	/* preapre a job */
+	j->blen = nrd;
+
+	/* intercept special channels */
+	switch (udpc_pkt_cmd(JOB_PACKET(j))) {
+	case UTE:
+		snarf_data(j, w->data);
+		break;
+	default:
+		break;
 	}
 
 out_revok:
@@ -204,15 +288,25 @@ main(int argc, char *argv[])
 	 * we add this quite late so that it's unlikely that a plethora of
 	 * events has already been injected into our precious queue
 	 * causing the libev main loop to crash. */
+	union __chan_u {
+		ud_chan_t c;
+		void *p;
+	};
 	{
-		int s = ud_mcast_init(UD_NETWORK_SERVICE);
+		union __chan_u x = {ud_chan_init(UD_NETWORK_SERVICE)};
+		int s = ud_chan_init_mcast(x.c);
+
+		beef->data = x.p;
 		ev_io_init(beef, beef_cb, s, EV_READ);
 		ev_io_start(EV_A_ beef);
 	}
 
 	/* go through all beef channels */
 	for (unsigned int i = 0; i < argi->beef_given; i++) {
-		int s = ud_mcast_init(argi->beef_arg[i]);
+		union __chan_u x = {ud_chan_init(argi->beef_arg[i])};
+		int s = ud_chan_init_mcast(x.c);
+
+		beef[i + 1].data = x.p;
 		ev_io_init(beef + i + 1, beef_cb, s, EV_READ);
 		ev_io_start(EV_A_ beef + i + 1);
 	}
@@ -222,9 +316,10 @@ main(int argc, char *argv[])
 
 	/* detaching beef channels */
 	for (size_t i = 0; i < nbeef; i++) {
-		int s = beef[i].fd;
+		ud_chan_t c = beef[i].data;
+
 		ev_io_stop(EV_A_ beef + i);
-		ud_mcast_fini(s);
+		ud_chan_fini(c);
 	}
 	/* free beef resources */
 	free(beef);

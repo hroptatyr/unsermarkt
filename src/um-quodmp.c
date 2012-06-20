@@ -303,20 +303,22 @@ prune_clis(void)
 
 	/* condense the cli array a bit */
 	for (cli_t i = 1, ei = ncli; i <= ei; i++) {
-		size_t consec = 0;
+		size_t consec;
 
-		for (; i <= ei && cli_pruned_p(i); i++) {
+		for (consec = 0; i <= ei && cli_pruned_p(i); i++) {
 			consec++;
 		}
+		assert(consec <= ei);
+		assert(consec <= i);
 		if (consec && i <= ei) {
 			/* shrink */
 			size_t nmv = CLI(i) - CLI(i - consec);
 
-			UMQD_DEBUG("condensing %zu clis\n", nmv);
+			UMQD_DEBUG("condensing %zu/%zu clis\n", nmv, ei);
 			memcpy(CLI(i - consec), CLI(i), nmv * sizeof(*cli));
 			nu_ncli -= nmv;
 		} else if (consec) {
-			UMQD_DEBUG("condensing %zu clis\n", consec);
+			UMQD_DEBUG("condensing %zu/%zu clis\n", consec, ei);
 			nu_ncli -= consec;
 		}
 	}

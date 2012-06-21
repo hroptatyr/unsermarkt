@@ -50,10 +50,21 @@
 #if !defined INCLUDED_match_h_
 #define INCLUDED_match_h_
 
-#include <uterus/m30.h>
+#if defined HAVE_CONFIG_H
+# include "config.h"
+#endif	/* HAVE_CONFIG_H */
+#include <stdint.h>
+#include <netinet/in.h>
+#include <uterus/uterus.h>
 #include "um-types.h"
 
+/**
+ * Match message for the unsermarkt dso. */
 typedef struct umm_s *umm_t;
+
+/**
+ * Match message for ox-* daemons. */
+typedef struct umm_pair_s *umm_pair_t;
 
 struct umm_s {
 	/* buyer and seller order ids */
@@ -69,6 +80,38 @@ struct umm_s {
 	/* time stamp */
 	uint32_t ts_sec;
 	uint32_t ts_usec:20;
+};
+
+/**
+ * Match messages for ox-* and uschi-* daemons. */
+struct umm_agt_s {
+	struct in6_addr addr[1];
+	uint16_t port;
+	uint16_t uidx;
+};
+
+union umm_hdr_u {
+	uint64_t u;
+	struct {
+#if defined WORDS_BIGENDIAN
+		uint32_t stmp:32;
+		uint32_t msec:10;
+		uint32_t rest:22;
+#else  /* !WORDS_BIGENDIAN */
+		uint32_t rest:22;
+		uint32_t msec:10;
+		uint32_t stmp:32;
+#endif	/* WORDS_BIGENDIAN */
+	};
+};
+
+struct umm_pair_s {
+	/* by coincidence this is a normal ute sl1t_s */
+	union umm_hdr_u hdr[1];
+	m30_t p;
+	m30_t q;
+	/* agents now, first one is the buyer, second the seller */
+	struct umm_agt_s agt[2];
 };
 
 #endif	/* !INCLUDED_match_h_ */

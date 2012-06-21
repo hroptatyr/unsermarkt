@@ -136,6 +136,25 @@ tws_order_la_CPPFLAGS += $(unserding_CFLAGS)
 tws_order_la_LDFLAGS += $(unserding_LIBS)
 endif  ## HAVE_TWSTOOLS
 
+if HAVE_TWSAPI
+noinst_PROGRAMS += ox-tws
+ox_tws_SOURCES = ox-tws.c ox-tws-clo.ggo
+ox_tws_SOURCES += ox-tws-wrapper.cpp ox-tws-wrapper.h
+BUILT_SOURCES += ox-tws-clo.c ox-tws-clo.h
+ox_tws_CPPFLAGS = $(AM_CPPFLAGS)
+ox_tws_CPPFLAGS += $(uterus_CFLAGS)
+ox_tws_CPPFLAGS += $(unserding_CFLAGS)
+ox_tws_CPPFLAGS += $(twsapi_CFLAGS)
+ox_tws_CPPFLAGS += $(libev_CFLAGS)
+ox_tws_LDFLAGS = $(AM_LDFLAGS)
+ox_tws_LDFLAGS += $(unserding_LIBS)
+ox_tws_LDFLAGS += $(twsapi_LIBS)
+ox_tws_LDFLAGS += $(libev_LIBS)
+ox_tws_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) \
+	$(LIBTOOLFLAGS) --mode=link $(CCLD) $(AM_CFLAGS) $(CFLAGS) \
+	$(ox_tws_LDFLAGS) $(LDFLAGS) -o $@
+endif  ## HAVE_TWSAPI
+
 bin_PROGRAMS += um-netdania
 um_netdania_SOURCES = um-netdania.c um-netdania.h um-netdania-clo.ggo
 BUILT_SOURCES += um-netdania-clo.c um-netdania-clo.h

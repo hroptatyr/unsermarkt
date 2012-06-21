@@ -59,6 +59,7 @@
 # error uterus headers are mandatory
 #endif	/* HAVE_UTERUS_UTERUS_H || HAVE_UTERUS_H */
 #include "nifty.h"
+#include "match.h"
 
 #if defined DEBUG_FLAG
 # define OX_DEBUG(args...)	fprintf(logerr, args)
@@ -79,6 +80,11 @@ static FILE *logerr;
 # define UTE		UTE_LE
 #endif	/* WORDS_BIGENDIAN */
 #define UTE_RPL		(UDPC_PKT_RPL(UTE))
+/* unsermarkt match messages */
+#define UMM		(0x7576)
+#define UMM_RPL		(UDPC_PKT_RPL(UMM))
+
+static size_t umm_pno = 0;
 
 static inline void
 udpc_seria_add_scom(udpc_seria_t sctx, scom_t s, size_t len)
@@ -88,11 +94,20 @@ udpc_seria_add_scom(udpc_seria_t sctx, scom_t s, size_t len)
 	return;
 }
 
+static inline void
+udpc_seria_add_umm(udpc_seria_t sctx, umm_pair_t p)
+{
+	memcpy(sctx->msg + sctx->msgoff, p, sizeof(*p));
+	sctx->msgoff += sizeof(*p);
+	return;
+}
+
 static void
 snarf_data(job_t j, ud_chan_t c)
 {
 	static char rpl[UDPC_PKTLEN];
-	struct udpc_seria_s ser[1];
+	static char umm[UDPC_PKTLEN];
+	struct udpc_seria_s ser[2];
 	char *pbuf = UDPC_PAYLOAD(JOB_PACKET(j).pbuf);
 	size_t plen = UDPC_PAYLLEN(JOB_PACKET(j).plen);
 	uint8_t cno;
@@ -102,11 +117,20 @@ snarf_data(job_t j, ud_chan_t c)
 		return;
 	}
 
-#define PKT		((ud_packet_t){sizeof(rpl), rpl})
-	cno = udpc_pkt_cno(PKT);
-	pno = udpc_pkt_pno(PKT);
-	udpc_make_pkt(PKT, cno, pno, UTE_RPL);
-	udpc_seria_init(ser, UDPC_PAYLOAD(rpl), UDPC_PAYLLEN(sizeof(rpl)));
+#define PKT(x)		((ud_packet_t){sizeof(x), x})
+	cno = udpc_pkt_cno(PKT(rpl));
+	pno = udpc_pkt_pno(PKT(rpl));
+
+	/* this is the normal trade announcement on the beef channel */
+	udpc_make_pkt(PKT(rpl), cno, pno, UTE_RPL);
+	udpc_set_data_pkt(PKT(rpl));
+	udpc_seria_init(ser + 0, UDPC_PAYLOAD(rpl), UDPC_PAYLLEN(sizeof(rpl)));
+
+	/* this is the match message */
+	udpc_make_pkt(PKT(umm), 0, umm_pno++, UMM);
+	udpc_set_data_pkt(PKT(umm));
+	udpc_seria_init(ser + 1, UDPC_PAYLOAD(umm), UDPC_PAYLLEN(sizeof(umm)));
+
 	for (scom_thdr_t sp = (void*)pbuf, ep = (void*)(pbuf + plen);
 	     sp < ep;
 	     sp += scom_tick_size(sp) *
@@ -114,28 +138,53 @@ snarf_data(job_t j, ud_chan_t c)
 		uint16_t ttf = scom_thdr_ttf(sp);
 
 		switch (ttf) {
-			struct sl1t_s tmp[1];
 			struct timeval now[1];
+			struct sl1t_s tmp[1];
+			struct umm_pair_s mmp[1];
 		case SL1T_TTF_BID:
 		case SL1T_TTF_ASK:
+		case SL2T_TTF_BID:
+		case SL2T_TTF_ASK:
+			/* make sure it isn't a cancel */
+			if (UNLIKELY(((sl1t_t)sp)->qty == 0)) {
+				/* too bad, it's a cancel */
+				break;
+			}
+
 			/* get current stamp */
 			gettimeofday(now, NULL);
 
 			memcpy(tmp, sp, sizeof(*tmp));
 			sl1t_set_ttf(tmp, SL1T_TTF_TRA);
-			sl1t_set_stmp_sec(tmp, now->tv_sec)
-;			sl1t_set_stmp_msec(tmp, now->tv_usec / 1000);
+			sl1t_set_stmp_sec(tmp, now->tv_sec);
+			sl1t_set_stmp_msec(tmp, now->tv_usec / 1000);
 
 			/* and off it goes */
 			udpc_seria_add_scom(ser, AS_SCOM(tmp), sizeof(*tmp));
+
+			/* prepare a match message, always big-endian? */
+			memcpy(mmp, tmp, sizeof(*tmp));
+
+			/* buyer ... */
+			if (ttf == SL1T_TTF_BID || ttf == SL2T_TTF_BID) {
+				*mmp->agt[0].addr = j->sa.sa6.sin6_addr;
+				mmp->agt[0].port = j->sa.sa6.sin6_port;
+			}
+			/* ... and seller */
+			if (ttf == SL1T_TTF_BID || ttf == SL2T_TTF_BID) {
+				*mmp->agt[1].addr = j->sa.sa6.sin6_addr;
+				mmp->agt[1].port = j->sa.sa6.sin6_port;
+			}
+
+			/* and serialise it */
+			udpc_seria_add_umm(ser + 1, mmp);
 			break;
 		default:
 			break;
 		}
 	}
-	if ((plen = udpc_seria_msglen(ser))) {
-		ud_chan_send(c, (ud_packet_t){UDPC_HDRLEN + plen, rpl});
-	}
+	ud_chan_send_ser(c, ser + 0);
+	ud_chan_send_ser(c, ser + 1);
 	return;
 }
 

@@ -159,12 +159,12 @@ snarf_data(job_t j, ud_chan_t c)
 
 			/* buyer ... */
 			if (ttf == SL1T_TTF_BID || ttf == SL2T_TTF_BID) {
-				*mmp->agt[0].addr = j->sa.sa6.sin6_addr;
+				mmp->agt[0].addr = j->sa.sa6.sin6_addr;
 				mmp->agt[0].port = j->sa.sa6.sin6_port;
 			}
 			/* ... and seller */
 			if (ttf == SL1T_TTF_BID || ttf == SL2T_TTF_BID) {
-				*mmp->agt[1].addr = j->sa.sa6.sin6_addr;
+				mmp->agt[1].addr = j->sa.sa6.sin6_addr;
 				mmp->agt[1].port = j->sa.sa6.sin6_port;
 			}
 

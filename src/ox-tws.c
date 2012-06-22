@@ -80,6 +80,7 @@ void *logerr;
 
 typedef uint32_t ox_idx_t;
 typedef struct ox_cl_s *ox_cl_t;
+typedef struct ox_oq_item_s *ox_oq_item_t;
 
 #define CL(x)		(x)
 
@@ -89,6 +90,12 @@ struct ox_cl_s {
 	tws_instr_t instr;
 	/* slightly shorter than the allowed sym length */
 	char sym[64 - sizeof(struct umm_agt_s) - sizeof(void*)];
+};
+
+struct ox_oq_item_s {
+	struct umm_pair_s mmp[1];
+	/* auxiliary bollocks */
+	tws_instr_t ins;
 };
 
 
@@ -110,34 +117,43 @@ struct ox_cl_s {
 static struct ox_cl_s cls[1] = {0};
 static size_t ncls = 0;
 static size_t umm_pno = 0;
-static size_t no = 0;
+
+static struct ox_oq_item_s oq[64];
+static size_t noq = 0;
 
 static void
 prep_order(ox_cl_t cl, scom_t sc)
 {
-	struct umm_pair_s mmp[1];
+	/* pop us an item from the queue */
+	ox_oq_item_t o = oq + noq;
 	uint16_t ttf = scom_thdr_ttf(sc);
 
 	/* nifty that umm_pair_s looks like a struct sl1t_s at the beginning */
-	memcpy(mmp, sc, sizeof(struct sl1t_s));
+	memcpy(o->mmp, sc, sizeof(struct sl1t_s));
 
 	switch (ttf) {
 	case SL1T_TTF_BID:
 	case SL2T_TTF_BID:
 		OX_DEBUG("B %s\n", cl->sym);
-		mmp->agt[0] = cl->agt;
-		memset(mmp->agt + 1, 0, sizeof(*mmp->agt));
+		o->mmp->agt[0] = cl->agt;
+		memset(o->mmp->agt + 1, 0, sizeof(cl->agt));
 		break;
 	case SL1T_TTF_ASK:
 	case SL2T_TTF_ASK:
 		OX_DEBUG("S %s\n", cl->sym);
-		memset(mmp->agt + 0, 0, sizeof(*mmp->agt));
-		mmp->agt[1] = cl->agt;
+		memset(o->mmp->agt + 0, 0, sizeof(cl->agt));
+		o->mmp->agt[1] = cl->agt;
 		break;
+	default:
+		OX_DEBUG("order type not supported\n");
+		return;
 	}
 
-	/* inc the order number */
-	//no++;
+	/* get the additional bollocks in that the tws needs */
+	if ((o->ins = CL(cl)->instr)) {
+		/* now actually inc the order number */
+		noq++;
+	}
 	return;
 }
 
@@ -261,6 +277,25 @@ snarf_meta(job_t j, ud_chan_t c)
 	return;
 }
 
+static void
+send_order(my_tws_t tws, ox_oq_item_t i)
+{
+	struct tws_order_s foo = {
+		/* let the tws decide */
+		.oid = 0,
+		/* instrument, fuck checking */
+		.c = i->ins,
+		/* good god, can we uphold this? */
+		.o = i->mmp->l1,
+	};
+
+	OX_DEBUG("ORDER %p\n", i);
+	if (tws_put_order(tws, &foo) < 0) {
+		OX_DEBUG("unusable: %p %p\n", foo.c, foo.o);
+	}
+	return;
+}
+
 
 static void
 beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
@@ -307,13 +342,11 @@ cake_cb(EV_P_ ev_io *w, int revents)
 {
 	my_tws_t tws = w->data;
 
-	if (no) {
-		struct tws_order_s foo = {.oid = 0};
-
-		OX_DEBUG("ORDER\n");
-		tws_put_order(tws, &foo);
-		no = 0;
+	for (size_t i = 0; i < noq; i++) {
+		send_order(tws, oq + i);
 	}
+	/* we processed the queue innit? */
+	noq = 0;
 
 	if (revents & EV_READ) {
 		tws_recv(tws);

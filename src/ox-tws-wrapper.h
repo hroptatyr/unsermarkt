@@ -47,6 +47,8 @@ typedef struct tws_order_s *tws_order_t;
 typedef unsigned int tws_oid_t;
 
 struct my_tws_s {
+	tws_oid_t next_oid;
+	unsigned int time;
 	void *wrp;
 	void *cli;
 };

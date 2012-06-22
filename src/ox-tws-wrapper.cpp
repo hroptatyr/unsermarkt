@@ -52,8 +52,6 @@
 
 #define TWSAPI_IPV6	1
 
-static tws_oid_t next_goid = 0;
-
 class __wrapper: public IB::EWrapper
 {
 public:
@@ -132,6 +130,9 @@ public:
 	void fundamentalData(IB::TickerId, const IB::IBString &data);
 	void deltaNeutralValidation(int reqId, const IB::UnderComp&);
 	void tickSnapshotEnd(int reqId);
+
+	/* sort of private */
+	my_tws_t ctx;
 };
 
 
@@ -275,6 +276,7 @@ void
 __wrapper::nextValidId(IB::OrderId oid)
 {
 	WRP_DEBUG("next_oid <- %li", oid);
+	this->ctx->next_oid = oid;
 	return;
 }
 
@@ -422,10 +424,15 @@ __wrapper::tickSnapshotEnd(int reqId)
 int
 init_tws(my_tws_t foo)
 {
-	IB::EWrapper *wrp = new __wrapper();
+	__wrapper *wrp = new __wrapper();
 
 	foo->cli = new IB::EPosixClientSocket(wrp);
 	foo->wrp = wrp;
+	foo->time = 0;
+	foo->next_oid = 0;
+
+	/* just so we know who we are */
+	wrp->ctx = foo;
 	return 0;
 }
 
@@ -433,9 +440,13 @@ int
 fini_tws(my_tws_t foo)
 {
 	IB::EPosixClientSocket *cli = (IB::EPosixClientSocket*)foo->cli;
-	IB::EWrapper *wrp = (IB::EWrapper*)foo->wrp;
+	__wrapper *wrp = (__wrapper*)foo->wrp;
 
 	tws_disconnect(foo);
+
+	/* wipe our context off the face of this earth */
+	wrp->ctx = NULL;
+
 	if (cli) {
 		delete cli;
 	}
@@ -464,6 +475,9 @@ tws_connect(my_tws_t foo, const char *host, uint16_t port, int client)
 		wrp_debug(foo, "connection to [%s]:%hu failed", host, port);
 		return -1;
 	}
+
+	// just request a lot of buggery here
+	cli->reqCurrentTime();
 	return cli->fd();
 }
 
@@ -510,7 +524,7 @@ tws_put_order(my_tws_t tws, tws_order_t o)
 	__c.secType = std::string("CASH");
 	__c.exchange = std::string("IDEALPRO");
 
-	__o.orderId = next_goid++;
+	__o.orderId = tws->next_oid++;
 	__o.orderType = "LMT";
 	__o.totalQuantity = 100000;
 	__o.action = "BUY";

@@ -39,6 +39,7 @@
 #endif	// HAVE_CONFIG_H
 #include <stdio.h>
 #include <netinet/in.h>
+#include <stdarg.h>
 #include <string>
 
 /* the tws api */
@@ -140,6 +141,22 @@ public:
 # pragma GCC diagnostic ignored "-Wunused-parameter"
 #endif
 
+static void
+__attribute__((format(printf, 2, 3)))
+wrp_debug(my_tws_t c, const char *fmt, ...)
+{
+	va_list vap;
+	va_start(vap, fmt);
+	fprintf(LOGERR, "[tws] %p: ", c);
+	vfprintf(LOGERR, fmt, vap);
+	va_end(vap);
+	fputc('\n', stderr);
+	return;
+}
+
+#define WRP_DEBUG(args...)			\
+	wrp_debug(this->ctx, args)
+
 void 
 __wrapper::tickPrice(IB::TickerId id, IB::TickType fld, double pri, int autop)
 {
@@ -192,7 +209,8 @@ __wrapper::orderStatus(
 	int parentId, double lastFillPrice, int clientId,
 	const IB::IBString& whyHeld)
 {
-	fprintf(LOGERR, "ostatus %li  %s\n", oid, status.c_str());
+	const char *msg = status.c_str();
+	WRP_DEBUG("ostatus %li  %s", oid, msg);
 	return;
 }
 
@@ -213,7 +231,7 @@ __wrapper::openOrderEnd(void)
 void
 __wrapper::winError(const IB::IBString &str, int lastError)
 {
-	fprintf(LOGERR, "win error: %s\n", str.c_str());
+	WRP_DEBUG("win error: %s", str.c_str());
 	return;
 }
 
@@ -256,8 +274,7 @@ __wrapper::accountDownloadEnd(const IB::IBString &accountName)
 void
 __wrapper::nextValidId(IB::OrderId oid)
 {
-	fprintf(LOGERR, "[tws] next valid: %li\n", oid);
-	next_goid = oid;
+	WRP_DEBUG("next_oid <- %li", oid);
 	return;
 }
 
@@ -294,7 +311,7 @@ __wrapper::execDetailsEnd(int reqId)
 void
 __wrapper::error(const int id, const int code, const IB::IBString msg)
 {
-	fprintf(LOGERR, "uh oh, %i: %s\n", code, msg.c_str());
+	WRP_DEBUG("code <- %i: %s", code, msg.c_str());
 	return;
 }
 
@@ -377,8 +394,9 @@ __wrapper::realtimeBar(
 }
 
 void
-__wrapper::currentTime(long time)
+__wrapper::currentTime(long int time)
 {
+	WRP_DEBUG("current_time <- %ld", time);
 	return;
 }
 
@@ -443,7 +461,7 @@ tws_connect(my_tws_t foo, const char *host, uint16_t port, int client)
 #endif	// TWSAPI_IPV6
 
 	if (rc == 0) {
-		fprintf(LOGERR, "connection to [%s]:%hu failed", host, port);
+		wrp_debug(foo, "connection to [%s]:%hu failed", host, port);
 		return -1;
 	}
 	return cli->fd();

@@ -112,6 +112,42 @@ static size_t ncls = 0;
 static size_t umm_pno = 0;
 static size_t no = 0;
 
+static void
+prep_order(ox_cl_t cl, scom_t sc)
+{
+	struct umm_pair_s mmp[1];
+	uint16_t ttf = scom_thdr_ttf(sc);
+
+	/* nifty that umm_pair_s looks like a struct sl1t_s at the beginning */
+	memcpy(mmp, sc, sizeof(struct sl1t_s));
+
+	switch (ttf) {
+	case SL1T_TTF_BID:
+	case SL2T_TTF_BID:
+		OX_DEBUG("B %s\n", cl->sym);
+		mmp->agt[0] = cl->agt;
+		memset(mmp->agt + 1, 0, sizeof(*mmp->agt));
+		break;
+	case SL1T_TTF_ASK:
+	case SL2T_TTF_ASK:
+		OX_DEBUG("S %s\n", cl->sym);
+		memset(mmp->agt + 0, 0, sizeof(*mmp->agt));
+		mmp->agt[1] = cl->agt;
+		break;
+	}
+
+	/* inc the order number */
+	//no++;
+	return;
+}
+
+static void
+prep_cancel(ox_cl_t cl, scom_t s)
+{
+	/* do nothing atm */
+	return;
+}
+
 static ox_cl_t
 find_cli(struct umm_agt_s agt)
 {
@@ -134,10 +170,15 @@ snarf_data(job_t j, ud_chan_t c)
 {
 	char *pbuf = UDPC_PAYLOAD(JOB_PACKET(j).pbuf);
 	size_t plen = UDPC_PAYLLEN(JOB_PACKET(j).plen);
+	struct umm_agt_s probe;
 
 	if (UNLIKELY(plen == 0)) {
 		return;
 	}
+
+	/* the network part of the agent, remains constant throughout */
+	probe.addr = j->sa.sa6.sin6_addr;
+	probe.port = j->sa.sa6.sin6_port;
 
 	for (scom_thdr_t sp = (void*)pbuf, ep = (void*)(pbuf + plen);
 	     sp < ep;
@@ -146,17 +187,27 @@ snarf_data(job_t j, ud_chan_t c)
 		uint16_t ttf = scom_thdr_ttf(sp);
 
 		switch (ttf) {
+			ox_cl_t cl;
 		case SL1T_TTF_BID:
 		case SL1T_TTF_ASK:
 		case SL2T_TTF_BID:
 		case SL2T_TTF_ASK:
+			/* dig deeper */
+			probe.uidx = scom_thdr_tblidx(sp);
+
+			if ((cl = find_cli(probe)) == NULL) {
+				/* fuck this, we don't even know what
+				 * instrument to trade */
+				break;
+			}
+
 			/* make sure it isn't a cancel */
 			if (LIKELY(((sl1t_t)sp)->qty)) {
-				/* it's a order, enqueue */
-				no++;
+				/* it's an order, enqueue */
+				prep_order(cl, sp);
 			} else {
 				/* too bad, it's a cancel */
-				;
+				prep_cancel(cl, sp);
 			}
 			break;
 		default:

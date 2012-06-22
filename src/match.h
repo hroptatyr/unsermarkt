@@ -85,7 +85,7 @@ struct umm_s {
 /**
  * Match messages for ox-* and uschi-* daemons. */
 struct umm_agt_s {
-	struct in6_addr addr[1];
+	struct in6_addr addr;
 	uint16_t port;
 	uint16_t uidx;
 };

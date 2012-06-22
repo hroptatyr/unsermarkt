@@ -154,16 +154,8 @@ snarf_data(job_t j, ud_chan_t c)
 			/* get current stamp */
 			gettimeofday(now, NULL);
 
-			memcpy(tmp, sp, sizeof(*tmp));
-			sl1t_set_ttf(tmp, SL1T_TTF_TRA);
-			sl1t_set_stmp_sec(tmp, now->tv_sec);
-			sl1t_set_stmp_msec(tmp, now->tv_usec / 1000);
-
-			/* and off it goes */
-			udpc_seria_add_scom(ser, AS_SCOM(tmp), sizeof(*tmp));
-
 			/* prepare a match message, always big-endian? */
-			memcpy(mmp, tmp, sizeof(*tmp));
+			memcpy(mmp, sp, sizeof(*tmp));
 
 			/* buyer ... */
 			if (ttf == SL1T_TTF_BID || ttf == SL2T_TTF_BID) {
@@ -178,6 +170,15 @@ snarf_data(job_t j, ud_chan_t c)
 
 			/* and serialise it */
 			udpc_seria_add_umm(ser + 1, mmp);
+
+			/* prepare the reply message */
+			memcpy(tmp, sp, sizeof(*tmp));
+			sl1t_set_ttf(tmp, SL1T_TTF_TRA);
+			sl1t_set_stmp_sec(tmp, now->tv_sec);
+			sl1t_set_stmp_msec(tmp, now->tv_usec / 1000);
+
+			/* and off it goes */
+			udpc_seria_add_scom(ser, AS_SCOM(tmp), sizeof(*tmp));
 			break;
 		default:
 			break;

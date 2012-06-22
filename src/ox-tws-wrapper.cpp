@@ -282,8 +282,9 @@ __wrapper::execDetailsEnd(int reqId)
 }
 
 void
-__wrapper::error(const int id, const int errorCode, const IB::IBString)
+__wrapper::error(const int id, const int code, const IB::IBString msg)
 {
+	fprintf(LOGERR, "uh oh, %i: %s\n", code, msg.c_str());
 	return;
 }
 

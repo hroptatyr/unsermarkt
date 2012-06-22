@@ -121,6 +121,10 @@ if test "${have_twstools}" = "yes"; then
 fi
 AM_CONDITIONAL([HAVE_TWSTOOLS], [test "${have_twstools}" = "yes"])
 
+## check for twsapi
+PKG_CHECK_MODULES([twsapi], [twsapi >= 0.4.0], [:], [:])
+AM_CONDITIONAL([HAVE_TWSAPI], [test -n "${pkg_cv_twsapi_LIBS}"])
+
 AC_CONFIG_FILES([Makefile])
 AC_CONFIG_FILES([src/Makefile])
 AC_OUTPUT

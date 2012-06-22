@@ -45,6 +45,8 @@
 #include <twsapi/EPosixClientSocket.h>
 #include "ox-tws-wrapper.h"
 
+#define TWSAPI_IPV6	1
+
 class __wrapper: public IB::EWrapper
 {
 public:
@@ -421,7 +423,7 @@ tws_connect(my_tws_t foo, const char *host, uint16_t port, int client)
 	IB::EPosixClientSocket *cli = (IB::EPosixClientSocket*)foo->cli;
 
 #if defined TWSAPI_IPV6
-	return cli->eConnect2(host, port, client, PF_INET6);
+	return cli->eConnect2(host, port, client, AF_UNSPEC);
 #else  // !TWSAPI_IPV6
 	return cli->eConnect(host, port, client);
 #endif	// TWSAPI_IPV6

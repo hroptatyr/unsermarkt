@@ -524,7 +524,10 @@ tws_put_order(my_tws_t tws, tws_order_t o)
 	__c.secType = std::string("CASH");
 	__c.exchange = std::string("IDEALPRO");
 
-	__o.orderId = tws->next_oid++;
+	if (o->oid <= 0) {
+		o->oid = tws->next_oid++;
+	}
+	__o.orderId = o->oid;
 	__o.orderType = "LMT";
 	__o.totalQuantity = 100000;
 	__o.action = "BUY";

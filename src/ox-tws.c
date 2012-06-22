@@ -114,7 +114,7 @@ struct ox_oq_item_s {
 #define UMM		(0x7576)
 #define UMM_RPL		(UDPC_PKT_RPL(UMM))
 
-static struct ox_cl_s cls[1] = {0};
+static struct ox_cl_s cls[64] = {0};
 static size_t ncls = 0;
 static size_t umm_pno = 0;
 
@@ -167,17 +167,21 @@ prep_cancel(ox_cl_t cl, scom_t s)
 static ox_cl_t
 find_cli(struct umm_agt_s agt)
 {
-	cls[0].agt = agt;
-	ncls = 1;
-	return cls;
+	for (size_t i = 0; i < ncls; i++) {
+		if (memcmp(&CL(cls + i)->agt, &agt, sizeof(agt)) == 0) {
+			return cls + i;
+		}
+	}
+	return NULL;
 }
 
 static ox_cl_t
 add_cli(struct umm_agt_s agt)
 {
-	cls[0].agt = agt;
-	ncls = 1;
-	return cls;
+	size_t idx = ncls++;
+
+	cls[idx].agt = agt;
+	return cls + idx;
 }
 
 

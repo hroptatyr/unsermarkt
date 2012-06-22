@@ -42,12 +42,24 @@ extern "C" {
 #endif	/* __cplusplus */
 
 typedef struct my_tws_s *my_tws_t;
+typedef struct tws_order_s *tws_order_t;
+
+typedef unsigned int tws_oid_t;
 
 struct my_tws_s {
 	void *wrp;
 	void *cli;
 };
 
+struct tws_order_s {
+	/** 0 means let the tws decide */
+	tws_oid_t oid;
+	/** ib's notion of this order */
+	void *c;
+	void *o;
+};
+
+
 extern void *logerr;
 #define LOGERR		((FILE*)logerr)
 
@@ -56,6 +68,13 @@ extern int fini_tws(my_tws_t);
 
 extern int tws_connect(my_tws_t, const char *host, uint16_t port, int client);
 extern int tws_disconnect(my_tws_t);
+
+extern int tws_recv(my_tws_t);
+extern int tws_send(my_tws_t);
+
+/* testing */
+extern int tws_put_order(my_tws_t, tws_order_t);
+extern int tws_get_order(my_tws_t, tws_order_t, tws_oid_t oid);
 
 #if defined __cplusplus
 }

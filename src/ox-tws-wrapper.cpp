@@ -39,13 +39,19 @@
 #endif	// HAVE_CONFIG_H
 #include <stdio.h>
 #include <netinet/in.h>
+#include <string>
 
 /* the tws api */
 #include <twsapi/EWrapper.h>
 #include <twsapi/EPosixClientSocket.h>
+#include <twsapi/Order.h>
+#include <twsapi/Order.h>
+#include <twsapi/Contract.h>
 #include "ox-tws-wrapper.h"
 
 #define TWSAPI_IPV6	1
+
+static tws_oid_t next_goid = 0;
 
 class __wrapper: public IB::EWrapper
 {
@@ -181,11 +187,12 @@ __wrapper::tickEFP(
 
 void
 __wrapper::orderStatus(
-	IB::OrderId, const IB::IBString &status,
+	IB::OrderId oid, const IB::IBString &status,
 	int filled, int remaining, double avgFillPrice, int permId,
 	int parentId, double lastFillPrice, int clientId,
 	const IB::IBString& whyHeld)
 {
+	fprintf(LOGERR, "ostatus %li  %s\n", oid, status.c_str());
 	return;
 }
 
@@ -206,6 +213,7 @@ __wrapper::openOrderEnd(void)
 void
 __wrapper::winError(const IB::IBString &str, int lastError)
 {
+	fprintf(LOGERR, "win error: %s\n", str.c_str());
 	return;
 }
 
@@ -246,8 +254,10 @@ __wrapper::accountDownloadEnd(const IB::IBString &accountName)
 }
 
 void
-__wrapper::nextValidId(IB::OrderId orderId)
+__wrapper::nextValidId(IB::OrderId oid)
 {
+	fprintf(LOGERR, "[tws] next valid: %li\n", oid);
+	next_goid = oid;
 	return;
 }
 
@@ -424,12 +434,19 @@ int
 tws_connect(my_tws_t foo, const char *host, uint16_t port, int client)
 {
 	IB::EPosixClientSocket *cli = (IB::EPosixClientSocket*)foo->cli;
+	int rc;
 
 #if defined TWSAPI_IPV6
-	return cli->eConnect2(host, port, client, AF_UNSPEC);
+	rc = cli->eConnect2(host, port, client, AF_UNSPEC);
 #else  // !TWSAPI_IPV6
-	return cli->eConnect(host, port, client);
+	rc = cli->eConnect(host, port, client);
 #endif	// TWSAPI_IPV6
+
+	if (rc == 0) {
+		fprintf(LOGERR, "connection to [%s]:%hu failed", host, port);
+		return -1;
+	}
+	return cli->fd();
 }
 
 int
@@ -437,6 +454,51 @@ tws_disconnect(my_tws_t foo)
 {
 	IB::EPosixClientSocket *cli = (IB::EPosixClientSocket*)foo->cli;
 	cli->eDisconnect();
+	return 0;
+}
+
+int
+tws_recv(my_tws_t foo)
+{
+	IB::EPosixClientSocket *cli = (IB::EPosixClientSocket*)foo->cli;
+
+	cli->onReceive();
+	return 0;
+}
+
+int
+tws_send(my_tws_t foo)
+{
+	IB::EPosixClientSocket *cli = (IB::EPosixClientSocket*)foo->cli;
+
+	if (cli->isOutBufferEmpty()) {
+		return 0;
+	}
+	cli->onSend();
+	return 0;
+}
+
+
+// testing
+int
+tws_put_order(my_tws_t tws, tws_order_t o)
+{
+	IB::EPosixClientSocket *cli = (IB::EPosixClientSocket*)tws->cli;
+	IB::Order __o;
+	IB::Contract __c;
+
+	__c.symbol = std::string("EUR");
+	__c.currency = std::string("EUR");
+	__c.secType = std::string("CASH");
+	__c.exchange = std::string("IDEALPRO");
+
+	__o.orderId = next_goid++;
+	__o.orderType = "LMT";
+	__o.totalQuantity = 100000;
+	__o.action = "BUY";
+	__o.lmtPrice = 1.2450;
+
+	cli->placeOrder(o->oid, __c, __o);
 	return 0;
 }
 

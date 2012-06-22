@@ -78,6 +78,26 @@
 #endif	/* DEBUG_FLAG */
 void *logerr;
 
+typedef uint32_t ox_idx_t;
+typedef struct ox_cl_s *ox_cl_t;
+typedef struct ox_oq_item_s *ox_oq_item_t;
+
+#define CL(x)		(x)
+
+struct ox_cl_s {
+	struct umm_agt_s agt;
+	/* ib contract */
+	tws_instr_t instr;
+	/* slightly shorter than the allowed sym length */
+	char sym[64 - sizeof(struct umm_agt_s) - sizeof(void*)];
+};
+
+struct ox_oq_item_s {
+	struct umm_pair_s mmp[1];
+	/* auxiliary bollocks */
+	tws_instr_t ins;
+};
+
 
 /* the actual core */
 #define UTE_LE		(0x7574)
@@ -94,18 +114,87 @@ void *logerr;
 #define UMM		(0x7576)
 #define UMM_RPL		(UDPC_PKT_RPL(UMM))
 
+static struct ox_cl_s cls[1] = {0};
+static size_t ncls = 0;
 static size_t umm_pno = 0;
-static size_t no = 0;
 
+static struct ox_oq_item_s oq[64];
+static size_t noq = 0;
+
+static void
+prep_order(ox_cl_t cl, scom_t sc)
+{
+	/* pop us an item from the queue */
+	ox_oq_item_t o = oq + noq;
+	uint16_t ttf = scom_thdr_ttf(sc);
+
+	/* nifty that umm_pair_s looks like a struct sl1t_s at the beginning */
+	memcpy(o->mmp, sc, sizeof(struct sl1t_s));
+
+	switch (ttf) {
+	case SL1T_TTF_BID:
+	case SL2T_TTF_BID:
+		OX_DEBUG("B %s\n", cl->sym);
+		o->mmp->agt[0] = cl->agt;
+		memset(o->mmp->agt + 1, 0, sizeof(cl->agt));
+		break;
+	case SL1T_TTF_ASK:
+	case SL2T_TTF_ASK:
+		OX_DEBUG("S %s\n", cl->sym);
+		memset(o->mmp->agt + 0, 0, sizeof(cl->agt));
+		o->mmp->agt[1] = cl->agt;
+		break;
+	default:
+		OX_DEBUG("order type not supported\n");
+		return;
+	}
+
+	/* get the additional bollocks in that the tws needs */
+	if ((o->ins = CL(cl)->instr)) {
+		/* now actually inc the order number */
+		noq++;
+	}
+	return;
+}
+
+static void
+prep_cancel(ox_cl_t cl, scom_t s)
+{
+	/* do nothing atm */
+	return;
+}
+
+static ox_cl_t
+find_cli(struct umm_agt_s agt)
+{
+	cls[0].agt = agt;
+	ncls = 1;
+	return cls;
+}
+
+static ox_cl_t
+add_cli(struct umm_agt_s agt)
+{
+	cls[0].agt = agt;
+	ncls = 1;
+	return cls;
+}
+
+
 static void
 snarf_data(job_t j, ud_chan_t c)
 {
 	char *pbuf = UDPC_PAYLOAD(JOB_PACKET(j).pbuf);
 	size_t plen = UDPC_PAYLLEN(JOB_PACKET(j).plen);
+	struct umm_agt_s probe;
 
 	if (UNLIKELY(plen == 0)) {
 		return;
 	}
+
+	/* the network part of the agent, remains constant throughout */
+	probe.addr = j->sa.sa6.sin6_addr;
+	probe.port = j->sa.sa6.sin6_port;
 
 	for (scom_thdr_t sp = (void*)pbuf, ep = (void*)(pbuf + plen);
 	     sp < ep;
@@ -114,22 +203,95 @@ snarf_data(job_t j, ud_chan_t c)
 		uint16_t ttf = scom_thdr_ttf(sp);
 
 		switch (ttf) {
+			ox_cl_t cl;
 		case SL1T_TTF_BID:
 		case SL1T_TTF_ASK:
 		case SL2T_TTF_BID:
 		case SL2T_TTF_ASK:
+			/* dig deeper */
+			probe.uidx = scom_thdr_tblidx(sp);
+
+			if ((cl = find_cli(probe)) == NULL) {
+				/* fuck this, we don't even know what
+				 * instrument to trade */
+				break;
+			}
+
 			/* make sure it isn't a cancel */
 			if (LIKELY(((sl1t_t)sp)->qty)) {
-				/* it's a order, enqueue */
-				no++;
+				/* it's an order, enqueue */
+				prep_order(cl, sp);
 			} else {
 				/* too bad, it's a cancel */
-				;
+				prep_cancel(cl, sp);
 			}
 			break;
 		default:
 			break;
 		}
+	}
+	return;
+}
+
+static void
+snarf_meta(job_t j, ud_chan_t c)
+{
+	char *pbuf = UDPC_PAYLOAD(JOB_PACKET(j).pbuf);
+	size_t plen = UDPC_PAYLLEN(JOB_PACKET(j).plen);
+	struct udpc_seria_s ser[1];
+	struct umm_agt_s probe;
+	uint8_t tag;
+
+	/* snarf the network bits and bobs */
+	probe.addr = j->sa.sa6.sin6_addr;
+	probe.port = j->sa.sa6.sin6_port;
+
+	udpc_seria_init(ser, pbuf, plen);
+	while (ser->msgoff < plen && (tag = udpc_seria_tag(ser))) {
+		ox_cl_t cl;
+		uint16_t id;
+
+		if (UNLIKELY(tag != UDPC_TYPE_UI16)) {
+			break;
+		}
+		/* otherwise find us the id */
+		probe.uidx = udpc_seria_des_ui16(ser);
+		/* and the cli, if any */
+		if ((cl = find_cli(probe)) == NULL) {
+			cl = add_cli(probe);
+		}
+		/* next up is the symbol */
+		tag = udpc_seria_tag(ser);
+		if (UNLIKELY(tag != UDPC_TYPE_STR || cl == 0)) {
+			break;
+		}
+		/* fuck error checking */
+		udpc_seria_des_str_into(CL(cl)->sym, sizeof(CL(cl)->sym), ser);
+
+		/* bother the ib factory to get us a contract */
+		if (CL(cl)->instr) {
+			tws_disassemble_instr(CL(cl)->instr);
+		}
+		CL(cl)->instr = tws_assemble_instr(CL(cl)->sym);
+	}
+	return;
+}
+
+static void
+send_order(my_tws_t tws, ox_oq_item_t i)
+{
+	struct tws_order_s foo = {
+		/* let the tws decide */
+		.oid = 0,
+		/* instrument, fuck checking */
+		.c = i->ins,
+		/* good god, can we uphold this? */
+		.o = i->mmp->l1,
+	};
+
+	OX_DEBUG("ORDER %p\n", i);
+	if (tws_put_order(tws, &foo) < 0) {
+		OX_DEBUG("unusable: %p %p\n", foo.c, foo.o);
 	}
 	return;
 }
@@ -160,6 +322,10 @@ beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
 
 	/* intercept special channels */
 	switch (udpc_pkt_cmd(JOB_PACKET(j))) {
+	case QMETA_RPL:
+		snarf_meta(j, w->data);
+		break;
+
 	case UTE:
 		snarf_data(j, w->data);
 		break;
@@ -176,13 +342,11 @@ cake_cb(EV_P_ ev_io *w, int revents)
 {
 	my_tws_t tws = w->data;
 
-	if (no) {
-		struct tws_order_s foo = {.oid = 0};
-
-		OX_DEBUG("ORDER\n");
-		tws_put_order(tws, &foo);
-		no = 0;
+	for (size_t i = 0; i < noq; i++) {
+		send_order(tws, oq + i);
 	}
+	/* we processed the queue innit? */
+	noq = 0;
 
 	if (revents & EV_READ) {
 		tws_recv(tws);

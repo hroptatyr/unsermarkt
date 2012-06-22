@@ -48,6 +48,17 @@
 #include <twsapi/Order.h>
 #include <twsapi/Order.h>
 #include <twsapi/Contract.h>
+
+#if defined HAVE_UTERUS_UTERUS_H
+# include <uterus/uterus.h>
+# include <uterus/m30.h>
+#elif defined HAVE_UTERUS_H
+# include <uterus.h>
+# include <m30.h>
+#else
+# error uterus headers are mandatory
+#endif	/* HAVE_UTERUS_UTERUS_H || HAVE_UTERUS_H */
+
 #include "ox-tws-wrapper.h"
 
 #define TWSAPI_IPV6	1
@@ -516,24 +527,62 @@ int
 tws_put_order(my_tws_t tws, tws_order_t o)
 {
 	IB::EPosixClientSocket *cli = (IB::EPosixClientSocket*)tws->cli;
+	IB::Contract *__c;
+	const_sl1t_t s;
 	IB::Order __o;
-	IB::Contract __c;
 
-	__c.symbol = std::string("EUR");
-	__c.currency = std::string("EUR");
-	__c.secType = std::string("CASH");
-	__c.exchange = std::string("IDEALPRO");
-
-	if (o->oid <= 0) {
+	if (o->c == NULL) {
+		// bugger off right away
+		return -1;
+	} else if ((s = (const_sl1t_t)o->o) == NULL) {
+		// unusable too
+		return -1;
+	} else if (o->oid <= 0) {
 		o->oid = tws->next_oid++;
 	}
-	__o.orderId = o->oid;
-	__o.orderType = "LMT";
-	__o.totalQuantity = 100000;
-	__o.action = "BUY";
-	__o.lmtPrice = 1.2450;
 
-	cli->placeOrder(o->oid, __c, __o);
+	// the contract is ctor'd already
+	__c = (IB::Contract*)o->c;
+
+	// quickly ctor the ib order on the fly
+	__o.orderId = o->oid;
+	switch (sl1t_ttf(s)) {
+	case SL1T_TTF_BID:
+	case SL2T_TTF_BID:
+		__o.action = "BUY";
+		break;
+	case SL1T_TTF_ASK:
+	case SL2T_TTF_ASK:
+		__o.action = "SELL";
+		break;
+	default:
+		// oh oh
+		__o.action = "CANCEL";
+		break;
+	}
+	// make sure we pick the right order type
+	if (s->pri == SL1T_PRC_MKT) {
+		__o.orderType = "MKT";
+	} else {
+		m30_t m = {.u = s->pri};
+
+		__o.orderType = "LMT";
+		__o.lmtPrice = ffff_m30_d(m);
+	}
+	// quantity is always important
+	if (s->qty) {
+		m30_t m = {.u = s->qty};
+
+		__o.totalQuantity = ffff_m30_d(m);
+		// as this is currency only, we're probably talking lots
+		__o.totalQuantity *= 100000;
+	} else {
+		/* cancel? */
+		__o.action = "CANCEL";
+		__o.totalQuantity = 0;
+	}
+
+	cli->placeOrder(o->oid, *__c, __o);
 	return 0;
 }
 

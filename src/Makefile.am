@@ -140,6 +140,8 @@ if HAVE_TWSAPI
 noinst_PROGRAMS += ox-tws
 ox_tws_SOURCES = ox-tws.c ox-tws-clo.ggo
 ox_tws_SOURCES += ox-tws-wrapper.cpp ox-tws-wrapper.h
+ox_tws_SOURCES += ox-tws-contract-glue.cpp
+ox_tws_SOURCES += iso4217.c iso4217.h
 BUILT_SOURCES += ox-tws-clo.c ox-tws-clo.h
 ox_tws_CPPFLAGS = $(AM_CPPFLAGS)
 ox_tws_CPPFLAGS += $(uterus_CFLAGS)

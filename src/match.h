@@ -103,13 +103,19 @@ union umm_hdr_u {
 		uint32_t stmp:32;
 #endif	/* WORDS_BIGENDIAN */
 	};
+	union scom_thdr_u sc[1];
 };
 
 struct umm_pair_s {
 	/* by coincidence this is a normal ute sl1t_s */
-	union umm_hdr_u hdr[1];
-	m30_t p;
-	m30_t q;
+	union {
+		struct {
+			union umm_hdr_u hdr[1];
+			m30_t p;
+			m30_t q;
+		};
+		struct sl1t_s l1[1];
+	};
 	/* agents now, first one is the buyer, second the seller */
 	struct umm_agt_s agt[2];
 };

@@ -59,6 +59,8 @@
 #else
 # error uterus headers are mandatory
 #endif	/* HAVE_UTERUS_UTERUS_H || HAVE_UTERUS_H */
+#include <unserding/unserding.h>
+#include <unserding/protocore.h>
 
 /* the tws api */
 #include "ox-tws-wrapper.h"
@@ -77,7 +79,119 @@
 void *logerr;
 
 
-static my_tws_t gtws = NULL;
+/* the actual core */
+#define UTE_LE		(0x7574)
+#define UTE_BE		(0x5554)
+#define QMETA		(0x7572)
+#define QMETA_RPL	(UDPC_PKT_RPL(QMETA))
+#if defined WORDS_BIGENDIAN
+# define UTE		UTE_BE
+#else  /* !WORDS_BIGENDIAN */
+# define UTE		UTE_LE
+#endif	/* WORDS_BIGENDIAN */
+#define UTE_RPL		(UDPC_PKT_RPL(UTE))
+/* unsermarkt match messages */
+#define UMM		(0x7576)
+#define UMM_RPL		(UDPC_PKT_RPL(UMM))
+
+static size_t umm_pno = 0;
+static size_t no = 0;
+
+static void
+snarf_data(job_t j, ud_chan_t c)
+{
+	char *pbuf = UDPC_PAYLOAD(JOB_PACKET(j).pbuf);
+	size_t plen = UDPC_PAYLLEN(JOB_PACKET(j).plen);
+
+	if (UNLIKELY(plen == 0)) {
+		return;
+	}
+
+	for (scom_thdr_t sp = (void*)pbuf, ep = (void*)(pbuf + plen);
+	     sp < ep;
+	     sp += scom_tick_size(sp) *
+		     (sizeof(struct sndwch_s) / sizeof(*sp))) {
+		uint16_t ttf = scom_thdr_ttf(sp);
+
+		switch (ttf) {
+		case SL1T_TTF_BID:
+		case SL1T_TTF_ASK:
+		case SL2T_TTF_BID:
+		case SL2T_TTF_ASK:
+			/* make sure it isn't a cancel */
+			if (LIKELY(((sl1t_t)sp)->qty)) {
+				/* it's a order, enqueue */
+				no++;
+			} else {
+				/* too bad, it's a cancel */
+				;
+			}
+			break;
+		default:
+			break;
+		}
+	}
+	return;
+}
+
+
+static void
+beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
+{
+	ssize_t nrd;
+	/* a job */
+	struct job_s j[1];
+	socklen_t lsa = sizeof(j->sa);
+
+	nrd = recvfrom(w->fd, j->buf, sizeof(j->buf), 0, &j->sa.sa, &lsa);
+
+	/* handle the reading */
+	if (UNLIKELY(nrd < 0)) {
+		goto out_revok;
+	} else if (nrd == 0) {
+		/* no need to bother */
+		goto out_revok;
+	} else if (!udpc_pkt_valid_p((ud_packet_t){nrd, j->buf})) {
+		goto out_revok;
+	}
+
+	/* preapre a job */
+	j->blen = nrd;
+
+	/* intercept special channels */
+	switch (udpc_pkt_cmd(JOB_PACKET(j))) {
+	case UTE:
+		snarf_data(j, w->data);
+		break;
+	default:
+		break;
+	}
+
+out_revok:
+	return;
+}
+
+static void
+cake_cb(EV_P_ ev_io *w, int revents)
+{
+	my_tws_t tws = w->data;
+
+	if (no) {
+		struct tws_order_s foo = {.oid = 0};
+
+		OX_DEBUG("ORDER\n");
+		tws_put_order(tws, &foo);
+		no = 0;
+	}
+
+	if (revents & EV_READ) {
+		tws_recv(tws);
+	}
+	if (revents & EV_WRITE) {
+		tws_send(tws);
+	}
+	return;
+}
 
 static void
 sigall_cb(EV_P_ ev_signal *UNUSED(w), int UNUSED(revents))
@@ -158,6 +272,10 @@ main(int argc, char *argv[])
 	const char *host;
 	uint16_t port;
 	int client;
+	ev_io cake[1];
+	/* our beef channels */
+	size_t nbeef = 0;
+	ev_io *beef = NULL;
 	/* final result */
 	int res = 0;
 
@@ -194,6 +312,13 @@ main(int argc, char *argv[])
 		client = now->tv_sec;
 	}
 
+	/* make some room for the control channel and the beef chans */
+	nbeef = argi->beef_given + 1;
+	if ((beef = malloc(nbeef * sizeof(*beef))) == NULL) {
+		res = 1;
+		goto out;
+	}
+
 	/* initialise the main loop */
 	loop = ev_default_loop(EVFLAG_AUTO);
 
@@ -205,17 +330,51 @@ main(int argc, char *argv[])
 	ev_signal_init(sighup_watcher, sigall_cb, SIGHUP);
 	ev_signal_start(EV_A_ sighup_watcher);
 
+	/* attach a multicast listener
+	 * we add this quite late so that it's unlikely that a plethora of
+	 * events has already been injected into our precious queue
+	 * causing the libev main loop to crash. */
+	union __chan_u {
+		ud_chan_t c;
+		void *p;
+	};
+	{
+		union __chan_u x = {ud_chan_init(UD_NETWORK_SERVICE)};
+		int s = ud_chan_init_mcast(x.c);
+
+		beef->data = x.p;
+		ev_io_init(beef, beef_cb, s, EV_READ);
+		ev_io_start(EV_A_ beef);
+	}
+
+	/* go through all beef channels */
+	for (unsigned int i = 0; i < argi->beef_given; i++) {
+		union __chan_u x = {ud_chan_init(argi->beef_arg[i])};
+		int s = ud_chan_init_mcast(x.c);
+
+		beef[i + 1].data = x.p;
+		ev_io_init(beef + i + 1, beef_cb, s, EV_READ);
+		ev_io_start(EV_A_ beef + i + 1);
+	}
+
 	/* we init this late, because the tws connection is not a requirement
 	 * and we may have support for changing/closing/reopening it later
 	 * on anyway, maybe through a nice shell, who knows */
-	if (init_tws(tws) < 0) {
-		res = 1;
-		goto unroll;
-	} else if (tws_connect(tws, host, port, client) < 0) {
-		res = 1;
-		goto past_loop;
-	} else {
-		gtws = tws;
+	{
+		int s;
+
+		if (init_tws(tws) < 0) {
+			res = 1;
+			goto unroll;
+		} else if ((s = tws_connect(tws, host, port, client)) < 0) {
+			res = 1;
+			goto past_loop;
+		}
+
+		/* init a watcher */
+		cake->data = tws;
+		ev_io_init(cake, cake_cb, s, EV_READ | EV_WRITE);
+		ev_io_start(EV_A_ cake);
 	}
 
 	/* now wait for events to arrive */
@@ -223,6 +382,16 @@ main(int argc, char *argv[])
 
 past_loop:
 	(void)fini_tws(tws);
+
+	/* detaching beef channels */
+	for (size_t i = 0; i < nbeef; i++) {
+		ud_chan_t c = beef[i].data;
+
+		ev_io_stop(EV_A_ beef + i);
+		ud_chan_fini(c);
+	}
+	/* free beef resources */
+	free(beef);
 
 unroll:
 	/* destroy the default evloop */

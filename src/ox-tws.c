@@ -77,6 +77,8 @@
 void *logerr;
 
 
+static my_tws_t gtws = NULL;
+
 static void
 sigall_cb(EV_P_ ev_signal *UNUSED(w), int UNUSED(revents))
 {
@@ -203,12 +205,17 @@ main(int argc, char *argv[])
 	ev_signal_init(sighup_watcher, sigall_cb, SIGHUP);
 	ev_signal_start(EV_A_ sighup_watcher);
 
+	/* we init this late, because the tws connection is not a requirement
+	 * and we may have support for changing/closing/reopening it later
+	 * on anyway, maybe through a nice shell, who knows */
 	if (init_tws(tws) < 0) {
 		res = 1;
 		goto unroll;
 	} else if (tws_connect(tws, host, port, client) < 0) {
 		res = 1;
 		goto past_loop;
+	} else {
+		gtws = tws;
 	}
 
 	/* now wait for events to arrive */

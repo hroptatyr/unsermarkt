@@ -168,6 +168,14 @@ um_netdania_LDFLAGS = $(AM_LDFLAGS)
 um_netdania_LDFLAGS += $(unserding_LIBS)
 um_netdania_LDFLAGS += $(libev_LIBS)
 
+noinst_PROGRAMS += tk-example
+tk_example_SOURCES = tk-example.c
+tk_example_CPPFLAGS = $(AM_CPPFLAGS)
+tk_example_CPPFLAGS += $(uterus_CFLAGS)
+tk_example_CPPFLAGS += $(unserding_CFLAGS)
+tk_example_LDFLAGS = $(AM_LDFLAGS)
+tk_example_LDFLAGS += $(unserding_LIBS)
+
 ## our rule for gengetopt
 %.c %.h: %.ggo
 	gengetopt -l -i $< -F $*

@@ -394,8 +394,10 @@ __wrapper::tickSnapshotEnd(int reqId)
 int
 init_tws(my_tws_t foo)
 {
-	foo->wrp = new __wrapper();
-	foo->cli = new IB::EPosixClientSocket(NULL);
+	IB::EWrapper *wrp = new __wrapper();
+
+	foo->cli = new IB::EPosixClientSocket(wrp);
+	foo->wrp = wrp;
 	return 0;
 }
 

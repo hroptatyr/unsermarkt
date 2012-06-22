@@ -68,9 +68,11 @@
 #include "nifty.h"
 
 #if defined DEBUG_FLAG
+# include <assert.h>
 # define OX_DEBUG(args...)	fprintf(logerr, args)
 #else  /* !DEBUG_FLAG */
 # define OX_DEBUG(args...)
+# define assert(x)
 #endif	/* DEBUG_FLAG */
 void *logerr;
 

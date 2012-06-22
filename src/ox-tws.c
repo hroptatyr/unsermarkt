@@ -78,6 +78,19 @@
 #endif	/* DEBUG_FLAG */
 void *logerr;
 
+typedef uint32_t ox_idx_t;
+typedef struct ox_cl_s *ox_cl_t;
+
+#define CL(x)		(x)
+
+struct ox_cl_s {
+	struct umm_agt_s agt;
+	/* ib contract */
+	tws_instr_t instr;
+	/* slightly shorter than the allowed sym length */
+	char sym[64 - sizeof(struct umm_agt_s) - sizeof(void*)];
+};
+
 
 /* the actual core */
 #define UTE_LE		(0x7574)
@@ -94,9 +107,28 @@ void *logerr;
 #define UMM		(0x7576)
 #define UMM_RPL		(UDPC_PKT_RPL(UMM))
 
+static struct ox_cl_s cls[1] = {0};
+static size_t ncls = 0;
 static size_t umm_pno = 0;
 static size_t no = 0;
 
+static ox_cl_t
+find_cli(struct umm_agt_s agt)
+{
+	cls[0].agt = agt;
+	ncls = 1;
+	return cls;
+}
+
+static ox_cl_t
+add_cli(struct umm_agt_s agt)
+{
+	cls[0].agt = agt;
+	ncls = 1;
+	return cls;
+}
+
+
 static void
 snarf_data(job_t j, ud_chan_t c)
 {
@@ -134,6 +166,50 @@ snarf_data(job_t j, ud_chan_t c)
 	return;
 }
 
+static void
+snarf_meta(job_t j, ud_chan_t c)
+{
+	char *pbuf = UDPC_PAYLOAD(JOB_PACKET(j).pbuf);
+	size_t plen = UDPC_PAYLLEN(JOB_PACKET(j).plen);
+	struct udpc_seria_s ser[1];
+	struct umm_agt_s probe;
+	uint8_t tag;
+
+	/* snarf the network bits and bobs */
+	probe.addr = j->sa.sa6.sin6_addr;
+	probe.port = j->sa.sa6.sin6_port;
+
+	udpc_seria_init(ser, pbuf, plen);
+	while (ser->msgoff < plen && (tag = udpc_seria_tag(ser))) {
+		ox_cl_t cl;
+		uint16_t id;
+
+		if (UNLIKELY(tag != UDPC_TYPE_UI16)) {
+			break;
+		}
+		/* otherwise find us the id */
+		probe.uidx = udpc_seria_des_ui16(ser);
+		/* and the cli, if any */
+		if ((cl = find_cli(probe)) == NULL) {
+			cl = add_cli(probe);
+		}
+		/* next up is the symbol */
+		tag = udpc_seria_tag(ser);
+		if (UNLIKELY(tag != UDPC_TYPE_STR || cl == 0)) {
+			break;
+		}
+		/* fuck error checking */
+		udpc_seria_des_str_into(CL(cl)->sym, sizeof(CL(cl)->sym), ser);
+
+		/* bother the ib factory to get us a contract */
+		if (CL(cl)->instr) {
+			tws_disassemble_instr(CL(cl)->instr);
+		}
+		CL(cl)->instr = tws_assemble_instr(CL(cl)->sym);
+	}
+	return;
+}
+
 
 static void
 beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
@@ -160,6 +236,10 @@ beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
 
 	/* intercept special channels */
 	switch (udpc_pkt_cmd(JOB_PACKET(j))) {
+	case QMETA_RPL:
+		snarf_meta(j, w->data);
+		break;
+
 	case UTE:
 		snarf_data(j, w->data);
 		break;

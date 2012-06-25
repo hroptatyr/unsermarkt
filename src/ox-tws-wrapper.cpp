@@ -297,10 +297,6 @@ __wrapper::openOrder(
 	ox_oq_item_t ip;
 
 	WRP_DEBUG("open ord %li", oid);
-	// seen this one, so ack it
-	if ((ip = pop_match_oid(oq->sent, oid))) {
-		push_tail(oq->ackd, ip);
-	}
 	return;
 }
 
@@ -311,11 +307,6 @@ __wrapper::openOrderEnd(void)
 	ox_oq_t oq = (ox_oq_t)tws->oq;
 
 	WRP_DEBUG("open ord end");
-	// anything on the sent list now does not belong there
-	for (ox_oq_item_t ip; (ip = pop_head(oq->sent));) {
-		WRP_DEBUG("freeing %p\n", ip);
-		push_tail(oq->free, ip);
-	}
 	return;
 }
 

@@ -60,8 +60,13 @@
 #endif	/* HAVE_UTERUS_UTERUS_H || HAVE_UTERUS_H */
 
 #include "ox-tws-wrapper.h"
+#include "ox-tws-private.h"
 
 #define TWSAPI_IPV6	1
+
+extern "C" {
+extern int tws_reconcile(my_tws_t);
+}
 
 class __wrapper: public IB::EWrapper
 {
@@ -144,6 +149,8 @@ public:
 
 	/* sort of private */
 	my_tws_t ctx;
+
+	tws_oid_t last_rpt_oid;
 };
 
 
@@ -222,21 +229,41 @@ __wrapper::orderStatus(
 	const IB::IBString& whyHeld)
 {
 	const char *msg = status.c_str();
-	WRP_DEBUG("ostatus %li  %s", oid, msg);
+	WRP_DEBUG("ostatus %li  %s  f:%d  r:%d", oid, msg, filled, remaining);
+	this->last_rpt_oid = oid;
 	return;
 }
 
 void
 __wrapper::openOrder(
-	IB::OrderId, const IB::Contract&,
+	IB::OrderId oid, const IB::Contract&,
 	const IB::Order&, const IB::OrderState&)
 {
+	my_tws_t tws = this->ctx;
+	ox_oq_t oq = (ox_oq_t)tws->oq;
+	ox_oq_item_t ip;
+
+	WRP_DEBUG("open ord %li", oid);
+	// seen this one, so ack it
+	if ((ip = pop_match_oid(oq->sent, oid))) {
+		push_tail(oq->ackd, ip);
+	}
 	return;
 }
 
 void
 __wrapper::openOrderEnd(void)
 {
+	my_tws_t tws = this->ctx;
+	ox_oq_t oq = (ox_oq_t)tws->oq;
+
+	WRP_DEBUG("open ord end");
+	// anything on the sent list now does not belong there
+	for (ox_oq_item_t ip; (ip = pop_head(oq->sent));) {
+		WRP_DEBUG("freeing %p\n", ip);
+		push_tail(oq->free, ip);
+	}
+	this->last_rpt_oid = 0;
 	return;
 }
 
@@ -312,12 +339,14 @@ __wrapper::contractDetailsEnd(int req_id)
 void
 __wrapper::execDetails(int req_id, const IB::Contract&, const IB::Execution&)
 {
+	WRP_DEBUG("exec dtl %i", req_id);
 	return;
 }
 
 void
-__wrapper::execDetailsEnd(int reqId)
+__wrapper::execDetailsEnd(int req_id)
 {
+	WRP_DEBUG("exec dtl %i end", req_id);
 	return;
 }
 
@@ -325,6 +354,26 @@ void
 __wrapper::error(const int id, const int code, const IB::IBString msg)
 {
 	WRP_DEBUG("code <- %i: %s", code, msg.c_str());
+	if (this->last_rpt_oid) {
+		my_tws_t tws = this->ctx;
+		ox_oq_t oq = (ox_oq_t)tws->oq;
+		tws_oid_t oid = this->last_rpt_oid;
+		ox_oq_item_t ip;
+
+		switch (code) {
+		case 201:
+			// cancel?
+			if ((ip = pop_match_oid(oq->ackd, oid)) ||
+			    (ip = pop_match_oid(oq->sent, oid))) {
+				WRP_DEBUG("CNCD %p <-> %u", ip, oid);
+				push_tail(oq->cncd, ip);
+			}
+			break;
+		default:
+			break;
+		}
+	}
+	this->last_rpt_oid = 0;
 	return;
 }
 
@@ -537,15 +586,15 @@ tws_put_order(my_tws_t tws, tws_order_t o)
 	} else if ((s = (const_sl1t_t)o->o) == NULL) {
 		// unusable too
 		return -1;
-	} else if (o->oid <= 0) {
-		o->oid = tws->next_oid++;
 	}
 
 	// the contract is ctor'd already
 	__c = (IB::Contract*)o->c;
 
 	// quickly ctor the ib order on the fly
-	__o.orderId = o->oid;
+	if ((__o.orderId = o->oid) == 0) {
+		__o.orderId = o->oid = tws->next_oid++;
+	}
 	switch (sl1t_ttf(s)) {
 	case SL1T_TTF_BID:
 	case SL2T_TTF_BID:
@@ -576,13 +625,25 @@ tws_put_order(my_tws_t tws, tws_order_t o)
 		__o.totalQuantity = ffff_m30_d(m);
 		// as this is currency only, we're probably talking lots
 		__o.totalQuantity *= 100000;
+
+		cli->placeOrder(o->oid, *__c, __o);
 	} else {
 		/* cancel? */
 		__o.action = "CANCEL";
 		__o.totalQuantity = 0;
-	}
 
-	cli->placeOrder(o->oid, *__c, __o);
+		cli->cancelOrder(o->oid);
+	}
+	return 0;
+}
+
+int
+tws_reconcile(my_tws_t tws)
+{
+	IB::EPosixClientSocket *cli = (IB::EPosixClientSocket*)tws->cli;
+
+	wrp_debug(tws, "reconciliation");
+	cli->reqOpenOrders();
 	return 0;
 }
 

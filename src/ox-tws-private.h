@@ -1,4 +1,4 @@
-/*** ox-tws-wrapper.h -- order execution through tws
+/*** ox-tws-private.h -- private data flow guts
  *
  * Copyright (C) 2012 Sebastian Freundt
  *
@@ -34,62 +34,44 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  ***/
-#if !defined INCLUDED_ox_tws_wrapper_h_
-#define INCLUDED_ox_tws_wrapper_h_
+#if !defined INCLUDED_ox_tws_private_h_
+#define INCLUDED_ox_tws_private_h_
+
+#include "match.h"
+
+typedef struct ox_cl_s *ox_cl_t;
+typedef struct ox_oq_item_s *ox_oq_item_t;
+typedef struct ox_oq_dll_s *ox_oq_dll_t;
+typedef struct ox_oq_s *ox_oq_t;
+
+
+struct ox_oq_dll_s {
+	ox_oq_item_t i1st;
+	ox_oq_item_t ilst;
+};
+
+struct ox_oq_s {
+	ox_oq_item_t items;
+	size_t nitems;
+
+	struct ox_oq_dll_s free[1];
+	struct ox_oq_dll_s flld[1];
+	struct ox_oq_dll_s cncd[1];
+	struct ox_oq_dll_s ackd[1];
+	struct ox_oq_dll_s sent[1];
+	struct ox_oq_dll_s unpr[1];
+};
 
 #if defined __cplusplus
 extern "C" {
 #endif	/* __cplusplus */
 
-typedef struct my_tws_s *my_tws_t;
-typedef struct tws_order_s *tws_order_t;
-/* abstract type for ib contracts */
-typedef void *tws_instr_t;
-
-typedef unsigned int tws_oid_t;
-
-struct my_tws_s {
-	tws_oid_t next_oid;
-	unsigned int time;
-	void *wrp;
-	void *cli;
-	void *oq;
-};
-
-struct tws_order_s {
-	/** 0 means let the tws decide */
-	tws_oid_t oid;
-	/** ib's notion of this order */
-	tws_instr_t c;
-	/** this will be generally a sl1t_t */
-	void *o;
-};
-
-
-extern void *logerr;
-#define LOGERR		((FILE*)logerr)
-
-extern int init_tws(my_tws_t);
-extern int fini_tws(my_tws_t);
-
-extern int tws_connect(my_tws_t, const char *host, uint16_t port, int client);
-extern int tws_disconnect(my_tws_t);
-
-extern int tws_recv(my_tws_t);
-extern int tws_send(my_tws_t);
-
-/* testing */
-extern int tws_put_order(my_tws_t, tws_order_t);
-extern int tws_get_order(my_tws_t, tws_order_t, tws_oid_t oid);
-
-/* builder and dismantler for ib contracts */
-extern tws_instr_t tws_assemble_instr(const char *sym);
-extern void tws_disassemble_instr(tws_instr_t);
-
-extern int tws_reconcile(my_tws_t);
+extern ox_oq_item_t pop_match_oid(ox_oq_dll_t, tws_oid_t);
+extern ox_oq_item_t pop_head(ox_oq_dll_t);
+extern void push_tail(ox_oq_dll_t, ox_oq_item_t);
 
 #if defined __cplusplus
 }
 #endif	/* __cplusplus */
 
-#endif	/* INCLUDED_ox_tws_wrapper_h_ */
+#endif	/* INCLUDED_ox_tws_private_h_ */

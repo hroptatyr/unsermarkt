@@ -38,6 +38,7 @@
 # include "config.h"
 #endif	// HAVE_CONFIG_H
 #include <stdio.h>
+#include <stdbool.h>
 #include <netinet/in.h>
 #include <stdarg.h>
 #include <string>
@@ -149,8 +150,6 @@ public:
 
 	/* sort of private */
 	my_tws_t ctx;
-
-	tws_oid_t last_rpt_oid;
 };
 
 
@@ -221,6 +220,32 @@ __wrapper::tickEFP(
 	return;
 }
 
+static bool
+msg_cncd_p(const char *msg)
+{
+	static const char cncd[] = "Cancelled";
+	static const char inact[] = "Inactive";
+
+	return strcmp(msg, cncd) == 0 || strcmp(msg, inact) == 0;
+}
+
+static bool
+msg_flld_p(const char *msg)
+{
+	static const char flld[] = "Filled";
+
+	return strcmp(msg, flld) == 0;
+}
+
+static bool
+msg_ackd_p(const char *msg)
+{
+	static const char subm[] = "Submitted";
+	static const char pres[] = "PreSubmitted";
+
+	return strcmp(msg, subm) == 0 || strcmp(msg, pres) == 0;
+}
+
 void
 __wrapper::orderStatus(
 	IB::OrderId oid, const IB::IBString &status,
@@ -228,9 +253,37 @@ __wrapper::orderStatus(
 	int parentId, double lastFillPrice, int clientId,
 	const IB::IBString& whyHeld)
 {
+	my_tws_t tws = this->ctx;
 	const char *msg = status.c_str();
+	ox_oq_t oq = (ox_oq_t)tws->oq;
+	tws_oid_t roid = (tws_oid_t)oid;
+
 	WRP_DEBUG("ostatus %li  %s  f:%d  r:%d", oid, msg, filled, remaining);
-	this->last_rpt_oid = oid;
+
+	if (msg_cncd_p(msg)) {
+		ox_oq_item_t ip;
+
+		if ((ip = pop_match_oid(oq->ackd, roid)) ||
+		    (ip = pop_match_oid(oq->sent, roid))) {
+			WRP_DEBUG("CNCD %p <-> %u", ip, roid);
+			push_tail(oq->cncd, ip);
+		}
+	} else if (msg_flld_p(msg)) {
+		ox_oq_item_t ip;
+
+		if ((ip = pop_match_oid(oq->ackd, roid)) ||
+		    (ip = pop_match_oid(oq->sent, roid))) {
+			WRP_DEBUG("FLLD %p <-> %u", ip, roid);
+			push_tail(oq->flld, ip);
+		}
+	} else if (msg_ackd_p(msg)) {
+		ox_oq_item_t ip;
+
+		if ((ip = pop_match_oid(oq->sent, roid))) {
+			WRP_DEBUG("ACKD %p <-> %u", ip, roid);
+			push_tail(oq->ackd, ip);
+		}
+	}
 	return;
 }
 
@@ -263,7 +316,6 @@ __wrapper::openOrderEnd(void)
 		WRP_DEBUG("freeing %p\n", ip);
 		push_tail(oq->free, ip);
 	}
-	this->last_rpt_oid = 0;
 	return;
 }
 
@@ -354,26 +406,6 @@ void
 __wrapper::error(const int id, const int code, const IB::IBString msg)
 {
 	WRP_DEBUG("code <- %i: %s", code, msg.c_str());
-	if (this->last_rpt_oid) {
-		my_tws_t tws = this->ctx;
-		ox_oq_t oq = (ox_oq_t)tws->oq;
-		tws_oid_t oid = this->last_rpt_oid;
-		ox_oq_item_t ip;
-
-		switch (code) {
-		case 201:
-			// cancel?
-			if ((ip = pop_match_oid(oq->ackd, oid)) ||
-			    (ip = pop_match_oid(oq->sent, oid))) {
-				WRP_DEBUG("CNCD %p <-> %u", ip, oid);
-				push_tail(oq->cncd, ip);
-			}
-			break;
-		default:
-			break;
-		}
-	}
-	this->last_rpt_oid = 0;
 	return;
 }
 

@@ -108,17 +108,8 @@ struct ox_oq_item_s {
 
 	/* ib order id */
 	tws_oid_t oid;
-
-	/* unprocessed stuff from the free list thats about to be sent */
-	unsigned int unpr:1;
-	/* stuff sent, awaiting an ack or fill or cancel */
-	unsigned int sent:1;
-	/* stuff ackd */
-	unsigned int ackd:1;
-	/* cancelled in this round, will disappear */
-	unsigned int cncd:1;
-	/* filled in this round will disappear */
-	unsigned int flld:1;
+	/* for partial fills */
+	m30_t rem_qty;
 
 	ox_oq_item_t next;
 	ox_oq_item_t prev;
@@ -386,7 +377,6 @@ prep_order(ox_cl_t cl, scom_t sc)
 
 	/* copy the agent */
 	o->cl = cl;
-	o->unpr = 1;
 	/* push on the unprocessed list */
 	push_tail(oq.unpr, o);
 	return;
@@ -406,10 +396,6 @@ prep_cancel(ox_cl_t cl, scom_t s)
 	}
 	/* else do something */
 	OX_DEBUG("ORDER %p matches <-> %u -> CANCEL\n", ip, ip->oid);
-
-	ip->sent = 0;
-	ip->ackd = 0;
-	ip->unpr = 1;
 
 	ip->l1t->qty = 0;
 	push_tail(oq.unpr, ip);
@@ -561,8 +547,6 @@ flush_queue(my_tws_t tws)
 
 	for (ox_oq_item_t ip; (ip = pop_head(oq.unpr)); nsnt++) {
 		send_order(tws, ip);
-		ip->sent = 1;
-		ip->unpr = 0;
 		push_tail(oq.sent, ip);
 	}
 

@@ -296,10 +296,6 @@ __wrapper::openOrder(
 	IB::OrderId oid, const IB::Contract&,
 	const IB::Order&, const IB::OrderState&)
 {
-	my_tws_t tws = this->ctx;
-	ox_oq_t oq = (ox_oq_t)tws->oq;
-	ox_oq_item_t ip;
-
 	WRP_DEBUG("open ord %li", oid);
 	return;
 }
@@ -307,9 +303,6 @@ __wrapper::openOrder(
 void
 __wrapper::openOrderEnd(void)
 {
-	my_tws_t tws = this->ctx;
-	ox_oq_t oq = (ox_oq_t)tws->oq;
-
 	WRP_DEBUG("open ord end");
 	return;
 }

@@ -486,10 +486,12 @@ send_order(my_tws_t tws, ox_oq_item_t i)
 		.o = i->l1t,
 	};
 
-	OX_DEBUG("ORDER %p\n", i);
+	OX_DEBUG("ORDER %p %u\n", i, foo.oid);
 	if (tws_put_order(tws, &foo) < 0) {
 		OX_DEBUG("unusable: %p %p\n", foo.c, foo.o);
 	}
+	i->oid = foo.oid;
+	OX_DEBUG("ORDER %p <-> oid %u\n", i, i->oid);
 	return;
 }
 

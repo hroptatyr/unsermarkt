@@ -81,21 +81,59 @@ void *logerr;
 typedef uint32_t ox_idx_t;
 typedef struct ox_cl_s *ox_cl_t;
 typedef struct ox_oq_item_s *ox_oq_item_t;
+typedef struct ox_oq_dll_s *ox_oq_dll_t;
+typedef struct ox_oq_s *ox_oq_t;
 
 #define CL(x)		(x)
 
 struct ox_cl_s {
 	struct umm_agt_s agt;
 	/* ib contract */
-	tws_instr_t instr;
+	tws_instr_t ins;
 	/* slightly shorter than the allowed sym length */
 	char sym[64 - sizeof(struct umm_agt_s) - sizeof(void*)];
 };
 
 struct ox_oq_item_s {
-	struct umm_pair_s mmp[1];
-	/* auxiliary bollocks */
-	tws_instr_t ins;
+	/* the sym, ib instr and agent we're talking */
+	ox_cl_t agt;
+
+	/* the order we're talking */
+	struct sl1t_s l1t[1];
+
+	/* ib order id */
+	tws_oid_t oid;
+
+	/* unprocessed stuff from the free list thats about to be sent */
+	unsigned int unpr:1;
+	/* stuff sent, awaiting an ack or fill or cancel */
+	unsigned int sent:1;
+	/* stuff ackd */
+	unsigned int ackd:1;
+	/* cancelled in this round, will disappear */
+	unsigned int cncd:1;
+	/* filled in this round will disappear */
+	unsigned int flld:1;
+
+	ox_oq_item_t next;
+	ox_oq_item_t prev;
+};
+
+struct ox_oq_dll_s {
+	ox_oq_item_t i1st;
+	ox_oq_item_t ilst;
+};
+
+struct ox_oq_s {
+	ox_oq_item_t items;
+	size_t nitems;
+
+	struct ox_oq_dll_s free[1];
+	struct ox_oq_dll_s flld[1];
+	struct ox_oq_dll_s cncd[1];
+	struct ox_oq_dll_s ackd[1];
+	struct ox_oq_dll_s sent[1];
+	struct ox_oq_dll_s unpr[1];
 };
 
 
@@ -118,42 +156,197 @@ static struct ox_cl_s cls[64] = {0};
 static size_t ncls = 0;
 static size_t umm_pno = 0;
 
-static struct ox_oq_item_s oq[64];
-static size_t noq = 0;
+static struct ox_oq_s oq = {0};
 
+/* simplistic dllists */
+static size_t __attribute__((const, pure))
+nmemb(size_t n)
+{
+	static size_t pgsz = 0;
+
+	if (!pgsz) {
+		pgsz = sysconf(_SC_PAGESIZE);
+	}
+	return (n * sizeof(*oq.items) + (pgsz - 1)) & ~(pgsz - 1);
+}
+
+static void
+rbld_dll(ox_oq_dll_t dll, ox_oq_item_t nu_ref, ox_oq_item_t ol_ref)
+{
+	ptrdiff_t df = nu_ref - ol_ref;
+
+	if (dll->i1st) {
+		dll->i1st += df;
+	}
+	if (dll->ilst) {
+		dll->ilst += df;
+	}
+	for (ox_oq_item_t ip = dll->i1st; ip; ip = ip->next) {
+		if (ip->next) {
+			ip->next += df;
+		}
+		if (ip->prev) {
+			ip->prev += df;
+		}
+	}
+	return;
+}
+
+static void
+init_oq(size_t at_least)
+{
+#define PROT_MEM	(PROT_READ | PROT_WRITE)
+#define MAP_MEM		(MAP_ANONYMOUS | MAP_PRIVATE)
+	size_t nusz = nmemb(at_least);
+	size_t nu = nusz / sizeof(*oq.items);
+	size_t ol = oq.nitems;
+	ox_oq_item_t ep;
+
+	if (ol > nu) {
+		return;
+	} else if (oq.items == NULL) {
+		oq.items = mmap(NULL, nusz, PROT_MEM, MAP_MEM, -1, 0);
+		oq.nitems = nu;
+	} else {
+		size_t olsz = nmemb(ol);
+		void *nu_items;
+
+		nu_items = mmap(NULL, nusz, PROT_MEM, MAP_MEM, -1, 0);
+		memcpy(nu_items, oq.items, olsz);
+
+		/* fix up all lists */
+		rbld_dll(oq.free, nu_items, oq.items);
+		rbld_dll(oq.flld, nu_items, oq.items);
+		rbld_dll(oq.cncd, nu_items, oq.items);
+		rbld_dll(oq.ackd, nu_items, oq.items);
+		rbld_dll(oq.sent, nu_items, oq.items);
+		rbld_dll(oq.unpr, nu_items, oq.items);
+
+		/* unmap the old guy */
+		munmap(oq.items, olsz);
+
+		/* reassign */
+		oq.items = nu_items;
+		oq.nitems = nu;
+	}
+
+	/* fill up the free list */
+	ep = oq.items + ol;
+	for (ox_oq_item_t sp = ep, eep = ep + (nu - ol); sp < eep; sp++) {
+		if (sp + 1 < eep) {
+			sp->next = sp + 1;
+		}
+		if (sp > ep) {
+			sp->prev = sp - 1;
+		}
+	}
+	/* attach new list to free list */
+	ep->prev = oq.free->ilst;
+	if (oq.free->ilst) {
+		oq.free->ilst->next = ep;
+	} else {
+		oq.free->i1st = ep;
+	}
+	if (oq.free->i1st == NULL) {
+		oq.free->i1st = ep;
+	} else {
+		oq.free->ilst = ep + (nu - ol);
+	}
+	return;
+}
+
+static void
+fini_oq(void)
+{
+	if (oq.items) {
+		munmap(oq.items, oq.nitems);
+		oq.items = NULL;
+		oq.nitems = 0;
+	}
+	return;
+}
+
+static ox_oq_item_t
+pop_head(ox_oq_dll_t dll)
+{
+	ox_oq_item_t res;
+
+	if ((res = dll->i1st) && (dll->i1st = dll->i1st->next) == NULL) {
+		dll->ilst = NULL;
+	} else if (res) {
+		dll->i1st->prev = NULL;
+	}
+	return res;
+}
+
+static void
+push_tail(ox_oq_dll_t dll, ox_oq_item_t i)
+{
+	if (dll->ilst) {
+		dll->ilst->next = i;
+		i->prev = dll->ilst;
+		i->next = NULL;
+		dll->ilst = i;
+	} else {
+		assert(dll->i1st == NULL);
+		dll->i1st = dll->ilst = i;
+		i->next = NULL;
+		i->prev = NULL;
+	}
+	return;
+}
+
+static ox_oq_item_t
+pop_free(void)
+{
+	ox_oq_item_t res;
+
+	if (oq.free->i1st == NULL) {
+		assert(oq.free->ilst == NULL);
+		init_oq(oq.nitems + 256);
+	}
+	res = pop_head(oq.free);
+	memset(res, 0, sizeof(*res));
+	return res;
+}
+
+static void
+push_free(ox_oq_item_t i)
+{
+	push_tail(oq.free, i);
+	return;
+}
+
+
 static void
 prep_order(ox_cl_t cl, scom_t sc)
 {
 	/* pop us an item from the queue */
-	ox_oq_item_t o = oq + noq;
+	ox_oq_item_t o = pop_free();
 	uint16_t ttf = scom_thdr_ttf(sc);
 
 	/* nifty that umm_pair_s looks like a struct sl1t_s at the beginning */
-	memcpy(o->mmp, sc, sizeof(struct sl1t_s));
+	memcpy(o->l1t, sc, sizeof(*o->l1t));
 
 	switch (ttf) {
 	case SL1T_TTF_BID:
 	case SL2T_TTF_BID:
 		OX_DEBUG("B %s\n", cl->sym);
-		o->mmp->agt[0] = cl->agt;
-		memset(o->mmp->agt + 1, 0, sizeof(cl->agt));
 		break;
 	case SL1T_TTF_ASK:
 	case SL2T_TTF_ASK:
 		OX_DEBUG("S %s\n", cl->sym);
-		memset(o->mmp->agt + 0, 0, sizeof(cl->agt));
-		o->mmp->agt[1] = cl->agt;
 		break;
 	default:
 		OX_DEBUG("order type not supported\n");
 		return;
 	}
 
-	/* get the additional bollocks in that the tws needs */
-	if ((o->ins = CL(cl)->instr)) {
-		/* now actually inc the order number */
-		noq++;
-	}
+	/* copy the agent */
+	o->agt = cl;
+	o->unpr = 1;
+	/* push on the unprocessed list */
+	push_tail(oq.unpr, o);
 	return;
 }
 
@@ -273,10 +466,10 @@ snarf_meta(job_t j, ud_chan_t c)
 		udpc_seria_des_str_into(CL(cl)->sym, sizeof(CL(cl)->sym), ser);
 
 		/* bother the ib factory to get us a contract */
-		if (CL(cl)->instr) {
-			tws_disassemble_instr(CL(cl)->instr);
+		if (CL(cl)->ins) {
+			tws_disassemble_instr(CL(cl)->ins);
 		}
-		CL(cl)->instr = tws_assemble_instr(CL(cl)->sym);
+		CL(cl)->ins = tws_assemble_instr(CL(cl)->sym);
 	}
 	return;
 }
@@ -288,9 +481,9 @@ send_order(my_tws_t tws, ox_oq_item_t i)
 		/* let the tws decide */
 		.oid = 0,
 		/* instrument, fuck checking */
-		.c = i->ins,
+		.c = i->agt->ins,
 		/* good god, can we uphold this? */
-		.o = i->mmp->l1,
+		.o = i->l1t,
 	};
 
 	OX_DEBUG("ORDER %p\n", i);
@@ -303,19 +496,19 @@ send_order(my_tws_t tws, ox_oq_item_t i)
 static void
 send_orders(my_tws_t tws)
 {
-	if (noq == 0) {
-		/* piss off immediately */
-		return;
-	}
+	size_t nsnt = 0;
 
-	for (size_t i = 0; i < noq; i++) {
-		send_order(tws, oq + i);
+	for (ox_oq_item_t ip; (ip = pop_head(oq.unpr)); nsnt++) {
+		send_order(tws, ip);
+		ip->sent = 1;
+		ip->unpr = 0;
+		push_tail(oq.sent, ip);
 	}
 
 	/* assume it's possible to write */
-	tws_send(tws);
-	/* we processed the queue innit? */
-	noq = 0;
+	if (nsnt) {
+		tws_send(tws);
+	}
 	return;
 }
 
@@ -594,6 +787,9 @@ main(int argc, char *argv[])
 
 past_loop:
 	(void)fini_tws(tws);
+
+	/* finish the order queue */
+	fini_oq();
 
 	/* detaching beef channels */
 	for (size_t i = 0; i < nbeef; i++) {

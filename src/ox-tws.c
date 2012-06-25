@@ -300,6 +300,25 @@ send_order(my_tws_t tws, ox_oq_item_t i)
 	return;
 }
 
+static void
+send_orders(my_tws_t tws)
+{
+	if (noq == 0) {
+		/* piss off immediately */
+		return;
+	}
+
+	for (size_t i = 0; i < noq; i++) {
+		send_order(tws, oq + i);
+	}
+
+	/* assume it's possible to write */
+	tws_send(tws);
+	/* we processed the queue innit? */
+	noq = 0;
+	return;
+}
+
 
 static void
 beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
@@ -346,18 +365,32 @@ cake_cb(EV_P_ ev_io *w, int revents)
 {
 	my_tws_t tws = w->data;
 
-	for (size_t i = 0; i < noq; i++) {
-		send_order(tws, oq + i);
-	}
-	/* we processed the queue innit? */
-	noq = 0;
-
 	if (revents & EV_READ) {
 		tws_recv(tws);
 	}
 	if (revents & EV_WRITE) {
 		tws_send(tws);
 	}
+	return;
+}
+
+static void
+prep_cb(EV_P_ ev_prepare *w, int UNUSED(revents))
+{
+	my_tws_t tws = w->data;
+
+	/* maybe we've got something up our sleeve */
+	send_orders(tws);
+	return;
+}
+
+static void
+check_cb(EV_P_ ev_check *w, int UNUSED(revents))
+{
+	my_tws_t tws = w->data;
+
+	/* maybe we've got something up our sleeve */
+	send_orders(tws);
 	return;
 }
 
@@ -441,6 +474,8 @@ main(int argc, char *argv[])
 	uint16_t port;
 	int client;
 	ev_io cake[1];
+	ev_prepare prp[1];
+	ev_check chk[1];
 	/* our beef channels */
 	size_t nbeef = 0;
 	ev_io *beef = NULL;
@@ -541,8 +576,17 @@ main(int argc, char *argv[])
 
 		/* init a watcher */
 		cake->data = tws;
-		ev_io_init(cake, cake_cb, s, EV_READ | EV_WRITE);
+		ev_io_init(cake, cake_cb, s, EV_READ);
 		ev_io_start(EV_A_ cake);
+
+		/* pre and post poll hooks */
+		prp->data = tws;
+		ev_prepare_init(prp, prep_cb);
+		ev_prepare_start(EV_A_ prp);
+
+		chk->data = tws;
+		ev_check_init(chk, check_cb);
+		ev_check_start(EV_A_ chk);
 	}
 
 	/* now wait for events to arrive */

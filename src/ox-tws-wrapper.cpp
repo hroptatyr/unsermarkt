@@ -275,6 +275,10 @@ __wrapper::orderStatus(
 		    (ip = pop_match_oid(oq->sent, roid))) {
 			WRP_DEBUG("FLLD %p <-> %u", ip, roid);
 			push_tail(oq->flld, ip);
+			if (remaining > 0) {
+				/* split the order */
+				;
+			}
 		}
 	} else if (msg_ackd_p(msg)) {
 		ox_oq_item_t ip;

@@ -574,7 +574,6 @@ flush_queue(my_tws_t tws)
 }
 
 static void
-__attribute__((noinline))
 flush_cncd(void)
 {
 	static char rpl[UDPC_PKTLEN];
@@ -619,6 +618,7 @@ flush_cncd(void)
 		} else {
 			OX_DEBUG("uh oh, ttf is %hx\n", ttf);
 			memset(mmp->agt, 0, 2 * sizeof(*mmp->agt));
+			abort();
 		}
 		udpc_seria_add_umm(ser, mmp);
 

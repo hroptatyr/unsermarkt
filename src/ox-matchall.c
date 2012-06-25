@@ -154,6 +154,24 @@ snarf_data(job_t j, ud_chan_t c)
 			/* get current stamp */
 			gettimeofday(now, NULL);
 
+			/* prepare a match message, always big-endian? */
+			memcpy(mmp, sp, sizeof(*tmp));
+
+			/* buyer ... */
+			if (ttf == SL1T_TTF_BID || ttf == SL2T_TTF_BID) {
+				mmp->agt[0].addr = j->sa.sa6.sin6_addr;
+				mmp->agt[0].port = j->sa.sa6.sin6_port;
+			}
+			/* ... and seller */
+			if (ttf == SL1T_TTF_BID || ttf == SL2T_TTF_BID) {
+				mmp->agt[1].addr = j->sa.sa6.sin6_addr;
+				mmp->agt[1].port = j->sa.sa6.sin6_port;
+			}
+
+			/* and serialise it */
+			udpc_seria_add_umm(ser + 1, mmp);
+
+			/* prepare the reply message */
 			memcpy(tmp, sp, sizeof(*tmp));
 			sl1t_set_ttf(tmp, SL1T_TTF_TRA);
 			sl1t_set_stmp_sec(tmp, now->tv_sec);
@@ -161,23 +179,6 @@ snarf_data(job_t j, ud_chan_t c)
 
 			/* and off it goes */
 			udpc_seria_add_scom(ser, AS_SCOM(tmp), sizeof(*tmp));
-
-			/* prepare a match message, always big-endian? */
-			memcpy(mmp, tmp, sizeof(*tmp));
-
-			/* buyer ... */
-			if (ttf == SL1T_TTF_BID || ttf == SL2T_TTF_BID) {
-				*mmp->agt[0].addr = j->sa.sa6.sin6_addr;
-				mmp->agt[0].port = j->sa.sa6.sin6_port;
-			}
-			/* ... and seller */
-			if (ttf == SL1T_TTF_BID || ttf == SL2T_TTF_BID) {
-				*mmp->agt[1].addr = j->sa.sa6.sin6_addr;
-				mmp->agt[1].port = j->sa.sa6.sin6_port;
-			}
-
-			/* and serialise it */
-			udpc_seria_add_umm(ser + 1, mmp);
 			break;
 		default:
 			break;

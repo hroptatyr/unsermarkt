@@ -559,11 +559,6 @@ flush_queue(my_tws_t tws)
 {
 	size_t nsnt = 0;
 
-	if (oq.sent->i1st) {
-		/* could be something */
-		tws_reconcile(tws);
-	}
-
 	for (ox_oq_item_t ip; (ip = pop_head(oq.unpr)); nsnt++) {
 		send_order(tws, ip);
 		ip->sent = 1;

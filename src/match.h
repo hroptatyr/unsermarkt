@@ -66,6 +66,10 @@ typedef struct umm_s *umm_t;
  * Match message for ox-* daemons. */
 typedef struct umm_pair_s *umm_pair_t;
 
+/**
+ * Administrative messages for clients. */
+typedef struct umm_uno_s *umm_uno_t;
+
 struct umm_s {
 	/* buyer and seller order ids */
 	oid_t ob, os;
@@ -119,5 +123,26 @@ struct umm_pair_s {
 	/* agents now, first one is the buyer, second the seller */
 	struct umm_agt_s agt[2];
 };
+
+struct umm_uno_s {
+	/* by coincidence this is a normal ute sl1t_s */
+	union {
+		struct {
+			union umm_hdr_u hdr[1];
+			m30_t p;
+			m30_t q;
+		};
+		struct sl1t_s l1[1];
+	};
+	/* agents now, first one is the buyer, second the seller */
+	struct umm_agt_s agt[1];
+	/* 4 bytes left */
+	uint32_t reason;
+};
+
+typedef enum {
+	UMM_UNO_UNK,
+	UMM_UNO_CANCELLED,
+} umm_uno_reason_t;
 
 #endif	/* !INCLUDED_match_h_ */

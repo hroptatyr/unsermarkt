@@ -375,11 +375,35 @@ pop_match_oid(ox_oq_dll_t dll, tws_oid_t oid)
 }
 
 
+static struct umm_agt_s UNUSED(voidagt) = {0};
+static struct umm_agt_s counter = {0};
+
 static inline void
 udpc_seria_add_umm(udpc_seria_t sctx, umm_pair_t p)
 {
 	memcpy(sctx->msg + sctx->msgoff, p, sizeof(*p));
 	sctx->msgoff += sizeof(*p);
+	return;
+}
+
+static void
+prep_umm_flld(umm_pair_t mmp, ox_oq_item_t ip)
+{
+	uint16_t ttf = sl1t_ttf(ip->l1t);
+
+	/* copy the whole tick */
+	memcpy(mmp->l1, ip->l1t, sizeof(*ip->l1t));
+
+	if (ttf == SL1T_TTF_BID || ttf == SL2T_TTF_BID) {
+		mmp->agt[0] = ip->cl->agt;
+		mmp->agt[1] = counter;
+	} else if (ttf == SL1T_TTF_ASK || ttf == SL2T_TTF_ASK) {
+		mmp->agt[0] = counter;
+		mmp->agt[1] = ip->cl->agt;
+	} else {
+		OX_DEBUG("uh oh, ttf is %hx\n", ttf);
+		abort();
+	}
 	return;
 }
 
@@ -601,6 +625,46 @@ flush_cncd(void)
 	return;
 }
 
+static MAYBE_NOINLINE void
+flush_flld(void)
+{
+/* disseminate match messages */
+	static char rpl[UDPC_PKTLEN];
+	struct udpc_seria_s ser[1];
+
+#define PKT(x)		((ud_packet_t){sizeof(x), x})
+	udpc_make_pkt(PKT(rpl), 0, umm_pno++, UMM);
+#define MAKE_PKT(x)							\
+	udpc_set_data_pkt(PKT(x));					\
+	udpc_seria_init(ser, UDPC_PAYLOAD(x), UDPC_PAYLLEN(sizeof(x)))
+
+	for (ox_oq_item_t ip; (ip = oq.flld->i1st);) {
+		struct umm_pair_s mmp[1];
+		ud_chan_t ch = ip->cl->ch;
+
+		MAKE_PKT(rpl);
+		for (; ip; ip = ip->next) {
+			/* skip messages not meant for this channel */
+			if (ip->cl->ch != ch) {
+				continue;
+			}
+
+			/* pop the item */
+			pop_item(oq.flld, ip);
+
+			prep_umm_flld(mmp, ip);
+			udpc_seria_add_umm(ser, mmp);
+
+			/* make sure we free this guy */
+			OX_DEBUG("freeing %p\n", ip);
+			push_tail(oq.free, ip);
+		}
+		/* and off we go */
+		ud_chan_send_ser(ch, ser);
+	}
+	return;
+}
+
 
 static void
 beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
@@ -663,6 +727,8 @@ prep_cb(EV_P_ ev_prepare *w, int UNUSED(revents))
 
 	/* maybe we've got something up our sleeve */
 	flush_queue(tws);
+	/* inform everyone about fills */
+	flush_flld();
 	/* check cancellation list */
 	flush_cncd();
 	return;
@@ -859,6 +925,16 @@ main(int argc, char *argv[])
 
 		/* make sure we know about the global order queue */
 		tws->oq = &oq;
+		/* also hand out details to the COUNTER struct */
+		{
+			union ud_sockaddr_u sa;
+			socklen_t ss = sizeof(sa);
+
+			getsockname(s, &sa.sa, &ss);
+			counter.addr = sa.sa6.sin6_addr;
+			counter.port = htons(port);
+			counter.uidx = 0;
+		}
 	}
 
 	/* now wait for events to arrive */

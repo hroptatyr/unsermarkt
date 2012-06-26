@@ -471,10 +471,12 @@ prep_umm_cncd(umm_uno_t umu, ox_oq_item_t ip)
 	/* time, anyone? */
 	(void)gettimeofday(now, NULL);
 
+	/* massage the tick */
+	sl1t_set_stmp_sec(ip->l1t, now->tv_sec);
+	sl1t_set_stmp_msec(ip->l1t, now->tv_usec / 1000);
+	ip->l1t->qty = 0;
 	/* copy the whole tick */
 	memcpy(umu->l1, ip->l1t, sizeof(*ip->l1t));
-	sl1t_set_stmp_sec(umu->l1, now->tv_sec);
-	sl1t_set_stmp_msec(umu->l1, now->tv_usec / 1000);
 	/* and the agent */
 	umu->agt[0] = ip->cl->agt;
 	/* set the reason */
@@ -693,7 +695,9 @@ flush_cncd(void)
 {
 /* cancels need no re-confirmation, do they? */
 	static char rpl[UDPC_PKTLEN];
+	static char sta[UDPC_PKTLEN];
 	struct udpc_seria_s ser[1];
+	struct udpc_seria_s scs[1];
 
 #define PKT(x)		((ud_packet_t){sizeof(x), x})
 #define MAKE_PKT(ser, cmd, x)						\
@@ -705,7 +709,8 @@ flush_cncd(void)
 		struct umm_uno_s umu[1];
 		ud_chan_t ch = ip->cl->ch;
 
-		MAKE_PKT(ser, UMU_RPL, rpl);
+		MAKE_PKT(ser, UMU, rpl);
+		MAKE_PKT(scs, UTE_RPL, sta);
 		for (; ip; ip = ip->next) {
 			/* skip messages not meant for this channel */
 			if (ip->cl->ch != ch) {
@@ -718,12 +723,16 @@ flush_cncd(void)
 			prep_umm_cncd(umu, ip);
 			udpc_seria_add_uno(ser, umu);
 
+			/* also prepare a tick reply message */
+			udpc_seria_add_sl1t(scs, ip->l1t);
+
 			/* make sure we free this guy */
 			OX_DEBUG("freeing %p\n", ip);
 			push_tail(oq.free, ip);
 		}
 		/* and off we go */
 		ud_chan_send_ser(ch, ser);
+		ud_chan_send_ser(ch, scs);
 	}
 #undef PKT
 #undef MAKE_PKT

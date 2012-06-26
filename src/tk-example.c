@@ -236,6 +236,7 @@ work_all(const struct xmpl_s *ctx)
 
 			udpc_seria_add_scom(ser, AS_SCOM(t), sizeof(*t));
 		}
+		fprintf(stderr, "BANG\n");
 		ud_chan_send_ser(ctx->ud, ser);
 
 		{

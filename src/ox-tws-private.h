@@ -39,7 +39,6 @@
 
 #include "match.h"
 
-typedef struct ox_cl_s *ox_cl_t;
 typedef struct ox_oq_item_s *ox_oq_item_t;
 typedef struct ox_oq_dll_s *ox_oq_dll_t;
 typedef struct ox_oq_s *ox_oq_t;

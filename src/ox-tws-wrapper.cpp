@@ -353,11 +353,15 @@ __wrapper::updateAccountValue(
 
 void
 __wrapper::updatePortfolio(
-	const IB::Contract&, int position,
+	const IB::Contract &c, int pos,
 	double marketPrice, double marketValue, double averageCost,
 	double unrealizedPNL, double realizedPNL,
-	const IB::IBString& accountName)
+	const IB::IBString &acct_name)
 {
+	const char *name = acct_name.c_str();
+	const char *sym = c.localSymbol.c_str();
+
+	WRP_DEBUG("acct %s: portfolio %s -> %d", name, sym, pos);
 	return;
 }
 
@@ -581,6 +585,7 @@ tws_connect(my_tws_t foo, const char *host, uint16_t port, int client)
 
 	// just request a lot of buggery here
 	cli->reqCurrentTime();
+	cli->reqAccountUpdates(true, std::string(""));
 	return cli->fd();
 }
 

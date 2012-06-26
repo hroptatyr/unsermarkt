@@ -584,7 +584,7 @@ add_cli(struct umm_agt_s agt)
 		assert(cq.q->free->ilst == NULL);
 		OX_DEBUG("CQ RESIZE -> %zu\n", nitems + 64);
 		df = init_gq(cq.q, sizeof(*res), nitems + 64);
-		gq_rbld_dll(cq.q->free, df);
+		gq_rbld_dll(cq.used, df);
 	}
 	/* get us a new client and populate the object */
 	res = (void*)gq_pop_head(cq.q->free);

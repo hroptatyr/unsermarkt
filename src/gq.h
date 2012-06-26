@@ -1,4 +1,4 @@
-/*** ox-tws-private.h -- private data flow guts
+/*** gq.h -- generic queues, or pools of data elements
  *
  * Copyright (C) 2012 Sebastian Freundt
  *
@@ -34,50 +34,49 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  ***/
-#if !defined INCLUDED_ox_tws_private_h_
-#define INCLUDED_ox_tws_private_h_
+#if !defined INCLUDED_gq_h_
+#define INCLUDED_gq_h_
 
-#include "match.h"
-#include "gq.h"
-
-typedef struct ox_oq_item_s *ox_oq_item_t;
-typedef struct ox_oq_dll_s *ox_oq_dll_t;
-typedef struct ox_oq_s *ox_oq_t;
-
-
-struct ox_oq_dll_s {
-	ox_oq_item_t i1st;
-	ox_oq_item_t ilst;
-};
-
-struct ox_oq_s {
-	ox_oq_item_t items;
-	size_t nitems;
-
-	struct ox_oq_dll_s free[1];
-	struct ox_oq_dll_s flld[1];
-	struct ox_oq_dll_s cncd[1];
-	struct ox_oq_dll_s ackd[1];
-	struct ox_oq_dll_s sent[1];
-	struct ox_oq_dll_s unpr[1];
-};
+#include "stdint.h"
 
 #if defined __cplusplus
 extern "C" {
 #endif	/* __cplusplus */
 
-extern ox_oq_item_t find_match_oid(ox_oq_dll_t, tws_oid_t);
-extern ox_oq_item_t pop_head(ox_oq_dll_t);
-extern void push_tail(ox_oq_dll_t, ox_oq_item_t);
-extern void pop_item(ox_oq_dll_t, ox_oq_item_t);
-extern ox_oq_item_t clone_item(ox_oq_item_t);
+/* generic queues */
+typedef struct ox_gq_s *ox_gq_t;
+typedef struct ox_dll_s *ox_dll_t;
+typedef struct ox_item_s *ox_item_t;
 
-/* to indicate actual execution prices and sizes */
-extern void set_prc(ox_oq_item_t, double pri);
-extern void set_qty(ox_oq_item_t, double qty);
+struct ox_item_s {
+	ox_item_t next;
+	ox_item_t prev;
+
+	char data[];
+};
+
+struct ox_dll_s {
+	ox_item_t i1st;
+	ox_item_t ilst;
+};
+
+struct ox_gq_s {
+	ox_item_t items;
+	size_t nitems;
+
+	struct ox_dll_s free[1];
+};
+
+
+extern ptrdiff_t init_gq(ox_gq_t, size_t mbsz, size_t at_least);
+extern void fini_gq(ox_gq_t);
+extern void gq_rbld_dll(ox_dll_t dll, ptrdiff_t);
+
+extern ox_item_t gq_pop_head(ox_dll_t);
+extern void gq_push_tail(ox_dll_t, ox_item_t);
 
 #if defined __cplusplus
 }
 #endif	/* __cplusplus */
 
-#endif	/* INCLUDED_ox_tws_private_h_ */
+#endif	/* INCLUDED_gq_h_ */

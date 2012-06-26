@@ -68,7 +68,7 @@
 /* the tws api */
 #include "ox-tws-wrapper.h"
 #include "ox-tws-private.h"
-
+#include "gq.h"
 #include "nifty.h"
 
 #if defined __INTEL_COMPILER
@@ -88,11 +88,6 @@ void *logerr;
 
 typedef uint32_t ox_idx_t;
 
-/* generic queues */
-typedef struct ox_gq_s *ox_gq_t;
-typedef struct ox_dll_s *ox_dll_t;
-typedef struct ox_item_s *ox_item_t;
-
 typedef struct ox_cl_s *ox_cl_t;
 
 #define CL(x)		(x)
@@ -111,26 +106,6 @@ struct ox_oq_item_s {
 
 	ox_oq_item_t next;
 	ox_oq_item_t prev;
-};
-
-/* more generic queues */
-struct ox_item_s {
-	ox_item_t next;
-	ox_item_t prev;
-
-	char data[];
-};
-
-struct ox_dll_s {
-	ox_item_t i1st;
-	ox_item_t ilst;
-};
-
-struct ox_gq_s {
-	ox_item_t items;
-	size_t nitems;
-
-	struct ox_dll_s free[1];
 };
 
 /* client queue, generic */
@@ -164,6 +139,8 @@ struct ox_cl_s {
 static size_t umm_pno = 0;
 static struct ox_cq_s cq = {0};
 static struct ox_oq_s oq = {0};
+
+#include "gq.c"
 
 /* simplistic dllists */
 static size_t __attribute__((const, pure))
@@ -300,131 +277,6 @@ fini_oq(void)
 	return;
 }
 
-
-static size_t __attribute__((const, pure))
-gq_nmemb(size_t mbsz, size_t n)
-{
-	static size_t pgsz = 0;
-
-	if (!pgsz) {
-		pgsz = sysconf(_SC_PAGESIZE);
-	}
-	return (n * mbsz + (pgsz - 1)) & ~(pgsz - 1);
-}
-
-static void
-gq_rbld_dll(ox_dll_t dll, ptrdiff_t df)
-{
-	if (UNLIKELY(df == 0)) {
-		/* thank you thank you thank you */
-		return;
-	}
-
-	if (dll->i1st) {
-		dll->i1st += df;
-	}
-	if (dll->ilst) {
-		dll->ilst += df;
-	}
-	return;
-}
-
-static ptrdiff_t
-gq_rbld(ox_gq_t q, ox_item_t nu_ref, size_t mbsz)
-{
-	ptrdiff_t df = nu_ref - q->items;
-
-	if (UNLIKELY(df == 0)) {
-		/* thank you thank you thank you */
-		return 0;
-	}
-
-	/* rebuild the free dll */
-	gq_rbld_dll(q->free, df);
-	/* hop along all items and up the next and prev pointers */
-	for (char *sp = (void*)nu_ref, *ep = sp + q->nitems; sp < ep; sp += mbsz) {
-		ox_item_t ip = (void*)sp;
-
-		if (ip->next) {
-			ip->next += df;
-		}
-		if (ip->prev) {
-			ip->prev += df;
-		}
-	}
-	return df;
-}
-
-static ptrdiff_t
-init_gq(ox_gq_t q, size_t mbsz, size_t at_least)
-{
-	size_t nusz = gq_nmemb(mbsz, at_least);
-	size_t olsz = q->nitems;
-	ox_item_t ol_items = q->items;
-	ox_item_t nu_items;
-	ptrdiff_t res = 0;
-
-	if (q->nitems > nusz) {
-		return 0;
-	}
-	/* get some new items */
-	nu_items = mmap(ol_items, nusz, PROT_MEM, MAP_MEM, -1, 0);
-
-	if (q->items) {
-		/* aha, resize */
-		memcpy(nu_items, ol_items, olsz);
-
-		/* fix up all lists */
-		res = gq_rbld(q, nu_items, mbsz);
-
-		/* unmap the old guy */
-		munmap(ol_items, olsz);
-	}
-	/* reassign */
-	q->items = nu_items;
-	q->nitems = nusz;
-
-	/* fill up the free list */
-	{
-		char *ep = (char*)nu_items + olsz;
-		ox_item_t eip = (void*)ep;
-
-		for (char *sp = ep, *eep = ep + (nusz - olsz); sp < eep; sp += mbsz) {
-			ox_item_t ip = (void*)sp;
-
-			if (sp + mbsz < eep) {
-				ip->next = (void*)(sp + mbsz);
-			}
-			if ((char*)ip > ep) {
-				ip->prev = (void*)(sp - mbsz);
-			}
-		}
-		/* attach new list to free list */
-		eip->prev = q->free->ilst;
-		if (q->free->ilst) {
-			q->free->ilst->next = eip;
-		} else {
-			assert(q->free->i1st == NULL);
-		}
-		if (q->free->i1st == NULL) {
-			q->free->i1st = eip;
-			q->free->ilst = (void*)(ep + (nusz - olsz - mbsz));
-		}
-	}
-	return res;
-}
-
-static void
-fini_gq(ox_gq_t q)
-{
-	if (q->items) {
-		munmap(q->items, q->nitems);
-		q->items = NULL;
-		q->nitems = 0;
-	}
-	return;
-}
-
 ox_oq_item_t
 pop_head(ox_oq_dll_t dll)
 {
@@ -527,36 +379,6 @@ find_match_oid(ox_oq_dll_t dll, tws_oid_t oid)
 		}
 	}
 	return NULL;
-}
-
-static ox_item_t
-gq_pop_head(ox_dll_t dll)
-{
-	ox_item_t res;
-
-	if ((res = dll->i1st) && (dll->i1st = dll->i1st->next) == NULL) {
-		dll->ilst = NULL;
-	} else if (res) {
-		dll->i1st->prev = NULL;
-	}
-	return res;
-}
-
-static void
-gq_push_tail(ox_dll_t dll, ox_item_t i)
-{
-	if (dll->ilst) {
-		dll->ilst->next = i;
-		i->prev = dll->ilst;
-		i->next = NULL;
-		dll->ilst = i;
-	} else {
-		assert(dll->i1st == NULL);
-		dll->i1st = dll->ilst = i;
-		i->next = NULL;
-		i->prev = NULL;
-	}
-	return;
 }
 
 /* client queue implemented through gq */

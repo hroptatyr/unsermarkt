@@ -95,6 +95,7 @@ tws_disassemble_instr(tws_instr_t ins)
 	IB::Contract *ibi = (IB::Contract*)ins;
 
 	if (ibi) {
+		OX_DEBUG("[glue/contract]: deleting %p\n", ibi);
 		delete ibi;
 	}
 	return;

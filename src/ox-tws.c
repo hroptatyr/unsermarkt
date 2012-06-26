@@ -306,6 +306,13 @@ pop_free(void)
 	return res;
 }
 
+static void
+push_free(ox_oq_item_t i)
+{
+	push_tail(oq.free, i);
+	return;
+}
+
 static bool
 ox_oq_item_matches_p(ox_oq_item_t i, ox_cl_t cl, const_sl1t_t l1t)
 {
@@ -728,7 +735,7 @@ flush_cncd(void)
 
 			/* make sure we free this guy */
 			OX_DEBUG("freeing %p\n", ip);
-			push_tail(oq.free, ip);
+			push_free(ip);
 		}
 		/* and off we go */
 		ud_chan_send_ser(ch, ser);
@@ -777,7 +784,7 @@ flush_flld(void)
 
 			/* make sure we free this guy */
 			OX_DEBUG("freeing %p\n", ip);
-			push_tail(oq.free, ip);
+			push_free(ip);
 		}
 		/* and off we go */
 		ud_chan_send_ser(ch, ser);

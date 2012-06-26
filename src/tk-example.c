@@ -138,8 +138,8 @@ pr_match(umm_pair_t mmp)
 	ffff_m30_s(qty, mmp->l1->qty);
 	inet_ntop(AF_INET6, &mmp->agt[0].addr, buyer, sizeof(buyer));
 	inet_ntop(AF_INET6, &mmp->agt[1].addr, seller, sizeof(seller));
-	bport = mmp->agt[0].port;
-	sport = mmp->agt[1].port;
+	bport = ntohs(mmp->agt[0].port);
+	sport = ntohs(mmp->agt[1].port);
 
 	fprintf(stdout, "MATCH\tB:[%s]:%hu+%hu\tS:[%s]:%hu+%hu\t%s\t%s\n",
 		buyer, bport, mmp->agt[0].uidx,

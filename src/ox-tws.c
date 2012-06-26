@@ -386,11 +386,29 @@ udpc_seria_add_umm(udpc_seria_t sctx, umm_pair_t p)
 	return;
 }
 
+static inline void
+udpc_seria_add_sl1t(udpc_seria_t sctx, const_sl1t_t s)
+{
+	memcpy(sctx->msg + sctx->msgoff, s, sizeof(*s));
+	sctx->msgoff += sizeof(*s);
+	return;
+}
+
 static void
 prep_umm_flld(umm_pair_t mmp, ox_oq_item_t ip)
 {
+/* take information from IP and populate a match message in MMP
+ * the contents of IP will be modified */
 	uint16_t ttf = sl1t_ttf(ip->l1t);
+	struct timeval now[1];
 
+	/* time, anyone? */
+	(void)gettimeofday(now, NULL);
+
+	/* massage the tick so it fits both sides of the pair */
+	sl1t_set_ttf(ip->l1t, SL1T_TTF_TRA);
+	sl1t_set_stmp_sec(ip->l1t, now->tv_sec);
+	sl1t_set_stmp_msec(ip->l1t, now->tv_usec / 1000);
 	/* copy the whole tick */
 	memcpy(mmp->l1, ip->l1t, sizeof(*ip->l1t));
 
@@ -630,11 +648,13 @@ flush_flld(void)
 {
 /* disseminate match messages */
 	static char rpl[UDPC_PKTLEN];
+	static char sta[UDPC_PKTLEN];
 	struct udpc_seria_s ser[1];
+	struct udpc_seria_s scs[1];
 
 #define PKT(x)		((ud_packet_t){sizeof(x), x})
-	udpc_make_pkt(PKT(rpl), 0, umm_pno++, UMM);
-#define MAKE_PKT(x)							\
+#define MAKE_PKT(ser, cmd, x)						\
+	udpc_make_pkt(PKT(x), 0, umm_pno++, cmd);			\
 	udpc_set_data_pkt(PKT(x));					\
 	udpc_seria_init(ser, UDPC_PAYLOAD(x), UDPC_PAYLLEN(sizeof(x)))
 
@@ -642,7 +662,8 @@ flush_flld(void)
 		struct umm_pair_s mmp[1];
 		ud_chan_t ch = ip->cl->ch;
 
-		MAKE_PKT(rpl);
+		MAKE_PKT(ser, UMM, rpl);
+		MAKE_PKT(scs, UTE, sta);
 		for (; ip; ip = ip->next) {
 			/* skip messages not meant for this channel */
 			if (ip->cl->ch != ch) {
@@ -655,12 +676,16 @@ flush_flld(void)
 			prep_umm_flld(mmp, ip);
 			udpc_seria_add_umm(ser, mmp);
 
+			/* also prepare a TRA message */
+			udpc_seria_add_sl1t(scs, ip->l1t);
+
 			/* make sure we free this guy */
 			OX_DEBUG("freeing %p\n", ip);
 			push_tail(oq.free, ip);
 		}
 		/* and off we go */
 		ud_chan_send_ser(ch, ser);
+		ud_chan_send_ser(ch, scs);
 	}
 	return;
 }

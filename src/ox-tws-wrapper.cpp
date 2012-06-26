@@ -393,7 +393,7 @@ __wrapper::execDetailsEnd(int req_id)
 void
 __wrapper::error(const int id, const int code, const IB::IBString msg)
 {
-	WRP_DEBUG("code <- %i: %s", code, msg.c_str());
+	WRP_DEBUG("id %d: code <- %i: %s", id, code, msg.c_str());
 	return;
 }
 

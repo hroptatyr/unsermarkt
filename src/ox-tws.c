@@ -329,7 +329,7 @@ ox_oq_item_matches_p(ox_oq_item_t i, ox_cl_t cl, const_sl1t_t l1t)
 		l1t->pri == i->l1t->pri;
 }
 
-static void
+void
 pop_item(ox_oq_dll_t dll, ox_oq_item_t ip)
 {
 	/* found him */
@@ -362,16 +362,41 @@ pop_match_cl_l1t(ox_oq_dll_t dll, ox_cl_t cl, const_sl1t_t l1t)
 }
 
 ox_oq_item_t
-pop_match_oid(ox_oq_dll_t dll, tws_oid_t oid)
+find_match_oid(ox_oq_dll_t dll, tws_oid_t oid)
 {
 	for (ox_oq_item_t ip = dll->i1st; ip; ip = ip->next) {
 		if (ip->oid == oid) {
 			/* found him */
-			pop_item(dll, ip);
 			return ip;
 		}
 	}
 	return NULL;
+}
+
+
+/* ox item fiddlers */
+void
+set_prc(ox_oq_item_t ip, double pri)
+{
+	ip->l1t->pri = ffff_m30_get_d(pri).u;
+	return;
+}
+
+void
+set_qty(ox_oq_item_t ip, double qty)
+{
+	ip->l1t->qty = ffff_m30_get_d(qty).u;
+	return;
+}
+
+ox_oq_item_t
+clone_item(ox_oq_item_t ip)
+{
+	ox_oq_item_t res = pop_free();
+
+	memcpy(res, ip, sizeof(*ip));
+	res->next = res->prev = NULL;
+	return res;
 }
 
 

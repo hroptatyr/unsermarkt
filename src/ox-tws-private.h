@@ -66,9 +66,15 @@ struct ox_oq_s {
 extern "C" {
 #endif	/* __cplusplus */
 
-extern ox_oq_item_t pop_match_oid(ox_oq_dll_t, tws_oid_t);
+extern ox_oq_item_t find_match_oid(ox_oq_dll_t, tws_oid_t);
 extern ox_oq_item_t pop_head(ox_oq_dll_t);
 extern void push_tail(ox_oq_dll_t, ox_oq_item_t);
+extern void pop_item(ox_oq_dll_t, ox_oq_item_t);
+extern ox_oq_item_t clone_item(ox_oq_item_t);
+
+/* to indicate actual execution prices and sizes */
+extern void set_prc(ox_oq_item_t, double pri);
+extern void set_qty(ox_oq_item_t, double qty);
 
 #if defined __cplusplus
 }

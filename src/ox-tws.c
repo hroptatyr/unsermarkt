@@ -78,9 +78,11 @@
 #if defined DEBUG_FLAG
 # include <assert.h>
 # define OX_DEBUG(args...)	fprintf(logerr, args)
+# define MAYBE_NOINLINE		__attribute__((noinline))
 #else  /* !DEBUG_FLAG */
 # define OX_DEBUG(args...)
 # define assert(x)
+# define MAYBE_NOINLINE
 #endif	/* DEBUG_FLAG */
 void *logerr;
 
@@ -172,6 +174,35 @@ rbld_dll(ox_oq_dll_t dll, ox_oq_item_t nu_ref, ox_oq_item_t ol_ref)
 }
 
 static void
+check_oq(void)
+{
+#if defined DEBUG_FLAG
+	/* count all items */
+	size_t ni = 0;
+
+	for (ox_oq_item_t ip = oq.free->i1st; ip; ip = ip->next, ni++);
+	for (ox_oq_item_t ip = oq.unpr->i1st; ip; ip = ip->next, ni++);
+	for (ox_oq_item_t ip = oq.sent->i1st; ip; ip = ip->next, ni++);
+	for (ox_oq_item_t ip = oq.ackd->i1st; ip; ip = ip->next, ni++);
+	for (ox_oq_item_t ip = oq.cncd->i1st; ip; ip = ip->next, ni++);
+	for (ox_oq_item_t ip = oq.flld->i1st; ip; ip = ip->next, ni++);
+	OX_DEBUG("forw %zu oall\n", ni);
+	assert(ni == oq.nitems);
+
+	ni = 0;
+	for (ox_oq_item_t ip = oq.free->ilst; ip; ip = ip->prev, ni++);
+	for (ox_oq_item_t ip = oq.unpr->ilst; ip; ip = ip->prev, ni++);
+	for (ox_oq_item_t ip = oq.sent->ilst; ip; ip = ip->prev, ni++);
+	for (ox_oq_item_t ip = oq.ackd->ilst; ip; ip = ip->prev, ni++);
+	for (ox_oq_item_t ip = oq.cncd->ilst; ip; ip = ip->prev, ni++);
+	for (ox_oq_item_t ip = oq.flld->ilst; ip; ip = ip->prev, ni++);
+	OX_DEBUG("back %zu oall\n", ni);
+	assert(ni == oq.nitems);
+#endif	/* DEBUG_FLAG */
+	return;
+}
+
+static void
 init_oq(size_t at_least)
 {
 #define PROT_MEM	(PROT_READ | PROT_WRITE)
@@ -230,40 +261,7 @@ init_oq(size_t at_least)
 		oq.free->i1st = ep;
 		oq.free->ilst = ep + (nu - ol - 1);
 	}
-
-#if defined DEBUG_FLAG
-	/* count all items */
-	size_t ni = 0;
-
-	for (ox_oq_item_t ip = oq.free->i1st; ip; ip = ip->next, ni++);
-	OX_DEBUG("%zu free\n", ni);
-	for (ox_oq_item_t ip = oq.unpr->i1st; ip; ip = ip->next, ni++);
-	OX_DEBUG("%zu unpr\n", ni);
-	for (ox_oq_item_t ip = oq.sent->i1st; ip; ip = ip->next, ni++);
-	OX_DEBUG("%zu sent\n", ni);
-	for (ox_oq_item_t ip = oq.ackd->i1st; ip; ip = ip->next, ni++);
-	OX_DEBUG("%zu ackd\n", ni);
-	for (ox_oq_item_t ip = oq.cncd->i1st; ip; ip = ip->next, ni++);
-	OX_DEBUG("%zu cncd\n", ni);
-	for (ox_oq_item_t ip = oq.flld->i1st; ip; ip = ip->next, ni++);
-	OX_DEBUG("%zu oall\n", ni);
-	assert(ni == oq.nitems);
-
-	ni = 0;
-	for (ox_oq_item_t ip = oq.free->ilst; ip; ip = ip->prev, ni++);
-	OX_DEBUG("%zu free\n", ni);
-	for (ox_oq_item_t ip = oq.unpr->ilst; ip; ip = ip->prev, ni++);
-	OX_DEBUG("%zu unpr\n", ni);
-	for (ox_oq_item_t ip = oq.sent->ilst; ip; ip = ip->prev, ni++);
-	OX_DEBUG("%zu sent\n", ni);
-	for (ox_oq_item_t ip = oq.ackd->ilst; ip; ip = ip->prev, ni++);
-	OX_DEBUG("%zu ackd\n", ni);
-	for (ox_oq_item_t ip = oq.cncd->ilst; ip; ip = ip->prev, ni++);
-	OX_DEBUG("%zu cncd\n", ni);
-	for (ox_oq_item_t ip = oq.flld->ilst; ip; ip = ip->prev, ni++);
-	OX_DEBUG("%zu oall\n", ni);
-	assert(ni == oq.nitems);
-#endif	/* DEBUG_FLAG */
+	check_oq();
 	return;
 }
 
@@ -331,7 +329,7 @@ ox_oq_item_matches_p(ox_oq_item_t i, ox_cl_t cl, const_sl1t_t l1t)
 		l1t->pri == i->l1t->pri;
 }
 
-static void
+void
 pop_item(ox_oq_dll_t dll, ox_oq_item_t ip)
 {
 	/* found him */
@@ -364,12 +362,11 @@ pop_match_cl_l1t(ox_oq_dll_t dll, ox_cl_t cl, const_sl1t_t l1t)
 }
 
 ox_oq_item_t
-pop_match_oid(ox_oq_dll_t dll, tws_oid_t oid)
+find_match_oid(ox_oq_dll_t dll, tws_oid_t oid)
 {
 	for (ox_oq_item_t ip = dll->i1st; ip; ip = ip->next) {
 		if (ip->oid == oid) {
 			/* found him */
-			pop_item(dll, ip);
 			return ip;
 		}
 	}
@@ -377,11 +374,79 @@ pop_match_oid(ox_oq_dll_t dll, tws_oid_t oid)
 }
 
 
+/* ox item fiddlers */
+void
+set_prc(ox_oq_item_t ip, double pri)
+{
+	ip->l1t->pri = ffff_m30_get_d(pri).u;
+	return;
+}
+
+void
+set_qty(ox_oq_item_t ip, double qty)
+{
+	ip->l1t->qty = ffff_m30_get_d(qty).u;
+	return;
+}
+
+ox_oq_item_t
+clone_item(ox_oq_item_t ip)
+{
+	ox_oq_item_t res = pop_free();
+
+	memcpy(res, ip, sizeof(*ip));
+	res->next = res->prev = NULL;
+	return res;
+}
+
+
+static struct umm_agt_s UNUSED(voidagt) = {0};
+static struct umm_agt_s counter = {0};
+
 static inline void
 udpc_seria_add_umm(udpc_seria_t sctx, umm_pair_t p)
 {
 	memcpy(sctx->msg + sctx->msgoff, p, sizeof(*p));
 	sctx->msgoff += sizeof(*p);
+	return;
+}
+
+static inline void
+udpc_seria_add_sl1t(udpc_seria_t sctx, const_sl1t_t s)
+{
+	memcpy(sctx->msg + sctx->msgoff, s, sizeof(*s));
+	sctx->msgoff += sizeof(*s);
+	return;
+}
+
+static void
+prep_umm_flld(umm_pair_t mmp, ox_oq_item_t ip)
+{
+/* take information from IP and populate a match message in MMP
+ * the contents of IP will be modified */
+	uint16_t ttf = sl1t_ttf(ip->l1t);
+	struct timeval now[1];
+
+	/* time, anyone? */
+	(void)gettimeofday(now, NULL);
+
+	/* massage the tick so it fits both sides of the pair */
+	sl1t_set_ttf(ip->l1t, SL1T_TTF_TRA);
+	sl1t_set_stmp_sec(ip->l1t, now->tv_sec);
+	sl1t_set_stmp_msec(ip->l1t, now->tv_usec / 1000);
+	/* copy the whole tick */
+	memcpy(mmp->l1, ip->l1t, sizeof(*ip->l1t));
+
+	if (ttf == SL1T_TTF_BID || ttf == SL2T_TTF_BID) {
+		mmp->agt[0] = ip->cl->agt;
+		mmp->agt[1] = counter;
+	} else if (ttf == SL1T_TTF_ASK || ttf == SL2T_TTF_ASK) {
+		mmp->agt[0] = counter;
+		mmp->agt[1] = ip->cl->agt;
+	} else {
+		OX_DEBUG("uh oh, ttf is %hx\n", ttf);
+		abort();
+	}
 	return;
 }
 
@@ -591,61 +656,61 @@ flush_queue(my_tws_t tws)
 	return;
 }
 
-static void
+static MAYBE_NOINLINE void
 flush_cncd(void)
 {
-	static char rpl[UDPC_PKTLEN];
-	struct udpc_seria_s ser[1];
-	ud_chan_t cur_ch = NULL;
-
-#define PKT(x)		((ud_packet_t){sizeof(x), x})
-	udpc_make_pkt(PKT(rpl), 0, umm_pno++, UMM);
-#define MAKE_PKT(x)							\
-	udpc_set_data_pkt(PKT(x));					\
-	udpc_seria_init(ser, UDPC_PAYLOAD(x), UDPC_PAYLLEN(sizeof(x)))
-
-	for (ox_oq_item_t ip, nex = NULL; (ip = pop_head(oq.cncd));) {
-		/* send cancellation match message */
-		struct umm_pair_s mmp[1];
-		uint16_t ttf = sl1t_ttf(ip->l1t);
-
-		if (cur_ch == NULL || ip == nex) {
-			/* send the old guy */
-			if (cur_ch) {
-				ud_chan_send_ser(cur_ch, ser);
-			}
-			cur_ch = ip->cl->ch;
-			MAKE_PKT(rpl);
-			nex = NULL;
-		} else if (cur_ch != ip->cl->ch) {
-			/* later */
-			if (nex == NULL) {
-				nex = ip;
-			}
-			push_tail(oq.cncd, ip);
-			continue;
-		}
-
-		memcpy(mmp->l1, ip->l1t, sizeof(*ip->l1t));
-		if (ttf == SL1T_TTF_BID || ttf == SL2T_TTF_BID) {
-			mmp->agt[0] = ip->cl->agt;
-			memset(mmp->agt + 1, 0, sizeof(*mmp->agt));
-		} else if (ttf == SL1T_TTF_ASK || ttf == SL2T_TTF_ASK) {
-			memset(mmp->agt + 0, 0, sizeof(*mmp->agt));
-			mmp->agt[1] = ip->cl->agt;
-		} else {
-			OX_DEBUG("uh oh, ttf is %hx\n", ttf);
-			memset(mmp->agt, 0, 2 * sizeof(*mmp->agt));
-			abort();
-		}
-		udpc_seria_add_umm(ser, mmp);
-
+/* cancels need no re-confirmation, do they? */
+	for (ox_oq_item_t ip; (ip = pop_head(oq.cncd));) {
 		/* make sure we free this guy */
 		OX_DEBUG("freeing %p\n", ip);
 		push_tail(oq.free, ip);
 	}
-	if (cur_ch) {
-		ud_chan_send_ser(cur_ch, ser);
+	return;
+}
+
+static MAYBE_NOINLINE void
+flush_flld(void)
+{
+/* disseminate match messages */
+	static char rpl[UDPC_PKTLEN];
+	static char sta[UDPC_PKTLEN];
+	struct udpc_seria_s ser[1];
+	struct udpc_seria_s scs[1];
+
+#define PKT(x)		((ud_packet_t){sizeof(x), x})
+#define MAKE_PKT(ser, cmd, x)						\
+	udpc_make_pkt(PKT(x), 0, umm_pno++, cmd);			\
+	udpc_set_data_pkt(PKT(x));					\
+	udpc_seria_init(ser, UDPC_PAYLOAD(x), UDPC_PAYLLEN(sizeof(x)))
+
+	for (ox_oq_item_t ip; (ip = oq.flld->i1st);) {
+		struct umm_pair_s mmp[1];
+		ud_chan_t ch = ip->cl->ch;
+
+		MAKE_PKT(ser, UMM, rpl);
+		MAKE_PKT(scs, UTE, sta);
+		for (; ip; ip = ip->next) {
+			/* skip messages not meant for this channel */
+			if (ip->cl->ch != ch) {
+				continue;
+			}
+
+			/* pop the item */
+			pop_item(oq.flld, ip);
+
+			prep_umm_flld(mmp, ip);
+			udpc_seria_add_umm(ser, mmp);
+
+			/* also prepare a TRA message */
+			udpc_seria_add_sl1t(scs, ip->l1t);
+
+			/* make sure we free this guy */
+			OX_DEBUG("freeing %p\n", ip);
+			push_tail(oq.free, ip);
+		}
+		/* and off we go */
+		ud_chan_send_ser(ch, ser);
+		ud_chan_send_ser(ch, scs);
 	}
 	return;
 }
@@ -710,10 +775,18 @@ prep_cb(EV_P_ ev_prepare *w, int UNUSED(revents))
 {
 	my_tws_t tws = w->data;
 
+	/* check the queue integrity */
+	check_oq();
+
 	/* maybe we've got something up our sleeve */
 	flush_queue(tws);
+	/* inform everyone about fills */
+	flush_flld();
 	/* check cancellation list */
 	flush_cncd();
+
+	/* and check the queue's integrity again */
+	check_oq();
 	return;
 }
 
@@ -908,6 +981,16 @@ main(int argc, char *argv[])
 
 		/* make sure we know about the global order queue */
 		tws->oq = &oq;
+		/* also hand out details to the COUNTER struct */
+		{
+			union ud_sockaddr_u sa;
+			socklen_t ss = sizeof(sa);
+
+			getsockname(s, &sa.sa, &ss);
+			counter.addr = sa.sa6.sin6_addr;
+			counter.port = htons(port);
+			counter.uidx = 0;
+		}
 	}
 
 	/* now wait for events to arrive */

@@ -118,21 +118,6 @@ struct ox_oq_item_s {
 };
 
 
-/* the actual core */
-#define UTE_LE		(0x7574)
-#define UTE_BE		(0x5554)
-#define QMETA		(0x7572)
-#define QMETA_RPL	(UDPC_PKT_RPL(QMETA))
-#if defined WORDS_BIGENDIAN
-# define UTE		UTE_BE
-#else  /* !WORDS_BIGENDIAN */
-# define UTE		UTE_LE
-#endif	/* WORDS_BIGENDIAN */
-#define UTE_RPL		(UDPC_PKT_RPL(UTE))
-/* unsermarkt match messages */
-#define UMM		(0x7576)
-#define UMM_RPL		(UDPC_PKT_RPL(UMM))
-
 static struct ox_cl_s cls[64] = {0};
 static size_t ncls = 0;
 static size_t umm_pno = 0;
@@ -400,6 +385,21 @@ clone_item(ox_oq_item_t ip)
 }
 
 
+/* the actual core */
+#define UTE_LE		(0x7574)
+#define UTE_BE		(0x5554)
+#define QMETA		(0x7572)
+#define QMETA_RPL	(UDPC_PKT_RPL(QMETA))
+#if defined WORDS_BIGENDIAN
+# define UTE		UTE_BE
+#else  /* !WORDS_BIGENDIAN */
+# define UTE		UTE_LE
+#endif	/* WORDS_BIGENDIAN */
+#define UTE_RPL		(UDPC_PKT_RPL(UTE))
+/* unsermarkt match messages */
+#define UMM		(0x7576)
+#define UMM_RPL		(UDPC_PKT_RPL(UMM))
+
 static struct umm_agt_s UNUSED(voidagt) = {0};
 static struct umm_agt_s counter = {0};
 

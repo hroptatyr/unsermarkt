@@ -179,32 +179,22 @@ check_oq(void)
 	size_t ni = 0;
 
 	for (ox_oq_item_t ip = oq.free->i1st; ip; ip = ip->next, ni++);
-	OX_DEBUG("%zu free\n", ni);
 	for (ox_oq_item_t ip = oq.unpr->i1st; ip; ip = ip->next, ni++);
-	OX_DEBUG("%zu unpr\n", ni);
 	for (ox_oq_item_t ip = oq.sent->i1st; ip; ip = ip->next, ni++);
-	OX_DEBUG("%zu sent\n", ni);
 	for (ox_oq_item_t ip = oq.ackd->i1st; ip; ip = ip->next, ni++);
-	OX_DEBUG("%zu ackd\n", ni);
 	for (ox_oq_item_t ip = oq.cncd->i1st; ip; ip = ip->next, ni++);
-	OX_DEBUG("%zu cncd\n", ni);
 	for (ox_oq_item_t ip = oq.flld->i1st; ip; ip = ip->next, ni++);
-	OX_DEBUG("%zu oall\n", ni);
+	OX_DEBUG("forw %zu oall\n", ni);
 	assert(ni == oq.nitems);
 
 	ni = 0;
 	for (ox_oq_item_t ip = oq.free->ilst; ip; ip = ip->prev, ni++);
-	OX_DEBUG("%zu free\n", ni);
 	for (ox_oq_item_t ip = oq.unpr->ilst; ip; ip = ip->prev, ni++);
-	OX_DEBUG("%zu unpr\n", ni);
 	for (ox_oq_item_t ip = oq.sent->ilst; ip; ip = ip->prev, ni++);
-	OX_DEBUG("%zu sent\n", ni);
 	for (ox_oq_item_t ip = oq.ackd->ilst; ip; ip = ip->prev, ni++);
-	OX_DEBUG("%zu ackd\n", ni);
 	for (ox_oq_item_t ip = oq.cncd->ilst; ip; ip = ip->prev, ni++);
-	OX_DEBUG("%zu cncd\n", ni);
 	for (ox_oq_item_t ip = oq.flld->ilst; ip; ip = ip->prev, ni++);
-	OX_DEBUG("%zu oall\n", ni);
+	OX_DEBUG("back %zu oall\n", ni);
 	assert(ni == oq.nitems);
 #endif	/* DEBUG_FLAG */
 	return;

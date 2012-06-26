@@ -21,6 +21,8 @@
 #include <unserding/protocore.h>
 #include "nifty.h"
 
+#define MAYBE_UNUSED	__attribute__((unused))
+
 struct xmpl_s {
 	ud_chan_t ud;
 	int epfd;
@@ -45,10 +47,27 @@ struct xmpl_s {
 static unsigned int pno = 0;
 
 static const char syms[][6] = {
-	"EURUSD",
 	"GBPUSD",
-	"USDJPY",
+	"USDNOK",
+	"USDSEK",
 	"USDCHF",
+	"AUDUSD",
+	"USDCAD",
+	"EURUSD",
+	"EURCHF",
+	"NZDUSD",
+	"EURGBP",
+	"EURAUD",
+	"EURSEK",
+	"AUDCHF",
+	"AUDCAD",
+	"EURNOK",
+
+#define FIRST_SELL	16
+	"GBPCAD",
+	"EURCAD",
+	"GBPNOK",
+	"USDDKK",
 };
 
 static inline void
@@ -79,6 +98,7 @@ shout_syms(const struct xmpl_s *ctx)
 
 
 static jmp_buf jb;
+#define work		work_all
 
 static void
 handle_sigint(int signum)
@@ -99,8 +119,8 @@ post_work(const struct xmpl_s *UNUSED(ctx))
 	return 0;
 }
 
-static void
-work(const struct xmpl_s *ctx)
+static void MAYBE_UNUSED
+work_all(const struct xmpl_s *ctx)
 {
 /* generate market orders */
 	struct udpc_seria_s ser[1];
@@ -113,7 +133,72 @@ work(const struct xmpl_s *ctx)
 	udpc_seria_init(ser, UDPC_PAYLOAD(buf), UDPC_PLLEN)
 
 	/* just a few rounds of market orders */
-	for (size_t k = 0; k < 120; k++) {
+	for (size_t k = 0; k < -1UL; k++) {
+		struct sl1t_s t[1];
+
+		/* first of all announce ourselves */
+		if ((k % 10) == 0) {
+			shout_syms(ctx);
+		}
+		RESET_SER;
+		gettimeofday(now, NULL);
+		sl1t_set_stmp_sec(t, now->tv_sec);
+		sl1t_set_stmp_msec(t, 0);
+		sl1t_set_ttf(t, SL1T_TTF_BID);
+		for (size_t i = 1; i <= countof(syms); i++) {
+			sl1t_set_tblidx(t, i);
+			t->pri = SL1T_PRC_MKT;
+			t->qty = ffff_m30_get_d(1.0).u;
+
+			if (i == FIRST_SELL) {
+				sl1t_set_ttf(t, SL1T_TTF_ASK);
+			}
+
+			udpc_seria_add_scom(ser, AS_SCOM(t), sizeof(*t));
+		}
+		ud_chan_send_ser(ctx->ud, ser);
+		sleep(2);
+
+#if 0
+		RESET_SER;
+		gettimeofday(now, NULL);
+		sl1t_set_stmp_sec(t, now->tv_sec);
+		sl1t_set_stmp_msec(t, 0);
+		sl1t_set_ttf(t, SL1T_TTF_BID);
+		for (size_t i = 1; i <= countof(syms); i++) {
+			sl1t_set_tblidx(t, i);
+			t->pri = SL1T_PRC_MKT;
+			t->qty = 0;
+
+			if (i == FIRST_SELL) {
+				sl1t_set_ttf(t, SL1T_TTF_ASK);
+			}
+
+			udpc_seria_add_scom(ser, AS_SCOM(t), sizeof(*t));
+		}
+		ud_chan_send_ser(ctx->ud, ser);
+		sleep(5);
+#endif
+	}
+
+	return;
+}
+
+static void MAYBE_UNUSED
+work_EURUSD(const struct xmpl_s *ctx)
+{
+/* generate market orders */
+	struct udpc_seria_s ser[1];
+	static char buf[UDPC_PKTLEN];
+	static ud_packet_t pkt = {0, buf};
+	struct timeval now[1];
+
+#define RESET_SER						\
+	udpc_make_pkt(pkt, 0, pno++, UTE);			\
+	udpc_seria_init(ser, UDPC_PAYLOAD(buf), UDPC_PLLEN)
+
+	/* just a few rounds of market orders */
+	for (size_t k = 0; k < -1UL; k++) {
 		struct sl1t_s t[1];
 
 		/* first of all announce ourselves */
@@ -123,10 +208,15 @@ work(const struct xmpl_s *ctx)
 		sl1t_set_stmp_sec(t, now->tv_sec);
 		sl1t_set_stmp_msec(t, 0);
 		sl1t_set_ttf(t, SL1T_TTF_BID);
-		for (size_t i = 1; i <= countof(syms); i++) {
+		{
+			size_t i = 7;
 			sl1t_set_tblidx(t, i);
 			t->pri = SL1T_PRC_MKT;
-			t->qty = ffff_m30_get_d(10.0).u;
+			t->qty = ffff_m30_get_d(1.0).u;
+
+			if (i == FIRST_SELL) {
+				sl1t_set_ttf(t, SL1T_TTF_ASK);
+			}
 
 			udpc_seria_add_scom(ser, AS_SCOM(t), sizeof(*t));
 		}

@@ -759,7 +759,7 @@ flush_flld(void)
 		ud_chan_t ch = ip->cl->ch;
 
 		MAKE_PKT(ser, UMM, rpl);
-		MAKE_PKT(scs, UTE, sta);
+		MAKE_PKT(scs, UTE_RPL, sta);
 		for (; ip; ip = ip->next) {
 			/* skip messages not meant for this channel */
 			if (ip->cl->ch != ch) {

@@ -78,9 +78,11 @@
 #if defined DEBUG_FLAG
 # include <assert.h>
 # define OX_DEBUG(args...)	fprintf(logerr, args)
+# define MAYBE_NOINLINE		__attribute__((noinline))
 #else  /* !DEBUG_FLAG */
 # define OX_DEBUG(args...)
 # define assert(x)
+# define MAYBE_NOINLINE
 #endif	/* DEBUG_FLAG */
 void *logerr;
 
@@ -587,7 +589,7 @@ flush_queue(my_tws_t tws)
 	return;
 }
 
-static void
+static MAYBE_NOINLINE void
 flush_cncd(void)
 {
 	static char rpl[UDPC_PKTLEN];

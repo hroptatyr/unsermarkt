@@ -63,11 +63,10 @@
 #include "ox-tws-wrapper.h"
 #include "ox-tws-private.h"
 
-#define TWSAPI_IPV6	1
+#define TWSAPI_IPV6		1
 
-extern "C" {
-extern int tws_reconcile(my_tws_t);
-}
+#define QTY_MULTIPLIER		(100000)
+#define QTY_MULTIPLIER_D	((double)QTY_MULTIPLIER)
 
 class __wrapper: public IB::EWrapper
 {
@@ -246,11 +245,22 @@ msg_ackd_p(const char *msg)
 	return strcmp(msg, subm) == 0 || strcmp(msg, pres) == 0;
 }
 
+static ox_oq_item_t
+pop_match_oid(ox_oq_dll_t dll, tws_oid_t oid)
+{
+	ox_oq_item_t ip;
+
+	if ((ip = find_match_oid(dll, oid))) {
+		pop_item(dll, ip);
+	}
+	return ip;
+}
+
 void
 __wrapper::orderStatus(
 	IB::OrderId oid, const IB::IBString &status,
-	int filled, int remaining, double avgFillPrice, int permId,
-	int parentId, double lastFillPrice, int clientId,
+	int flld, int remn, double avg_fill_prc, int permId,
+	int parentId, double last_fill_prc, int clientId,
 	const IB::IBString& whyHeld)
 {
 	my_tws_t tws = this->ctx;
@@ -258,7 +268,7 @@ __wrapper::orderStatus(
 	ox_oq_t oq = (ox_oq_t)tws->oq;
 	tws_oid_t roid = (tws_oid_t)oid;
 
-	WRP_DEBUG("ostatus %li  %s  f:%d  r:%d", oid, msg, filled, remaining);
+	WRP_DEBUG("ostatus %li  %s  f:%d  r:%d", oid, msg, flld, remn);
 
 	if (msg_cncd_p(msg)) {
 		ox_oq_item_t ip;
@@ -270,15 +280,28 @@ __wrapper::orderStatus(
 		}
 	} else if (msg_flld_p(msg)) {
 		ox_oq_item_t ip;
+		ox_oq_dll_t dll;
 
-		if ((ip = pop_match_oid(oq->ackd, roid)) ||
-		    (ip = pop_match_oid(oq->sent, roid))) {
+		// we must not change the order of the orders
+		if ((ip = find_match_oid(dll = oq->ackd, roid)) ||
+		    (ip = find_match_oid(dll = oq->sent, roid))) {
+			ox_oq_item_t nu_ip;
+
 			WRP_DEBUG("FLLD %p <-> %u", ip, roid);
-			push_tail(oq->flld, ip);
-			if (remaining > 0) {
+
+			if (remn == 0) {
+				/* pop it, so it's out of our ackd queue */
+				pop_item(dll, nu_ip = ip);
+			} else {
 				/* split the order */
-				;
+				nu_ip = clone_item(ip);
+				set_qty(ip, (double)remn / QTY_MULTIPLIER_D);
 			}
+			set_qty(nu_ip, (double)flld / QTY_MULTIPLIER_D);
+			set_prc(nu_ip, last_fill_prc);
+			push_tail(oq->flld, nu_ip);
+		} else {
+			WRP_DEBUG("FILL for unknown order %u\n", roid);
 		}
 	} else if (msg_ackd_p(msg)) {
 		ox_oq_item_t ip;
@@ -393,7 +416,7 @@ __wrapper::execDetailsEnd(int req_id)
 void
 __wrapper::error(const int id, const int code, const IB::IBString msg)
 {
-	WRP_DEBUG("code <- %i: %s", code, msg.c_str());
+	WRP_DEBUG("id %d: code <- %i: %s", id, code, msg.c_str());
 	return;
 }
 
@@ -644,7 +667,7 @@ tws_put_order(my_tws_t tws, tws_order_t o)
 
 		__o.totalQuantity = ffff_m30_d(m);
 		// as this is currency only, we're probably talking lots
-		__o.totalQuantity *= 100000;
+		__o.totalQuantity *= QTY_MULTIPLIER;
 
 		cli->placeOrder(o->oid, *__c, __o);
 	} else {

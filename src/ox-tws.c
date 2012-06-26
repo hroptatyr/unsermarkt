@@ -592,58 +592,11 @@ flush_queue(my_tws_t tws)
 static MAYBE_NOINLINE void
 flush_cncd(void)
 {
-	static char rpl[UDPC_PKTLEN];
-	struct udpc_seria_s ser[1];
-	ud_chan_t cur_ch = NULL;
-
-#define PKT(x)		((ud_packet_t){sizeof(x), x})
-	udpc_make_pkt(PKT(rpl), 0, umm_pno++, UMM);
-#define MAKE_PKT(x)							\
-	udpc_set_data_pkt(PKT(x));					\
-	udpc_seria_init(ser, UDPC_PAYLOAD(x), UDPC_PAYLLEN(sizeof(x)))
-
-	for (ox_oq_item_t ip, nex = NULL; (ip = pop_head(oq.cncd));) {
-		/* send cancellation match message */
-		struct umm_pair_s mmp[1];
-		uint16_t ttf = sl1t_ttf(ip->l1t);
-
-		if (cur_ch == NULL || ip == nex) {
-			/* send the old guy */
-			if (cur_ch) {
-				ud_chan_send_ser(cur_ch, ser);
-			}
-			cur_ch = ip->cl->ch;
-			MAKE_PKT(rpl);
-			nex = NULL;
-		} else if (cur_ch != ip->cl->ch) {
-			/* later */
-			if (nex == NULL) {
-				nex = ip;
-			}
-			push_tail(oq.cncd, ip);
-			continue;
-		}
-
-		memcpy(mmp->l1, ip->l1t, sizeof(*ip->l1t));
-		if (ttf == SL1T_TTF_BID || ttf == SL2T_TTF_BID) {
-			mmp->agt[0] = ip->cl->agt;
-			memset(mmp->agt + 1, 0, sizeof(*mmp->agt));
-		} else if (ttf == SL1T_TTF_ASK || ttf == SL2T_TTF_ASK) {
-			memset(mmp->agt + 0, 0, sizeof(*mmp->agt));
-			mmp->agt[1] = ip->cl->agt;
-		} else {
-			OX_DEBUG("uh oh, ttf is %hx\n", ttf);
-			memset(mmp->agt, 0, 2 * sizeof(*mmp->agt));
-			abort();
-		}
-		udpc_seria_add_umm(ser, mmp);
-
+/* cancels need no re-confirmation, do they? */
+	for (ox_oq_item_t ip; (ip = pop_head(oq.cncd));) {
 		/* make sure we free this guy */
 		OX_DEBUG("freeing %p\n", ip);
 		push_tail(oq.free, ip);
-	}
-	if (cur_ch) {
-		ud_chan_send_ser(cur_ch, ser);
 	}
 	return;
 }

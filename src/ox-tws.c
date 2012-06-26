@@ -750,12 +750,18 @@ prep_cb(EV_P_ ev_prepare *w, int UNUSED(revents))
 {
 	my_tws_t tws = w->data;
 
+	/* check the queue integrity */
+	check_oq();
+
 	/* maybe we've got something up our sleeve */
 	flush_queue(tws);
 	/* inform everyone about fills */
 	flush_flld();
 	/* check cancellation list */
 	flush_cncd();
+
+	/* and check the queue's integrity again */
+	check_oq();
 	return;
 }
 

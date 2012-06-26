@@ -8,6 +8,7 @@
 /* for gettimeofday() */
 #include <sys/time.h>
 #include <sys/epoll.h>
+#define DEFINE_GORY_STUFF
 #if defined HAVE_UTERUS_UTERUS_H
 # include <uterus/uterus.h>
 # include <uterus/m30.h>
@@ -19,6 +20,7 @@
 #endif	/* HAVE_UTERUS_UTERUS_H || HAVE_UTERUS_H */
 #include <unserding/unserding.h>
 #include <unserding/protocore.h>
+#include "match.h"
 #include "nifty.h"
 
 #define MAYBE_UNUSED	__attribute__((unused))
@@ -96,6 +98,84 @@ shout_syms(const struct xmpl_s *ctx)
 	return;
 }
 
+static int
+tv_diff(struct timeval *t1, struct timeval *t2)
+{
+/* in milliseconds */
+	useconds_t res = (t2->tv_sec - t1->tv_sec) * 1000;
+	res += (t2->tv_usec - t1->tv_usec) / 1000;
+	return res;
+}
+
+static int
+__umm_p(ud_packet_t pkt)
+{
+	return udpc_pkt_cmd(pkt) == UMM;
+}
+
+static int
+udpc_seria_des_umm(umm_pair_t mmp, udpc_seria_t ser)
+{
+	if (ser->msgoff + sizeof(*mmp) > ser->len) {
+		return -1;
+	}
+	memcpy(mmp, ser->msg + ser->msgoff, sizeof(*mmp));
+	ser->msgoff += sizeof(*mmp);
+	return 0;
+}
+
+static void
+pr_match(umm_pair_t mmp)
+{
+	char buyer[INET6_ADDRSTRLEN];
+	char seller[INET6_ADDRSTRLEN];
+	char prc[32];
+	char qty[32];
+	short unsigned int bport;
+	short unsigned int sport;
+
+	ffff_m30_s(prc, mmp->l1->pri);
+	ffff_m30_s(qty, mmp->l1->qty);
+	inet_ntop(AF_INET6, &mmp->agt[0].addr, buyer, sizeof(buyer));
+	inet_ntop(AF_INET6, &mmp->agt[1].addr, seller, sizeof(seller));
+	bport = mmp->agt[0].port;
+	sport = mmp->agt[1].port;
+
+	fprintf(stdout, "MATCH\tB:[%s]:%hu+%hu\tS:[%s]:%hu+%hu\t%s\t%s\n",
+		buyer, bport, mmp->agt[0].uidx,
+		seller, sport, mmp->agt[1].uidx,
+		prc, qty);
+	return;
+}
+
+static void
+muca_cb(int s)
+{
+	static char buf[UDPC_PKTLEN];
+	union ud_sockaddr_u sa;
+	socklen_t ss = sizeof(sa);
+	ssize_t nrd;
+
+	if ((nrd = recvfrom(s, buf, sizeof(buf), 0, &sa.sa, &ss)) <= 0) {
+		return;
+	} else if (!udpc_pkt_valid_p((ud_packet_t){nrd, buf})) {
+		return;
+	} else if (!__umm_p((ud_packet_t){nrd, buf})) {
+		return;
+	}
+	/* otherwise decipher it */
+	{
+		struct umm_pair_s mmp[1];
+		struct udpc_seria_s ser[1];
+
+		udpc_seria_init(ser, UDPC_PAYLOAD(buf), UDPC_PAYLLEN(nrd));
+		while (udpc_seria_des_umm(mmp, ser) >= 0) {
+			pr_match(mmp);
+		}
+	}
+	return;
+}
+
 
 static jmp_buf jb;
 #define work		work_all
@@ -133,7 +213,7 @@ work_all(const struct xmpl_s *ctx)
 	udpc_seria_init(ser, UDPC_PAYLOAD(buf), UDPC_PLLEN)
 
 	/* just a few rounds of market orders */
-	for (size_t k = 0; k < -1UL; k++) {
+	for (size_t k = 0;; k++) {
 		struct sl1t_s t[1];
 
 		/* first of all announce ourselves */
@@ -157,31 +237,26 @@ work_all(const struct xmpl_s *ctx)
 			udpc_seria_add_scom(ser, AS_SCOM(t), sizeof(*t));
 		}
 		ud_chan_send_ser(ctx->ud, ser);
-		sleep(2);
 
-#if 0
-		RESET_SER;
-		gettimeofday(now, NULL);
-		sl1t_set_stmp_sec(t, now->tv_sec);
-		sl1t_set_stmp_msec(t, 0);
-		sl1t_set_ttf(t, SL1T_TTF_BID);
-		for (size_t i = 1; i <= countof(syms); i++) {
-			sl1t_set_tblidx(t, i);
-			t->pri = SL1T_PRC_MKT;
-			t->qty = 0;
+		{
+			struct timeval tv[2];
+			struct epoll_event ev[1];
+			int slp = 1000;
 
-			if (i == FIRST_SELL) {
-				sl1t_set_ttf(t, SL1T_TTF_ASK);
+			gettimeofday(tv + 0, NULL);
+			while (epoll_wait(ctx->epfd, ev, 1, slp)) {
+				if (ev->events & EPOLLIN) {
+					muca_cb(ev->data.fd);
+				}
+				/* compute the new waiting time */
+				gettimeofday(tv + 1, NULL);
+				if ((slp -= tv_diff(tv + 0, tv + 1)) < 0) {
+					slp = 0;
+				}
 			}
-
-			udpc_seria_add_scom(ser, AS_SCOM(t), sizeof(*t));
 		}
-		ud_chan_send_ser(ctx->ud, ser);
-		sleep(5);
-#endif
 	}
-
-	return;
+	/* not reached */
 }
 
 static void MAYBE_UNUSED

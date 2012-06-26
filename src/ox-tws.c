@@ -399,6 +399,9 @@ clone_item(ox_oq_item_t ip)
 /* unsermarkt match messages */
 #define UMM		(0x7576)
 #define UMM_RPL		(UDPC_PKT_RPL(UMM))
+/* unsermarkt cancel messages */
+#define UMU		(0x7578)
+#define UMU_RPL		(UDPC_PKT_RPL(UMU))
 
 static struct umm_agt_s UNUSED(voidagt) = {0};
 static struct umm_agt_s counter = {0};
@@ -408,6 +411,14 @@ udpc_seria_add_umm(udpc_seria_t sctx, umm_pair_t p)
 {
 	memcpy(sctx->msg + sctx->msgoff, p, sizeof(*p));
 	sctx->msgoff += sizeof(*p);
+	return;
+}
+
+static inline void
+udpc_seria_add_uno(udpc_seria_t sctx, umm_uno_t u)
+{
+	memcpy(sctx->msg + sctx->msgoff, u, sizeof(*u));
+	sctx->msgoff += sizeof(*u);
 	return;
 }
 
@@ -447,6 +458,27 @@ prep_umm_flld(umm_pair_t mmp, ox_oq_item_t ip)
 		OX_DEBUG("uh oh, ttf is %hx\n", ttf);
 		abort();
 	}
+	return;
+}
+
+static void
+prep_umm_cncd(umm_uno_t umu, ox_oq_item_t ip)
+{
+/* take information from IP and populate a match message in MMP
+ * the contents of IP will be modified */
+	struct timeval now[1];
+
+	/* time, anyone? */
+	(void)gettimeofday(now, NULL);
+
+	/* copy the whole tick */
+	memcpy(umu->l1, ip->l1t, sizeof(*ip->l1t));
+	sl1t_set_stmp_sec(umu->l1, now->tv_sec);
+	sl1t_set_stmp_msec(umu->l1, now->tv_usec / 1000);
+	/* and the agent */
+	umu->agt[0] = ip->cl->agt;
+	/* set the reason */
+	umu->reason = UMM_UNO_CANCELLED;
 	return;
 }
 
@@ -660,11 +692,41 @@ static MAYBE_NOINLINE void
 flush_cncd(void)
 {
 /* cancels need no re-confirmation, do they? */
-	for (ox_oq_item_t ip; (ip = pop_head(oq.cncd));) {
-		/* make sure we free this guy */
-		OX_DEBUG("freeing %p\n", ip);
-		push_tail(oq.free, ip);
+	static char rpl[UDPC_PKTLEN];
+	struct udpc_seria_s ser[1];
+
+#define PKT(x)		((ud_packet_t){sizeof(x), x})
+#define MAKE_PKT(ser, cmd, x)						\
+	udpc_make_pkt(PKT(x), 0, umm_pno++, cmd);			\
+	udpc_set_data_pkt(PKT(x));					\
+	udpc_seria_init(ser, UDPC_PAYLOAD(x), UDPC_PAYLLEN(sizeof(x)))
+
+	for (ox_oq_item_t ip; (ip = oq.cncd->i1st);) {
+		struct umm_uno_s umu[1];
+		ud_chan_t ch = ip->cl->ch;
+
+		MAKE_PKT(ser, UMU_RPL, rpl);
+		for (; ip; ip = ip->next) {
+			/* skip messages not meant for this channel */
+			if (ip->cl->ch != ch) {
+				continue;
+			}
+
+			/* pop the item */
+			pop_item(oq.cncd, ip);
+
+			prep_umm_cncd(umu, ip);
+			udpc_seria_add_uno(ser, umu);
+
+			/* make sure we free this guy */
+			OX_DEBUG("freeing %p\n", ip);
+			push_tail(oq.free, ip);
+		}
+		/* and off we go */
+		ud_chan_send_ser(ch, ser);
 	}
+#undef PKT
+#undef MAKE_PKT
 	return;
 }
 
@@ -712,6 +774,8 @@ flush_flld(void)
 		ud_chan_send_ser(ch, ser);
 		ud_chan_send_ser(ch, scs);
 	}
+#undef PKT
+#undef MAKE_PKT
 	return;
 }
 

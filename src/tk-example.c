@@ -250,7 +250,9 @@ work_all(const struct xmpl_s *ctx)
 				}
 				/* compute the new waiting time */
 				gettimeofday(tv + 1, NULL);
-				if ((slp -= tv_diff(tv + 0, tv + 1)) < 0) {
+				if ((slp = tv_diff(tv + 0, tv + 1)) < 1000) {
+					slp = 1000 - slp;
+				} else {
 					slp = 0;
 				}
 			}

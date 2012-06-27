@@ -74,6 +74,7 @@ extern void gq_rbld_dll(ox_dll_t dll, ptrdiff_t);
 
 extern ox_item_t gq_pop_head(ox_dll_t);
 extern void gq_push_tail(ox_dll_t, ox_item_t);
+extern void gq_pop_item(ox_dll_t dll, ox_item_t i);
 
 #if defined __cplusplus
 }

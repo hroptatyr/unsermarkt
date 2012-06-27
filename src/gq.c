@@ -193,4 +193,23 @@ gq_push_tail(ox_dll_t dll, ox_item_t i)
 	return;
 }
 
+void
+gq_pop_item(ox_dll_t dll, ox_item_t ip)
+{
+	if (ip->prev) {
+		ip->prev->next = ip->next;
+	} else {
+		/* must be head then */
+		dll->i1st = ip->next;
+	}
+	if (ip->next) {
+		ip->next->prev = ip->prev;
+	} else {
+		/* must be tail then */
+		dll->ilst = ip->prev;
+	}
+	ip->next = ip->prev = NULL;
+	return;
+}
+
 /* gq.c ends here */

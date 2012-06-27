@@ -419,6 +419,9 @@ lob_rem_at(lobidx_t li, lobidx_t idx)
 static inline bool PURE_CONST
 m30_less_p(m30_t a, m30_t b)
 {
+	if (a.u == SL1T_PRC_MKT) {
+		return false;
+	}
 	switch (a.expo - b.expo) {
 	case 0:
 		return a.mant < b.mant;

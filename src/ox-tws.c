@@ -322,6 +322,13 @@ clone_item(ox_oq_item_t ip)
 #define UMU		(0x7578)
 #define UMU_RPL		(UDPC_PKT_RPL(UMU))
 
+#if !defined SL2T_TTF_BID
+# define SL2T_TTF_BID	(13)
+#endif	/* !SL2T_TTF_BID */
+#if !defined SL2T_TTF_ASK
+# define SL2T_TTF_ASK	(14)
+#endif	/* !SL2T_TTF_ASK */
+
 static struct umm_agt_s UNUSED(voidagt) = {0};
 static struct umm_agt_s counter = {0};
 

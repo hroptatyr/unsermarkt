@@ -68,6 +68,13 @@
 #endif	/* DEBUG_FLAG */
 static FILE *logerr;
 
+#if !defined SL2T_TTF_BID
+# define SL2T_TTF_BID	(13)
+#endif	/* !SL2T_TTF_BID */
+#if !defined SL2T_TTF_ASK
+# define SL2T_TTF_ASK	(14)
+#endif	/* !SL2T_TTF_ASK */
+
 
 /* the actual core */
 #define UTE_LE		(0x7574)

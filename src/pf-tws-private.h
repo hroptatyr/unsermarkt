@@ -1,4 +1,4 @@
-/*** ox-tws-private.h -- private data flow guts
+/*** pf-tws-private.h -- private data flow guts
  *
  * Copyright (C) 2012 Sebastian Freundt
  *
@@ -34,65 +34,25 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  ***/
-#if !defined INCLUDED_ox_tws_private_h_
-#define INCLUDED_ox_tws_private_h_
-
-#include "match.h"
-#include "gq.h"
-
-typedef struct ox_oq_item_s *ox_oq_item_t;
-typedef struct ox_oq_dll_s *ox_oq_dll_t;
-typedef struct ox_oq_s *ox_oq_t;
-
-
-struct ox_oq_dll_s {
-	ox_oq_item_t i1st;
-	ox_oq_item_t ilst;
-};
-
-struct ox_oq_s {
-	struct ox_gq_s q[1];
-
-	struct ox_oq_dll_s flld[1];
-	struct ox_oq_dll_s cncd[1];
-	struct ox_oq_dll_s ackd[1];
-	struct ox_oq_dll_s sent[1];
-	struct ox_oq_dll_s unpr[1];
-};
+#if !defined INCLUDED_pf_tws_private_h_
+#define INCLUDED_pf_tws_private_h_
 
 #if defined __cplusplus
 extern "C" {
 #endif	/* __cplusplus */
 
-extern ox_oq_item_t find_match_oid(ox_oq_dll_t, tws_oid_t);
-extern ox_oq_item_t clone_item(ox_oq_item_t);
+typedef struct pf_pos_s *pf_pos_t;
 
-/* to indicate actual execution prices and sizes */
-extern void set_prc(ox_oq_item_t, double pri);
-extern void set_qty(ox_oq_item_t, double qty);
+struct pf_pos_s {
+	const char *sym;
+	double lqty;
+	double sqty;
+};
 
-static inline ox_oq_item_t
-oq_pop_head(ox_oq_dll_t dll)
-{
-	return (ox_oq_item_t)gq_pop_head((ox_dll_t)dll);
-}
-
-static inline void
-oq_push_tail(ox_oq_dll_t dll, ox_oq_item_t i)
-{
-	gq_push_tail((ox_dll_t)dll, (ox_item_t)i);
-	return;
-}
-
-static inline void
-oq_pop_item(ox_oq_dll_t dll, ox_oq_item_t i)
-{
-	gq_pop_item((ox_dll_t)dll, (ox_item_t)i);
-	return;
-}
+extern void fix_pos_rpt(const char *ac, struct pf_pos_s);
 
 #if defined __cplusplus
 }
 #endif	/* __cplusplus */
 
-#endif	/* INCLUDED_ox_tws_private_h_ */
+#endif	/* INCLUDED_pf_tws_private_h_ */

@@ -68,7 +68,7 @@
 /* the tws api */
 #include "ox-tws-wrapper.h"
 #include "ox-tws-private.h"
-
+#include "gq.h"
 #include "nifty.h"
 
 #if defined __INTEL_COMPILER
@@ -88,16 +88,19 @@ void *logerr;
 
 typedef uint32_t ox_idx_t;
 
-/* generic queues */
-typedef struct ox_gq_s *ox_gq_t;
-typedef struct ox_dll_s *ox_dll_t;
-typedef struct ox_item_s *ox_item_t;
-
 typedef struct ox_cl_s *ox_cl_t;
 
 #define CL(x)		(x)
 
 struct ox_oq_item_s {
+	union {
+		struct ox_item_s i;
+		struct {
+			ox_oq_item_t next;
+			ox_oq_item_t prev;
+		};
+	};
+
 	/* the sym, ib instr and agent we're talking */
 	ox_cl_t cl;
 
@@ -109,28 +112,6 @@ struct ox_oq_item_s {
 	/* for partial fills */
 	m30_t rem_qty;
 
-	ox_oq_item_t next;
-	ox_oq_item_t prev;
-};
-
-/* more generic queues */
-struct ox_item_s {
-	ox_item_t next;
-	ox_item_t prev;
-
-	char data[];
-};
-
-struct ox_dll_s {
-	ox_item_t i1st;
-	ox_item_t ilst;
-};
-
-struct ox_gq_s {
-	ox_item_t items;
-	size_t nitems;
-
-	struct ox_dll_s free[1];
 };
 
 /* client queue, generic */
@@ -165,40 +146,9 @@ static size_t umm_pno = 0;
 static struct ox_cq_s cq = {0};
 static struct ox_oq_s oq = {0};
 
+#include "gq.c"
+
 /* simplistic dllists */
-static size_t __attribute__((const, pure))
-nmemb(size_t n)
-{
-	static size_t pgsz = 0;
-
-	if (!pgsz) {
-		pgsz = sysconf(_SC_PAGESIZE);
-	}
-	return (n * sizeof(*oq.items) + (pgsz - 1)) & ~(pgsz - 1);
-}
-
-static void
-rbld_dll(ox_oq_dll_t dll, ox_oq_item_t nu_ref, ox_oq_item_t ol_ref)
-{
-	ptrdiff_t df = nu_ref - ol_ref;
-
-	if (dll->i1st) {
-		dll->i1st += df;
-	}
-	if (dll->ilst) {
-		dll->ilst += df;
-	}
-	for (ox_oq_item_t ip = dll->i1st; ip; ip = ip->next) {
-		if (ip->next) {
-			ip->next += df;
-		}
-		if (ip->prev) {
-			ip->prev += df;
-		}
-	}
-	return;
-}
-
 static void
 check_oq(void)
 {
@@ -206,252 +156,25 @@ check_oq(void)
 	/* count all items */
 	size_t ni = 0;
 
-	for (ox_oq_item_t ip = oq.free->i1st; ip; ip = ip->next, ni++);
+	for (ox_item_t ip = oq.q->free->i1st; ip; ip = ip->next, ni++);
 	for (ox_oq_item_t ip = oq.unpr->i1st; ip; ip = ip->next, ni++);
 	for (ox_oq_item_t ip = oq.sent->i1st; ip; ip = ip->next, ni++);
 	for (ox_oq_item_t ip = oq.ackd->i1st; ip; ip = ip->next, ni++);
 	for (ox_oq_item_t ip = oq.cncd->i1st; ip; ip = ip->next, ni++);
 	for (ox_oq_item_t ip = oq.flld->i1st; ip; ip = ip->next, ni++);
 	OX_DEBUG("forw %zu oall\n", ni);
-	assert(ni == oq.nitems);
+	assert(ni == oq.q->nitems / sizeof(struct ox_oq_item_s));
 
 	ni = 0;
-	for (ox_oq_item_t ip = oq.free->ilst; ip; ip = ip->prev, ni++);
+	for (ox_item_t ip = oq.q->free->ilst; ip; ip = ip->prev, ni++);
 	for (ox_oq_item_t ip = oq.unpr->ilst; ip; ip = ip->prev, ni++);
 	for (ox_oq_item_t ip = oq.sent->ilst; ip; ip = ip->prev, ni++);
 	for (ox_oq_item_t ip = oq.ackd->ilst; ip; ip = ip->prev, ni++);
 	for (ox_oq_item_t ip = oq.cncd->ilst; ip; ip = ip->prev, ni++);
 	for (ox_oq_item_t ip = oq.flld->ilst; ip; ip = ip->prev, ni++);
 	OX_DEBUG("back %zu oall\n", ni);
-	assert(ni == oq.nitems);
+	assert(ni == oq.q->nitems / sizeof(struct ox_oq_item_s));
 #endif	/* DEBUG_FLAG */
-	return;
-}
-
-static void
-init_oq(size_t at_least)
-{
-	size_t nusz = nmemb(at_least);
-	size_t nu = nusz / sizeof(*oq.items);
-	size_t ol = oq.nitems;
-	ox_oq_item_t ep;
-
-	if (ol > nu) {
-		return;
-	} else if (oq.items == NULL) {
-		oq.items = mmap(NULL, nusz, PROT_MEM, MAP_MEM, -1, 0);
-		oq.nitems = nu;
-	} else {
-		size_t olsz = nmemb(ol);
-		void *nu_items;
-
-		nu_items = mmap(NULL, nusz, PROT_MEM, MAP_MEM, -1, 0);
-		memcpy(nu_items, oq.items, olsz);
-
-		/* fix up all lists */
-		rbld_dll(oq.free, nu_items, oq.items);
-		rbld_dll(oq.flld, nu_items, oq.items);
-		rbld_dll(oq.cncd, nu_items, oq.items);
-		rbld_dll(oq.ackd, nu_items, oq.items);
-		rbld_dll(oq.sent, nu_items, oq.items);
-		rbld_dll(oq.unpr, nu_items, oq.items);
-
-		/* unmap the old guy */
-		munmap(oq.items, olsz);
-
-		/* reassign */
-		oq.items = nu_items;
-		oq.nitems = nu;
-	}
-
-	/* fill up the free list */
-	ep = oq.items + ol;
-	for (ox_oq_item_t sp = ep, eep = ep + (nu - ol); sp < eep; sp++) {
-		if (sp + 1 < eep) {
-			sp->next = sp + 1;
-		}
-		if (sp > ep) {
-			sp->prev = sp - 1;
-		}
-	}
-	/* attach new list to free list */
-	ep->prev = oq.free->ilst;
-	if (oq.free->ilst) {
-		oq.free->ilst->next = ep;
-	} else {
-		assert(oq.free->i1st == NULL);
-	}
-	if (oq.free->i1st == NULL) {
-		oq.free->i1st = ep;
-		oq.free->ilst = ep + (nu - ol - 1);
-	}
-	check_oq();
-	return;
-}
-
-static void
-fini_oq(void)
-{
-	if (oq.items) {
-		munmap(oq.items, oq.nitems);
-		oq.items = NULL;
-		oq.nitems = 0;
-	}
-	return;
-}
-
-
-static size_t __attribute__((const, pure))
-gq_nmemb(size_t mbsz, size_t n)
-{
-	static size_t pgsz = 0;
-
-	if (!pgsz) {
-		pgsz = sysconf(_SC_PAGESIZE);
-	}
-	return (n * mbsz + (pgsz - 1)) & ~(pgsz - 1);
-}
-
-static void
-gq_rbld_dll(ox_dll_t dll, ptrdiff_t df)
-{
-	if (UNLIKELY(df == 0)) {
-		/* thank you thank you thank you */
-		return;
-	}
-
-	if (dll->i1st) {
-		dll->i1st += df;
-	}
-	if (dll->ilst) {
-		dll->ilst += df;
-	}
-	return;
-}
-
-static ptrdiff_t
-gq_rbld(ox_gq_t q, ox_item_t nu_ref, size_t mbsz)
-{
-	ptrdiff_t df = nu_ref - q->items;
-
-	if (UNLIKELY(df == 0)) {
-		/* thank you thank you thank you */
-		return 0;
-	}
-
-	/* rebuild the free dll */
-	gq_rbld_dll(q->free, df);
-	/* hop along all items and up the next and prev pointers */
-	for (char *sp = (void*)nu_ref, *ep = sp + q->nitems; sp < ep; sp += mbsz) {
-		ox_item_t ip = (void*)sp;
-
-		if (ip->next) {
-			ip->next += df;
-		}
-		if (ip->prev) {
-			ip->prev += df;
-		}
-	}
-	return df;
-}
-
-static ptrdiff_t
-init_gq(ox_gq_t q, size_t mbsz, size_t at_least)
-{
-	size_t nusz = gq_nmemb(mbsz, at_least);
-	size_t olsz = q->nitems;
-	ox_item_t ol_items = q->items;
-	ox_item_t nu_items;
-	ptrdiff_t res = 0;
-
-	if (q->nitems > nusz) {
-		return 0;
-	}
-	/* get some new items */
-	nu_items = mmap(ol_items, nusz, PROT_MEM, MAP_MEM, -1, 0);
-
-	if (q->items) {
-		/* aha, resize */
-		memcpy(nu_items, ol_items, olsz);
-
-		/* fix up all lists */
-		res = gq_rbld(q, nu_items, mbsz);
-
-		/* unmap the old guy */
-		munmap(ol_items, olsz);
-	}
-	/* reassign */
-	q->items = nu_items;
-	q->nitems = nusz;
-
-	/* fill up the free list */
-	{
-		char *ep = (char*)nu_items + olsz;
-		ox_item_t eip = (void*)ep;
-
-		for (char *sp = ep, *eep = ep + (nusz - olsz); sp < eep; sp += mbsz) {
-			ox_item_t ip = (void*)sp;
-
-			if (sp + mbsz < eep) {
-				ip->next = (void*)(sp + mbsz);
-			}
-			if ((char*)ip > ep) {
-				ip->prev = (void*)(sp - mbsz);
-			}
-		}
-		/* attach new list to free list */
-		eip->prev = q->free->ilst;
-		if (q->free->ilst) {
-			q->free->ilst->next = eip;
-		} else {
-			assert(q->free->i1st == NULL);
-		}
-		if (q->free->i1st == NULL) {
-			q->free->i1st = eip;
-			q->free->ilst = (void*)(ep + (nusz - olsz - mbsz));
-		}
-	}
-	return res;
-}
-
-static void
-fini_gq(ox_gq_t q)
-{
-	if (q->items) {
-		munmap(q->items, q->nitems);
-		q->items = NULL;
-		q->nitems = 0;
-	}
-	return;
-}
-
-ox_oq_item_t
-pop_head(ox_oq_dll_t dll)
-{
-	ox_oq_item_t res;
-
-	if ((res = dll->i1st) && (dll->i1st = dll->i1st->next) == NULL) {
-		dll->ilst = NULL;
-	} else if (res) {
-		dll->i1st->prev = NULL;
-	}
-	return res;
-}
-
-void
-push_tail(ox_oq_dll_t dll, ox_oq_item_t i)
-{
-	if (dll->ilst) {
-		dll->ilst->next = i;
-		i->prev = dll->ilst;
-		i->next = NULL;
-		dll->ilst = i;
-	} else {
-		assert(dll->i1st == NULL);
-		dll->i1st = dll->ilst = i;
-		i->next = NULL;
-		i->prev = NULL;
-	}
 	return;
 }
 
@@ -460,12 +183,22 @@ pop_free(void)
 {
 	ox_oq_item_t res;
 
-	if (oq.free->i1st == NULL) {
-		assert(oq.free->ilst == NULL);
-		init_oq(oq.nitems + 256);
-		OX_DEBUG("RESIZE -> %zu\n", oq.nitems + 256);
+	if (oq.q->free->i1st == NULL) {
+		size_t nitems = oq.q->nitems / sizeof(*res);
+		ptrdiff_t df;
+
+		assert(oq.q->free->ilst == NULL);
+		OX_DEBUG("OQ RESIZE -> %zu\n", nitems + 256);
+		df = init_gq(oq.q, sizeof(*res), nitems + 256);
+		/* fix up all lists */
+		gq_rbld_dll((ox_dll_t)oq.flld, df);
+		gq_rbld_dll((ox_dll_t)oq.cncd, df);
+		gq_rbld_dll((ox_dll_t)oq.ackd, df);
+		gq_rbld_dll((ox_dll_t)oq.sent, df);
+		gq_rbld_dll((ox_dll_t)oq.unpr, df);
+		check_oq();
 	}
-	res = pop_head(oq.free);
+	res = (ox_oq_item_t)gq_pop_head(oq.q->free);
 	memset(res, 0, sizeof(*res));
 	return res;
 }
@@ -473,7 +206,7 @@ pop_free(void)
 static void
 push_free(ox_oq_item_t i)
 {
-	push_tail(oq.free, i);
+	gq_push_tail(oq.q->free, (ox_item_t)i);
 	return;
 }
 
@@ -485,32 +218,12 @@ ox_oq_item_matches_p(ox_oq_item_t i, ox_cl_t cl, const_sl1t_t l1t)
 		l1t->pri == i->l1t->pri;
 }
 
-void
-pop_item(ox_oq_dll_t dll, ox_oq_item_t ip)
-{
-	/* found him */
-	if (ip->prev) {
-		ip->prev->next = ip->next;
-	} else {
-		/* must be head then */
-		dll->i1st = ip->next;
-	}
-	if (ip->next) {
-		ip->next->prev = ip->prev;
-	} else {
-		/* must be tail then */
-		dll->ilst = ip->prev;
-	}
-	ip->next = ip->prev = NULL;
-	return;
-}
-
 static ox_oq_item_t
 pop_match_cl_l1t(ox_oq_dll_t dll, ox_cl_t cl, const_sl1t_t l1t)
 {
 	for (ox_oq_item_t ip = dll->i1st; ip; ip = ip->next) {
 		if (ox_oq_item_matches_p(ip, cl, l1t)) {
-			pop_item(dll, ip);
+			oq_pop_item(dll, ip);
 			return ip;
 		}
 	}
@@ -527,36 +240,6 @@ find_match_oid(ox_oq_dll_t dll, tws_oid_t oid)
 		}
 	}
 	return NULL;
-}
-
-static ox_item_t
-gq_pop_head(ox_dll_t dll)
-{
-	ox_item_t res;
-
-	if ((res = dll->i1st) && (dll->i1st = dll->i1st->next) == NULL) {
-		dll->ilst = NULL;
-	} else if (res) {
-		dll->i1st->prev = NULL;
-	}
-	return res;
-}
-
-static void
-gq_push_tail(ox_dll_t dll, ox_item_t i)
-{
-	if (dll->ilst) {
-		dll->ilst->next = i;
-		i->prev = dll->ilst;
-		i->next = NULL;
-		dll->ilst = i;
-	} else {
-		assert(dll->i1st == NULL);
-		dll->i1st = dll->ilst = i;
-		i->next = NULL;
-		i->prev = NULL;
-	}
-	return;
 }
 
 /* client queue implemented through gq */
@@ -587,10 +270,10 @@ add_cli(struct umm_agt_s agt)
 		gq_rbld_dll(cq.used, df);
 	}
 	/* get us a new client and populate the object */
-	res = (void*)gq_pop_head(cq.q->free);
+	res = (ox_cl_t)gq_pop_head(cq.q->free);
 	memset(res, 0, sizeof(*res));
 	res->agt = agt;
-	gq_push_tail(cq.used, (void*)res);
+	gq_push_tail(cq.used, (ox_item_t)res);
 	return res;
 }
 
@@ -638,6 +321,13 @@ clone_item(ox_oq_item_t ip)
 /* unsermarkt cancel messages */
 #define UMU		(0x7578)
 #define UMU_RPL		(UDPC_PKT_RPL(UMU))
+
+#if !defined SL2T_TTF_BID
+# define SL2T_TTF_BID	(13)
+#endif	/* !SL2T_TTF_BID */
+#if !defined SL2T_TTF_ASK
+# define SL2T_TTF_ASK	(14)
+#endif	/* !SL2T_TTF_ASK */
 
 static struct umm_agt_s UNUSED(voidagt) = {0};
 static struct umm_agt_s counter = {0};
@@ -747,7 +437,7 @@ prep_order(ox_cl_t cl, scom_t sc)
 	/* copy the agent */
 	o->cl = cl;
 	/* push on the unprocessed list */
-	push_tail(oq.unpr, o);
+	oq_push_tail(oq.unpr, o);
 	return;
 }
 
@@ -767,7 +457,7 @@ prep_cancel(ox_cl_t cl, scom_t s)
 	OX_DEBUG("ORDER %p matches <-> %u -> CANCEL\n", ip, ip->oid);
 
 	ip->l1t->qty = 0;
-	push_tail(oq.unpr, ip);
+	oq_push_tail(oq.unpr, ip);
 	return;
 }
 
@@ -894,9 +584,9 @@ flush_queue(my_tws_t tws)
 {
 	size_t nsnt = 0;
 
-	for (ox_oq_item_t ip; (ip = pop_head(oq.unpr)); nsnt++) {
+	for (ox_oq_item_t ip; (ip = oq_pop_head(oq.unpr)); nsnt++) {
 		send_order(tws, ip);
-		push_tail(oq.sent, ip);
+		oq_push_tail(oq.sent, ip);
 	}
 
 	/* assume it's possible to write */
@@ -934,7 +624,7 @@ flush_cncd(void)
 			}
 
 			/* pop the item */
-			pop_item(oq.cncd, ip);
+			oq_pop_item(oq.cncd, ip);
 
 			prep_umm_cncd(umu, ip);
 			udpc_seria_add_uno(ser, umu);
@@ -983,7 +673,7 @@ flush_flld(void)
 			}
 
 			/* pop the item */
-			pop_item(oq.flld, ip);
+			oq_pop_item(oq.flld, ip);
 
 			prep_umm_flld(mmp, ip);
 			udpc_seria_add_umm(ser, mmp);
@@ -1135,7 +825,7 @@ detach(void)
 		(void)dup2(fd, STDERR_FILENO);
 	}
 #if defined DEBUG_FLAG
-	logerr = fopen("/tmp/ox-tws.log", "w");
+	logerr = fopen("/tmp/ox-tws.log", "w+");
 #else  /* !DEBUG_FLAG */
 	logerr = fdopen(fd, "w");
 #endif	/* DEBUG_FLAG */
@@ -1289,7 +979,7 @@ past_loop:
 	(void)fini_tws(tws);
 
 	/* finish the order queue */
-	fini_oq();
+	fini_gq(oq.q);
 	fini_gq(cq.q);
 
 	/* detaching beef channels */
@@ -1306,6 +996,7 @@ unroll:
 	/* destroy the default evloop */
 	ev_default_destroy();
 out:
+	ox_parser_free(argi);
 	return res;
 }
 

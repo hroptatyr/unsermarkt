@@ -138,11 +138,13 @@ endif  ## HAVE_TWSTOOLS
 
 if HAVE_TWSAPI
 noinst_PROGRAMS += ox-tws
+EXTRA_ox_tws_SOURCES =
 ox_tws_SOURCES = ox-tws.c ox-tws-clo.ggo
 ox_tws_SOURCES += ox-tws-wrapper.cpp ox-tws-wrapper.h
 ox_tws_SOURCES += ox-tws-contract-glue.cpp
 ox_tws_SOURCES += iso4217.c iso4217.h
 ox_tws_SOURCES += ox-tws-private.h
+EXTRA_ox_tws_SOURCES += gq.c gq.h
 BUILT_SOURCES += ox-tws-clo.c ox-tws-clo.h
 ox_tws_CPPFLAGS = $(AM_CPPFLAGS)
 ox_tws_CPPFLAGS += $(uterus_CFLAGS)
@@ -156,6 +158,25 @@ ox_tws_LDFLAGS += $(libev_LIBS)
 ox_tws_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) \
 	$(LIBTOOLFLAGS) --mode=link $(CCLD) $(AM_CFLAGS) $(CFLAGS) \
 	$(ox_tws_LDFLAGS) $(LDFLAGS) -o $@
+
+noinst_PROGRAMS += pf-tws
+EXTRA_pf_tws_SOURCES =
+pf_tws_SOURCES = pf-tws.c pf-tws-clo.ggo
+pf_tws_SOURCES += pf-tws-wrapper.cpp pf-tws-wrapper.h
+pf_tws_SOURCES += iso4217.c iso4217.h
+BUILT_SOURCES += pf-tws-clo.c pf-tws-clo.h
+pf_tws_CPPFLAGS = $(AM_CPPFLAGS)
+pf_tws_CPPFLAGS += $(uterus_CFLAGS)
+pf_tws_CPPFLAGS += $(unserding_CFLAGS)
+pf_tws_CPPFLAGS += $(twsapi_CFLAGS)
+pf_tws_CPPFLAGS += $(libev_CFLAGS)
+pf_tws_LDFLAGS = $(AM_LDFLAGS)
+pf_tws_LDFLAGS += $(unserding_LIBS)
+pf_tws_LDFLAGS += $(twsapi_LIBS)
+pf_tws_LDFLAGS += $(libev_LIBS)
+pf_tws_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) \
+	$(LIBTOOLFLAGS) --mode=link $(CCLD) $(AM_CFLAGS) $(CFLAGS) \
+	$(pf_tws_LDFLAGS) $(LDFLAGS) -o $@
 endif  ## HAVE_TWSAPI
 
 bin_PROGRAMS += um-netdania

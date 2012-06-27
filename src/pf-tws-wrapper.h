@@ -1,4 +1,4 @@
-/*** ox-tws-private.h -- private data flow guts
+/*** pf-tws-wrapper.h -- portfolio management through tws
  *
  * Copyright (C) 2012 Sebastian Freundt
  *
@@ -34,65 +34,40 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  ***/
-#if !defined INCLUDED_ox_tws_private_h_
-#define INCLUDED_ox_tws_private_h_
-
-#include "match.h"
-#include "gq.h"
-
-typedef struct ox_oq_item_s *ox_oq_item_t;
-typedef struct ox_oq_dll_s *ox_oq_dll_t;
-typedef struct ox_oq_s *ox_oq_t;
-
-
-struct ox_oq_dll_s {
-	ox_oq_item_t i1st;
-	ox_oq_item_t ilst;
-};
-
-struct ox_oq_s {
-	struct ox_gq_s q[1];
-
-	struct ox_oq_dll_s flld[1];
-	struct ox_oq_dll_s cncd[1];
-	struct ox_oq_dll_s ackd[1];
-	struct ox_oq_dll_s sent[1];
-	struct ox_oq_dll_s unpr[1];
-};
+#if !defined INCLUDED_pf_tws_wrapper_h_
+#define INCLUDED_pf_tws_wrapper_h_
 
 #if defined __cplusplus
 extern "C" {
 #endif	/* __cplusplus */
 
-extern ox_oq_item_t find_match_oid(ox_oq_dll_t, tws_oid_t);
-extern ox_oq_item_t clone_item(ox_oq_item_t);
+typedef struct my_tws_s *my_tws_t;
 
-/* to indicate actual execution prices and sizes */
-extern void set_prc(ox_oq_item_t, double pri);
-extern void set_qty(ox_oq_item_t, double qty);
+typedef unsigned int tws_oid_t;
 
-static inline ox_oq_item_t
-oq_pop_head(ox_oq_dll_t dll)
-{
-	return (ox_oq_item_t)gq_pop_head((ox_dll_t)dll);
-}
+struct my_tws_s {
+	tws_oid_t next_oid;
+	unsigned int time;
+	void *wrp;
+	void *cli;
+	void *pf;
+};
 
-static inline void
-oq_push_tail(ox_oq_dll_t dll, ox_oq_item_t i)
-{
-	gq_push_tail((ox_dll_t)dll, (ox_item_t)i);
-	return;
-}
+
+extern void *logerr;
+#define LOGERR		((FILE*)logerr)
 
-static inline void
-oq_pop_item(ox_oq_dll_t dll, ox_oq_item_t i)
-{
-	gq_pop_item((ox_dll_t)dll, (ox_item_t)i);
-	return;
-}
+extern int init_tws(my_tws_t);
+extern int fini_tws(my_tws_t);
+
+extern int tws_connect(my_tws_t, const char *host, uint16_t port, int client);
+extern int tws_disconnect(my_tws_t);
+
+extern int tws_recv(my_tws_t);
+extern int tws_send(my_tws_t);
 
 #if defined __cplusplus
 }
 #endif	/* __cplusplus */
 
-#endif	/* INCLUDED_ox_tws_private_h_ */
+#endif	/* INCLUDED_pf_tws_wrapper_h_ */

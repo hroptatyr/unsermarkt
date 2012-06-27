@@ -146,7 +146,7 @@ struct lob_entnav_s {
 
 /* all entries of one side */
 union lob_side_u {
-	struct lob_entnav_s e[];
+	struct lob_entnav_s e[0];
 	struct lob_entnav_s pad;
 
 	struct {
@@ -419,6 +419,11 @@ lob_rem_at(lobidx_t li, lobidx_t idx)
 static inline bool PURE_CONST
 m30_less_p(m30_t a, m30_t b)
 {
+#if defined SL1T_PRC_MKT
+	if (a.u == SL1T_PRC_MKT) {
+		return false;
+	}
+#endif	/* SL1T_PRC_MKT */
 	switch (a.expo - b.expo) {
 	case 0:
 		return a.mant < b.mant;

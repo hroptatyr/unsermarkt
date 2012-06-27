@@ -146,7 +146,7 @@ struct lob_entnav_s {
 
 /* all entries of one side */
 union lob_side_u {
-	struct lob_entnav_s e[];
+	struct lob_entnav_s e[0];
 	struct lob_entnav_s pad;
 
 	struct {

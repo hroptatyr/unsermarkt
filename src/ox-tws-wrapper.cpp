@@ -668,14 +668,14 @@ tws_put_order(my_tws_t tws, tws_order_t o)
 	if (s->pri == SL1T_PRC_MKT) {
 		__o.orderType = "MKT";
 	} else {
-		m30_t m = {.u = s->pri};
+		m30_t m = ffff_m30_get_ui32(s->pri);
 
 		__o.orderType = "LMT";
 		__o.lmtPrice = ffff_m30_d(m);
 	}
 	// quantity is always important
 	if (s->qty) {
-		m30_t m = {.u = s->qty};
+		m30_t m = ffff_m30_get_ui32(s->qty);
 
 		// as this is currency only, we're probably talking lots
 		__o.totalQuantity = ffff_m30_d(m) * QTY_MULTIPLIER_D;

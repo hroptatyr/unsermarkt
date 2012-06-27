@@ -68,6 +68,13 @@
 #define QTY_MULTIPLIER		(100000)
 #define QTY_MULTIPLIER_D	((double)QTY_MULTIPLIER)
 
+#if !defined SL2T_TTF_BID
+# define SL2T_TTF_BID	(13)
+#endif	/* !SL2T_TTF_BID */
+#if !defined SL2T_TTF_ASK
+# define SL2T_TTF_ASK	(14)
+#endif	/* !SL2T_TTF_ASK */
+
 class __wrapper: public IB::EWrapper
 {
 public:

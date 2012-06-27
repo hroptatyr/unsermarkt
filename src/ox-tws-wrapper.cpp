@@ -251,7 +251,7 @@ pop_match_oid(ox_oq_dll_t dll, tws_oid_t oid)
 	ox_oq_item_t ip;
 
 	if ((ip = find_match_oid(dll, oid))) {
-		pop_item(dll, ip);
+		oq_pop_item(dll, ip);
 	}
 	return ip;
 }
@@ -276,7 +276,7 @@ __wrapper::orderStatus(
 		if ((ip = pop_match_oid(oq->ackd, roid)) ||
 		    (ip = pop_match_oid(oq->sent, roid))) {
 			WRP_DEBUG("CNCD %p <-> %u", ip, roid);
-			push_tail(oq->cncd, ip);
+			oq_push_tail(oq->cncd, ip);
 		}
 	} else if (msg_flld_p(msg)) {
 		ox_oq_item_t ip;
@@ -291,7 +291,7 @@ __wrapper::orderStatus(
 
 			if (remn == 0) {
 				/* pop it, so it's out of our ackd queue */
-				pop_item(dll, nu_ip = ip);
+				oq_pop_item(dll, nu_ip = ip);
 			} else {
 				/* split the order */
 				nu_ip = clone_item(ip);
@@ -299,7 +299,7 @@ __wrapper::orderStatus(
 			}
 			set_qty(nu_ip, (double)flld / QTY_MULTIPLIER_D);
 			set_prc(nu_ip, last_fill_prc);
-			push_tail(oq->flld, nu_ip);
+			oq_push_tail(oq->flld, nu_ip);
 		} else {
 			WRP_DEBUG("FILL for unknown order %u\n", roid);
 		}
@@ -308,7 +308,7 @@ __wrapper::orderStatus(
 
 		if ((ip = pop_match_oid(oq->sent, roid))) {
 			WRP_DEBUG("ACKD %p <-> %u", ip, roid);
-			push_tail(oq->ackd, ip);
+			oq_push_tail(oq->ackd, ip);
 		}
 	}
 	return;
@@ -670,9 +670,8 @@ tws_put_order(my_tws_t tws, tws_order_t o)
 	if (s->qty) {
 		m30_t m = {.u = s->qty};
 
-		__o.totalQuantity = ffff_m30_d(m);
 		// as this is currency only, we're probably talking lots
-		__o.totalQuantity *= QTY_MULTIPLIER;
+		__o.totalQuantity = ffff_m30_d(m) * QTY_MULTIPLIER_D;
 
 		cli->placeOrder(o->oid, *__c, __o);
 	} else {

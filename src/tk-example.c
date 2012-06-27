@@ -134,8 +134,8 @@ pr_match(umm_pair_t mmp)
 	short unsigned int bport;
 	short unsigned int sport;
 
-	ffff_m30_s(prc, mmp->l1->pri);
-	ffff_m30_s(qty, mmp->l1->qty);
+	ffff_m30_s(prc, ffff_m30_get_ui32(mmp->l1->pri));
+	ffff_m30_s(qty, ffff_m30_get_ui32(mmp->l1->qty));
 	inet_ntop(AF_INET6, &mmp->agt[0].addr, buyer, sizeof(buyer));
 	inet_ntop(AF_INET6, &mmp->agt[1].addr, seller, sizeof(seller));
 	bport = ntohs(mmp->agt[0].port);

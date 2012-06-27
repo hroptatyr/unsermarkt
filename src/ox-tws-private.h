@@ -51,10 +51,8 @@ struct ox_oq_dll_s {
 };
 
 struct ox_oq_s {
-	ox_oq_item_t items;
-	size_t nitems;
+	struct ox_gq_s q[1];
 
-	struct ox_oq_dll_s free[1];
 	struct ox_oq_dll_s flld[1];
 	struct ox_oq_dll_s cncd[1];
 	struct ox_oq_dll_s ackd[1];
@@ -67,14 +65,31 @@ extern "C" {
 #endif	/* __cplusplus */
 
 extern ox_oq_item_t find_match_oid(ox_oq_dll_t, tws_oid_t);
-extern ox_oq_item_t pop_head(ox_oq_dll_t);
-extern void push_tail(ox_oq_dll_t, ox_oq_item_t);
-extern void pop_item(ox_oq_dll_t, ox_oq_item_t);
 extern ox_oq_item_t clone_item(ox_oq_item_t);
 
 /* to indicate actual execution prices and sizes */
 extern void set_prc(ox_oq_item_t, double pri);
 extern void set_qty(ox_oq_item_t, double qty);
+
+static inline ox_oq_item_t
+oq_pop_head(ox_oq_dll_t dll)
+{
+	return (ox_oq_item_t)gq_pop_head((ox_dll_t)dll);
+}
+
+static inline void
+oq_push_tail(ox_oq_dll_t dll, ox_oq_item_t i)
+{
+	gq_push_tail((ox_dll_t)dll, (ox_item_t)i);
+	return;
+}
+
+static inline void
+oq_pop_item(ox_oq_dll_t dll, ox_oq_item_t i)
+{
+	gq_pop_item((ox_dll_t)dll, (ox_item_t)i);
+	return;
+}
 
 #if defined __cplusplus
 }

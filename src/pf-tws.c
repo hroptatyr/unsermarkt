@@ -38,6 +38,8 @@
 # include "config.h"
 #endif	/* HAVE_CONFIG_H */
 #include <stdio.h>
+/* for gmtime_r */
+#include <time.h>
 /* for gettimeofday() */
 #include <sys/time.h>
 #include <fcntl.h>
@@ -52,6 +54,16 @@
 
 #include <unserding/unserding.h>
 #include <unserding/protocore.h>
+#define DEFINE_GORY_STUFF
+#if defined HAVE_UTERUS_UTERUS_H
+# include <uterus/uterus.h>
+# include <uterus/m30.h>
+#elif defined HAVE_UTERUS_H
+# include <uterus.h>
+# include <m30.h>
+#else
+# error uterus headers are mandatory
+#endif	/* HAVE_UTERUS_UTERUS_H || HAVE_UTERUS_H */
 
 /* the tws api */
 #include "pf-tws-wrapper.h"
@@ -62,7 +74,7 @@
 # pragma warning (disable:981)
 #endif	/* __INTEL_COMPILER */
 
-#if defined DEBUG_FLAG
+#if defined DEBUG_FLAG && !defined BENCHMARK
 # include <assert.h>
 # define PF_DEBUG(args...)	fprintf(logerr, args)
 # define MAYBE_NOINLINE		__attribute__((noinline))
@@ -78,12 +90,287 @@ struct comp_s {
 	uint16_t port;
 };
 
+static size_t
+ui8tostr(char *restrict buf, size_t UNUSED(bsz), uint8_t d)
+{
+/* all strings should be little */
+#define C(x, d)	(char)((x) / (d) % 10 + '0')
+	size_t i = 0;
+
+	if (d >= 100) {
+		buf[i++] = C(d, 100);
+	}
+	if (d >= 10) {
+		buf[i++] = C(d, 10);
+	}
+	buf[i++] = C(d, 1);
+	return i;
+}
+
+static size_t
+ui16tostr(char *restrict buf, size_t UNUSED(bsz), uint16_t d)
+{
+/* all strings should be little */
+#define C(x, d)	(char)((x) / (d) % 10 + '0')
+	size_t i = 0;
+
+	if (d >= 10000) {
+		buf[i++] = C(d, 10000);
+	}
+	if (d >= 1000) {
+		buf[i++] = C(d, 1000);
+	}
+	if (d >= 100) {
+		buf[i++] = C(d, 100);
+	}
+	if (d >= 10) {
+		buf[i++] = C(d, 10);
+	}
+	buf[i++] = C(d, 1);
+	return i;
+}
+
+static size_t
+ui16tostr_pad(char *restrict buf, size_t UNUSED(bsz), uint16_t d, size_t pad)
+{
+/* all strings should be little */
+#define C(x, d)	(char)((x) / (d) % 10 + '0')
+	switch (pad) {
+	case 5:
+		buf[pad - 5] = C(d, 10000);
+	case 4:
+		buf[pad - 4] = C(d, 1000);
+	case 3:
+		buf[pad - 3] = C(d, 100);
+	case 2:
+		buf[pad - 2] = C(d, 10);
+	case 1:
+		buf[pad - 1] = C(d, 1);
+		break;
+	case 0:
+	default:
+		break;
+	}
+	return pad;
+}
+
+static size_t
+ui32tostr(char *restrict buf, size_t UNUSED(bsz), uint32_t d)
+{
+/* all strings should be little */
+#define C(x, d)	(char)((x) / (d) % 10 + '0')
+	size_t i = 0;
+
+	if (d >= 1000000000) {
+		buf[i++] = C(d, 1000000000);
+	}
+	if (d >= 100000000) {
+		buf[i++] = C(d, 100000000);
+	}
+	if (d >= 10000000) {
+		buf[i++] = C(d, 10000000);
+	}
+	if (d >= 1000000) {
+		buf[i++] = C(d, 1000000);
+	}
+	if (d >= 100000) {
+		buf[i++] = C(d, 100000);
+	}
+	if (d >= 10000) {
+		buf[i++] = C(d, 10000);
+	}
+	if (d >= 1000) {
+		buf[i++] = C(d, 1000);
+	}
+	if (d >= 100) {
+		buf[i++] = C(d, 100);
+	}
+	if (d >= 10) {
+		buf[i++] = C(d, 10);
+	}
+	buf[i++] = C(d, 1);
+	return i;
+}
+
 
 /* the actual core */
 #define POS_RPT		(0x757a)
 #define POS_RPT_RPL	(UDPC_PKT_RPL(POS_RPT))
 
+/* our tws conn(s?) */
 static struct comp_s counter = {0};
+/* our beef channels */
+static size_t nbeef = 0;
+static ev_io *beef = NULL;
+
+#if defined DEBUG_FLAG
+# define SOH		"|"
+#else  /* !DEBUG_FLAG */
+# define SOH		"\001"
+#endif	/* DEBUG_FLAG */
+static const char fix_stdhdr[] = "8=FIXT.1.1" SOH "9=0000" SOH;
+static const char fix_stdftr[] = "10=xyz" SOH;
+
+static uint8_t
+fix_chksum(const char *str, size_t len)
+{
+	uint8_t res = 0;
+	for (const char *p = str, *ep = str + len; p < ep; res += *p++);
+	return res;
+}
+
+void
+fix_pos_rpt(const char *ac, struct pf_pos_s pos)
+{
+#define PKT(x)		((ud_packet_t){sizeof(x), x})
+	static size_t pno = 0;
+	static size_t sno = 0;
+	char buf[UDPC_PKTLEN];
+	char ntop_src[INET6_ADDRSTRLEN];
+	uint16_t port_src;
+	char dt[24];
+	struct timeval now[1];
+	char *sp, *p, *ep;
+	size_t plen;
+
+	/* some work beforehand */
+	inet_ntop(AF_INET6, (void*)&counter.addr, ntop_src, sizeof(ntop_src));
+	port_src = ntohs(counter.port);
+
+	/* what's the time */
+	{
+		struct tm *tm;
+
+		gettimeofday(now, NULL);
+		tm = gmtime(&now->tv_sec);
+		strftime(dt, sizeof(dt), "%Y%m%d-%H:%M:%S", tm);
+	}
+
+	for (size_t i = 1; i < nbeef; i++) {
+		ud_chan_t ch = beef[i].data;
+		const struct in6_addr *addr = &ch->sa.sa6.sin6_addr;
+		char ntop_tgt[INET6_ADDRSTRLEN];
+		uint16_t port_tgt;
+		uint8_t chksum;
+
+		inet_ntop(AF_INET6, addr, ntop_tgt, sizeof(ntop_tgt));
+		port_tgt = ntohs(ch->sa.sa6.sin6_port);
+
+		/* get the packet ctor'd */
+		udpc_make_pkt(PKT(buf), 0, pno, POS_RPT_RPL);
+		udpc_set_data_pkt(PKT(buf));
+
+		sp = p = UDPC_PAYLOAD(buf);
+		plen = UDPC_PAYLLEN(sizeof(buf));
+		ep = p + plen;
+
+/* unsafe BANG */
+#define __BANG(tgt, eot, src, ssz)				\
+		{						\
+			size_t __ssz = ssz;			\
+			memcpy(tgt, src, __ssz);		\
+			tgt += __ssz;				\
+		}
+#define BANGP(tgt, eot, p)			\
+		__BANG(tgt, eot, p, strlen(p))
+#define BANGL(tgt, eot, literal)				\
+		__BANG(tgt, eot, literal, sizeof(literal) - 1)
+
+		BANGL(p, ep, fix_stdhdr);
+		/* message type */
+		BANGL(p, ep, "35=AP" SOH);
+		/* sender */
+		BANGL(p, ep, "49=[");
+		BANGP(p, ep, ntop_src);
+		BANGL(p, ep, "]:");
+		p += ui16tostr(p, ep - p, port_src);
+		*p++ = *SOH;
+		/* recipient */
+		BANGL(p, ep, "56=[");
+		BANGP(p, ep, ntop_tgt);
+		BANGL(p, ep, "]:");
+		p += ui16tostr(p, ep - p, port_tgt);
+		*p++ = *SOH;
+		/* seqno */
+		BANGL(p, ep, "34=");
+		p += ui32tostr(p, ep - p, sno);
+		*p++ = *SOH;
+
+		/* sending time */
+		BANGL(p, ep, "52=");
+		BANGP(p, ep, dt);
+		*p++ = '.';
+		p += ui16tostr_pad(p, ep - p, now->tv_usec / 1000, 3);
+		*p++ = *SOH;
+
+		/* report id */
+		BANGL(p, ep, "721=r");
+		p += ui32tostr(p, ep - p, sno);
+		*p++ = *SOH;
+
+		/* clearing bizdate */
+		BANGL(p, ep, "715=2012-06-28" SOH);
+		/* #ptys */
+		BANGL(p, ep, "453=0" SOH);
+		/* ac name */
+		BANGL(p, ep, "1=");
+		BANGP(p, ep, ac);
+		*p++ = *SOH;
+
+		/* instr name */
+		BANGL(p, ep, "55=");
+		BANGP(p, ep, pos.sym);
+		*p++ = *SOH;
+
+		/* #positions */
+		BANGL(p, ep, "702=1" SOH);
+		/* position type */
+		BANGL(p, ep, "703=TOT" SOH);
+		/* qty long */
+		BANGL(p, ep, "704=");
+		{
+			m30_t qty = ffff_m30_get_d(pos.lqty);
+			p += ffff_m30_s(p, qty);
+		}
+		*p++ = *SOH;
+		/* qty long */
+		BANGL(p, ep, "705=");
+		{
+			m30_t qty = ffff_m30_get_d(pos.sqty);
+			p += ffff_m30_s(p, qty);
+		}
+		*p++ = *SOH;
+
+		/* qty status */
+		BANGL(p, ep, "706=0" SOH);
+		/* qty date */
+		BANGL(p, ep, "976=");
+		__BANG(p, ep, dt, 8);
+		*p++ = *SOH;
+
+		/* get the length so far and print it */
+		plen = p - sp - (sizeof(fix_stdhdr) - 1);
+		ui16tostr_pad(sp + 13, 4, plen, 4);
+
+		/* compute the real plen now */
+		plen = p - sp;
+		chksum = fix_chksum(sp, plen);
+		BANGL(p, ep, fix_stdftr);
+		ui8tostr(p - 4, ep - p, chksum);
+		*p = '\0';
+
+#if defined DEBUG_FLAG && !defined BENCHMARK
+		fputs(sp, logerr);
+		fputc('\n', logerr);
+#endif	/* DEBUG_FLAG */
+#if !defined BENCHMARK
+		ud_chan_send(ch, (ud_packet_t){plen + UDPC_HDRLEN, buf});
+#endif	/* BENCHMARK */
+		sno++;
+	}
+	pno++;
+	return;
+}
 
 
 static void
@@ -224,9 +511,6 @@ main(int argc, char *argv[])
 	int client;
 	ev_io cake[1];
 	ev_prepare prp[1];
-	/* our beef channels */
-	size_t nbeef = 0;
-	ev_io *beef = NULL;
 	/* final result */
 	int res = 0;
 
@@ -342,6 +626,20 @@ main(int argc, char *argv[])
 			counter.port = htons(port);
 		}
 	}
+
+#if defined BENCHMARK
+/* benchmark */
+	struct pf_pos_s p = {
+		.sym = "EURUSD",
+		.lqty = 17200000,
+		.sqty = 1200000,
+	};
+	/* encode fix messages */
+	for (size_t i = 0; i < 5000000; i++) {
+		fix_pos_rpt("", p);
+	}
+	exit(1);
+#endif	/* BENCHMARK */
 
 	/* now wait for events to arrive */
 	ev_loop(EV_A_ 0);

@@ -258,14 +258,19 @@ __wrapper::updateAccountValue(
 void
 __wrapper::updatePortfolio(
 	const IB::Contract &c, int pos,
-	double marketPrice, double marketValue, double averageCost,
-	double unrealizedPNL, double realizedPNL,
+	double mkt_prc, double mkt_val, double avg_cost,
+	double upnl, double rpnl,
 	const IB::IBString &acct_name)
 {
-	const char *name = acct_name.c_str();
-	const char *sym = c.localSymbol.c_str();
+	const char *ac = acct_name.c_str();
+	struct pf_pos_s p = {
+		.sym = c.localSymbol.c_str(),
+		.lqty = pos > 0 ? pos : 0.0,
+		.sqty = pos < 0 ? -pos : 0.0,
+	};
 
-	WRP_DEBUG("acct %s: portfolio %s -> %d", name, sym, pos);
+	WRP_DEBUG("acct %s: portfolio %s -> %d", ac, p.sym, pos);
+	fix_pos_rpt(ac, p);
 	return;
 }
 

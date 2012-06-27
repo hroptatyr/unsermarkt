@@ -41,6 +41,15 @@
 extern "C" {
 #endif	/* __cplusplus */
 
+typedef struct pf_pos_s *pf_pos_t;
+
+struct pf_pos_s {
+	const char *sym;
+	double lqty;
+	double sqty;
+};
+
+extern void fix_pos_rpt(const char *ac, struct pf_pos_s);
 
 #if defined __cplusplus
 }

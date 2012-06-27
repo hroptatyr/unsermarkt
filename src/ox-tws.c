@@ -989,6 +989,7 @@ unroll:
 	/* destroy the default evloop */
 	ev_default_destroy();
 out:
+	ox_parser_free(argi);
 	return res;
 }
 

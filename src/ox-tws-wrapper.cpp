@@ -670,9 +670,8 @@ tws_put_order(my_tws_t tws, tws_order_t o)
 	if (s->qty) {
 		m30_t m = {.u = s->qty};
 
-		__o.totalQuantity = ffff_m30_d(m);
 		// as this is currency only, we're probably talking lots
-		__o.totalQuantity *= QTY_MULTIPLIER;
+		__o.totalQuantity = ffff_m30_d(m) * QTY_MULTIPLIER_D;
 
 		cli->placeOrder(o->oid, *__c, __o);
 	} else {

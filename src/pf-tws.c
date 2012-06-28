@@ -329,6 +329,21 @@ cake_cb(EV_P_ ev_io *w, int revents)
 }
 
 static void
+req_cb(EV_P_ ev_timer *w, int UNUSED(revents))
+{
+#define TWS_ALL_ACCOUNTS	(NULL)
+	my_tws_t tws = w->data;
+
+	/* call the a/c requester */
+	tws_req_ac(tws, TWS_ALL_ACCOUNTS);
+
+	/* reschedule ourselves */
+	ev_timer_again(EV_A_ w);
+#undef TWS_ALL_ACCOUNTS
+	return;
+}
+
+static void
 prep_cb(EV_P_ ev_prepare *UNUSED(w), int UNUSED(revents))
 {
 	return;
@@ -408,6 +423,7 @@ main(int argc, char *argv[])
 	ev_signal sigint_watcher[1];
 	ev_signal sighup_watcher[1];
 	ev_signal sigterm_watcher[1];
+	ev_timer tm_req[1];
 	/* tws specific stuff */
 	struct my_tws_s tws[1];
 	const char *host;
@@ -544,6 +560,11 @@ main(int argc, char *argv[])
 	}
 	exit(1);
 #endif	/* BENCHMARK */
+
+	/* set up the timer to emit the portfolio regularly */
+	ev_timer_init(tm_req, req_cb, 0.0, 60.0/*option?*/);
+	tm_req->data = tws;
+	ev_timer_start(EV_A_ tm_req);
 
 	/* now wait for events to arrive */
 	ev_loop(EV_A_ 0);

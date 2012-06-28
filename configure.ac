@@ -37,7 +37,7 @@ SXE_INIT_MSG_LEVEL
 
 ## the build chain
 AC_PROG_CC([icc gcc tcc cc])
-SXE_CHECK_CC([gnu11 c11 gnu1x c1x gnu99 c99])
+SXE_CHECK_CC([c11 c1x c99])
 AC_C_BIGENDIAN
 SXE_CHECK_CFLAGS
 

@@ -264,9 +264,9 @@ __wrapper::updatePortfolio(
 {
 	const char *ac = acct_name.c_str();
 	struct pf_pos_s p = {
-		.sym = c.localSymbol.c_str(),
-		.lqty = pos > 0 ? pos : 0.0,
-		.sqty = pos < 0 ? -pos : 0.0,
+		c.localSymbol.c_str(),
+		pos > 0 ? pos : 0.0,
+		pos < 0 ? -pos : 0.0,
 	};
 
 	WRP_DEBUG("acct %s: portfolio %s -> %d", ac, p.sym, pos);

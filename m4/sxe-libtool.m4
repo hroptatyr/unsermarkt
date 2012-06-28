@@ -64,9 +64,9 @@ AC_DEFUN([SXE_CHECK_LIBLTDL], [dnl
 	## make sure the libtool stuff has been run before
 	AC_REQUIRE([SXE_CHECK_LIBTOOL])
 
-	LT_CONFIG_LTDL_DIR([libltdl], [recursive])
-	LTDL_INSTALLABLE
-	LTDL_INIT
+	LT_CONFIG_LTDL_DIR([libltdl])
+	LTDL_INIT([convenience])
+	AC_CHECK_HEADERS([ltdl.h])
 
 	AM_CONDITIONAL([DESCEND_LIBLTDL], [test "$with_included_ltdl" = "yes"])
 ])dnl SXE_CHECK_LIBLTDL

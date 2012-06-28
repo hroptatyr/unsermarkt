@@ -825,7 +825,7 @@ detach(void)
 		(void)dup2(fd, STDERR_FILENO);
 	}
 #if defined DEBUG_FLAG
-	logerr = fopen("/tmp/ox-tws.log", "w+");
+	logerr = fopen("/tmp/ox-tws.log", "a");
 #else  /* !DEBUG_FLAG */
 	logerr = fdopen(fd, "w");
 #endif	/* DEBUG_FLAG */

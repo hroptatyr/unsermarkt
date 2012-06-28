@@ -1,4 +1,4 @@
-/*** pf-tws-wrapper.h -- portfolio management through tws
+/*** wrp-debug.h -- just variadic debug printers
  *
  * Copyright (C) 2012 Sebastian Freundt
  *
@@ -34,41 +34,53 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  ***/
-#if !defined INCLUDED_pf_tws_wrapper_h_
-#define INCLUDED_pf_tws_wrapper_h_
+#if !defined INCLUDED_wrp_debug_h_
+#define INCLUDED_wrp_debug_h_
 
-#if defined __cplusplus
-extern "C" {
-#endif	/* __cplusplus */
+#include <stdio.h>
+#include <stdarg.h>
 
-typedef struct my_tws_s *my_tws_t;
-
-typedef unsigned int tws_oid_t;
-
-struct my_tws_s {
-	tws_oid_t next_oid;
-	unsigned int time;
-	void *wrp;
-	void *cli;
-	void *pf;
-};
-
-
+/* logerr should be defined to void* somewhere  */
 extern void *logerr;
+#define LOGERR		((FILE*)logerr)
 
-extern int init_tws(my_tws_t);
-extern int fini_tws(my_tws_t);
+static inline void
+__attribute__((format(printf, 2, 3)))
+wrp_debug(void *c, const char *fmt, ...)
+{
+	va_list vap;
 
-extern int tws_connect(my_tws_t, const char *host, uint16_t port, int client);
-extern int tws_disconnect(my_tws_t);
-
-extern int tws_recv(my_tws_t);
-extern int tws_send(my_tws_t);
-
-extern int tws_req_ac(my_tws_t, const char *ac_name);
-
-#if defined __cplusplus
+	fprintf(LOGERR, "[tws] %p: ", c);
+	va_start(vap, fmt);
+	vfprintf(LOGERR, fmt, vap);
+	va_end(vap);
+	fputc('\n', LOGERR);
+	fflush(LOGERR);
+	return;
 }
-#endif	/* __cplusplus */
 
-#endif	/* INCLUDED_pf_tws_wrapper_h_ */
+static inline void
+__attribute__((format(printf, 2, 3)))
+glu_debug(void *c, const char *fmt, ...)
+{
+	va_list vap;
+
+	fprintf(LOGERR, "[glu/contract] %p: ", c);
+	va_start(vap, fmt);
+	vfprintf(LOGERR, fmt, vap);
+	va_end(vap);
+	fputc('\n', LOGERR);
+	fflush(LOGERR);
+	return;
+}
+
+#if defined DEBUG_FLAG
+/* assumes your class has a context */
+# define GLU_DEBUG(args...)	glu_debug((void*)this->ctx, args)
+# define WRP_DEBUG(args...)	wrp_debug((void*)this->ctx, args)
+#else  /* !DEBUG_FLAG */
+# define GLU_DEBUG(args...)
+# define WRP_DEBUG(args...)
+#endif	/* DEBUG_FLAG */
+
+#endif	/* INCLUDED_wrp_debug_h_ */

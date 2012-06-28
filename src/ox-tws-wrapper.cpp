@@ -62,6 +62,15 @@
 
 #include "ox-tws-wrapper.h"
 #include "ox-tws-private.h"
+#include "wrp-debug.h"
+
+#if defined DEBUG_FLAG
+# include <assert.h>
+#else  /* !DEBUG_FLAG */
+# define glu_debug(args...)
+# define wrp_debug(args...)
+# define assert(x)
+#endif	/* DEBUG_FLAG */
 
 #define TWSAPI_IPV6		1
 
@@ -164,22 +173,6 @@ public:
 #elif defined __GNUC__
 # pragma GCC diagnostic ignored "-Wunused-parameter"
 #endif
-
-static void
-__attribute__((format(printf, 2, 3)))
-wrp_debug(my_tws_t c, const char *fmt, ...)
-{
-	va_list vap;
-	va_start(vap, fmt);
-	fprintf(LOGERR, "[tws] %p: ", c);
-	vfprintf(LOGERR, fmt, vap);
-	va_end(vap);
-	fputc('\n', stderr);
-	return;
-}
-
-#define WRP_DEBUG(args...)			\
-	wrp_debug(this->ctx, args)
 
 void 
 __wrapper::tickPrice(IB::TickerId id, IB::TickType fld, double pri, int autop)

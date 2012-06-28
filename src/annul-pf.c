@@ -32,50 +32,47 @@ struct xmpl_s {
 typedef struct __pos_s *__pos_t;
 
 struct __pos_s {
-	char sym[6];
+	char sym[8];
 	/* is qty */
-	m30_t lqty;
-	m30_t sqty;
-	/* should-be qty */
-	m30_t lqty_sb;
-	m30_t sqty_sb;
+	double lqty;
+	double sqty;
 };
 
 
 /* list of stuff to fish for, only currencies, atm */
 static struct __pos_s poss[] = {
 	{
-		"AUDCAD", 0, 0, 0, 0,
+		"AUDCAD", 0, 0,
 	}, {
-		"AUDUSD", 0, 0, 0, 0,
+		"AUDUSD", 0, 0,
 	}, {
-		"EURAUD", 0, 0, 0, 0,
+		"EURAUD", 0, 0,
 	}, {
-		"EURCHF", 0, 0, 0, 0,
+		"EURCHF", 0, 0,
 	}, {
-		"EURGBP", 0, 0, 0, 0,
+		"EURGBP", 0, 0,
 	}, {
-		"EURNOK", 0, 0, 0, 0,
+		"EURNOK", 0, 0,
 	}, {
-		"EURSEK", 0, 0, 0, 0,
+		"EURSEK", 0, 0,
 	}, {
-		"EURUSD", 0, 0, 0, 0,
+		"EURUSD", 0, 0,
 	}, {
-		"GBPUSD", 0, 0, 0, 0,
+		"GBPUSD", 0, 0,
 	}, {
-		"NZDCHF", 0, 0, 0, 0,
+		"NZDCHF", 0, 0,
 	}, {
-		"NZDUSD", 0, 0, 0, 0,
+		"NZDUSD", 0, 0,
 	}, {
-		"USDCAD", 0, 0, 0, 0,
+		"USDCAD", 0, 0,
 	}, {
-		"USDCHF", 0, 0, 0, 0,
+		"USDCHF", 0, 0,
 	}, {
-		"USDDKK", 0, 0, 0, 0,
+		"USDDKK", 0, 0,
 	}, {
-		"USDNOK", 0, 0, 0, 0,
+		"USDNOK", 0, 0,
 	}, {
-		"USDSEK", 0, 0, 0, 0,
+		"USDSEK", 0, 0,
 	},
 };
 
@@ -84,7 +81,7 @@ find_pos_by_name(const char *sym)
 {
 	for (size_t i = 0; i < countof(poss); i++) {
 		__pos_t p = poss + i;
-		if (strcmp(p->sym, sym) == 0) {
+		if (memcmp(p->sym, sym, 6) == 0) {
 			return p;
 		}
 	}
@@ -109,8 +106,6 @@ find_pos_by_name(const char *sym)
 #define POS_RPT		(0x757a)
 #define POS_RPT_RPL	(UDPC_PKT_RPL(POS_RPT))
 
-static unsigned int pno = 0;
-
 static inline void
 udpc_seria_add_scom(udpc_seria_t sctx, scom_t s, size_t len)
 {
@@ -122,6 +117,7 @@ udpc_seria_add_scom(udpc_seria_t sctx, scom_t s, size_t len)
 static void
 shout_syms(const struct xmpl_s *ctx)
 {
+	static unsigned int pno = 0;
 	struct udpc_seria_s ser[1];
 	static char buf[UDPC_PKTLEN];
 
@@ -131,7 +127,7 @@ shout_syms(const struct xmpl_s *ctx)
 
 	for (size_t i = 0; i < countof(poss); i++) {
 		udpc_seria_add_ui16(ser, i + 1);
-		udpc_seria_add_str(ser, poss[i].sym, sizeof(poss->sym));
+		udpc_seria_add_str(ser, poss[i].sym, 6);
 	}
 	ud_chan_send_ser(ctx->ud_ox, ser);
 	return;
@@ -155,6 +151,101 @@ udpc_seria_des_umm(umm_pair_t mmp, udpc_seria_t ser)
 	memcpy(mmp, ser->msg + ser->msgoff, sizeof(*mmp));
 	ser->msgoff += sizeof(*mmp);
 	return 0;
+}
+
+static double
+calc_qty(double pos)
+{
+#define LOT_SIZE	(100000.0)
+	return fmod(pos / LOT_SIZE, 1.0) + 1.0;
+}
+
+static udpc_seria_t
+check_poss(const struct xmpl_s *UNUSED(ctx))
+{
+	static unsigned int pno = 0;
+	static char buf[UDPC_PKTLEN];
+	static struct udpc_seria_s ser[1];
+	struct timeval now[1];
+	struct sl1t_s t[1];
+
+	/* set up the serialisation struct, just in case */
+	udpc_make_pkt((ud_packet_t){sizeof(buf), buf}, 1, pno++, UTE);
+	udpc_seria_init(ser, UDPC_PAYLOAD(buf), UDPC_PLLEN);
+
+	/* start setting */
+	gettimeofday(now, NULL);
+	sl1t_set_stmp_sec(t, now->tv_sec);
+	sl1t_set_stmp_msec(t, now->tv_usec / 1000);
+	for (size_t i = 0; i < countof(poss); i++) {
+		__pos_t pos = poss + i;
+
+		/* just in case */
+		sl1t_set_tblidx(t, i + 1);
+		t->pri = SL1T_PRC_MKT;
+
+		if (pos->lqty != 0.0) {
+			double qty = calc_qty(pos->lqty);
+
+			fprintf(stderr, "\
+ORDER\t%s\tSELL\t%.8f\n", pos->sym, qty);
+			sl1t_set_ttf(t, SL1T_TTF_ASK);
+
+			t->qty = ffff_m30_get_d(qty).u;
+			udpc_seria_add_scom(ser, AS_SCOM(t), sizeof(*t));
+		}
+		if (pos->sqty != 0.0) {
+			double qty = calc_qty(pos->sqty);
+
+			fprintf(stderr, "\
+ORDER\t%s\tBUY\t%.8f\n", pos->sym, qty);
+			sl1t_set_ttf(t, SL1T_TTF_BID);
+
+			t->qty = ffff_m30_get_d(qty).u;
+			udpc_seria_add_scom(ser, AS_SCOM(t), sizeof(*t));
+		}
+	}
+
+	if (udpc_seria_msglen(ser)) {
+		return ser;
+	}
+	return NULL;
+}
+
+
+static size_t
+find_fix_fld(char **p, char *msg, const char *key)
+{
+#define SOH	"\001"
+	char *cand = msg;
+	char *eocand;
+
+	while ((cand = strstr(cand, key)) && cand != msg && cand[-1] != *SOH);
+	/* cand should be either NULL or point to the key */
+	if (UNLIKELY(cand == NULL)) {
+		return 0;
+	}
+	/* search for the next SOH */
+	if (UNLIKELY((eocand = strchr(cand, *SOH)) == NULL)) {
+		return 0;
+	}
+	*p = cand;
+	return eocand - cand;
+}
+
+static char*
+find_fix_eofld(char *msg, const char *key)
+{
+#define SOH	"\001"
+	char *cand;
+	size_t clen;
+
+	if (UNLIKELY((clen = find_fix_fld(&cand, msg, key)) == 0)) {
+		return NULL;
+	} else if (UNLIKELY(cand[++clen] == '\0')) {
+		return NULL;
+	}
+	return cand + clen;
 }
 
 static void
@@ -188,12 +279,60 @@ pr_match(umm_pair_t mmp)
 static void
 pr_pos_rpt(char *buf, size_t bsz)
 {
-	fprintf(stdout, "POSRPT\t\n");
+	static const char fix_pos_rpt[] = "35=AP";
+	static const char fix_chksum[] = "10=";
+	static const char fix_inssym[] = "55=";
+	static const char fix_lqty[] = "704=";
+	static const char fix_sqty[] = "705=";
+
+	for (char *p = buf, *ep = buf + bsz;
+	     p && p < ep && (p = find_fix_eofld(p, fix_pos_rpt));
+	     p = find_fix_eofld(p, fix_chksum)) {
+		__pos_t pos;
+		size_t tmp;
+		char *sym;
+		char *lqty;
+		char *sqty;
+
+		if (find_fix_fld(&sym, p, fix_inssym)) {
+			/* go behind the = */
+			char ccy[8];
+
+			memcpy(ccy, sym += sizeof(fix_inssym) - 1, 3);
+			if (LIKELY(*(sym += 3) == '.')) {
+				sym++;
+			}
+			memcpy(ccy + 3, sym, 3);
+			ccy[6] = '\000';
+			pos = find_pos_by_name(ccy);
+		}
+		if (UNLIKELY(pos == NULL)) {
+			continue;
+		}
+		if ((tmp = find_fix_fld(&lqty, p, fix_lqty))) {
+			char bkup = lqty[tmp];
+			const char *cursor = lqty + sizeof(fix_lqty) - 1;
+
+			lqty[tmp] = '\0';
+			pos->lqty = strtod(cursor, NULL);
+			lqty[tmp] = bkup;
+		}
+		if ((tmp = find_fix_fld(&sqty, p, fix_sqty))) {
+			char bkup = sqty[tmp];
+			const char *cursor = sqty + sizeof(fix_sqty) - 1;
+
+			sqty[tmp] = '\0';
+			pos->sqty = strtod(cursor, NULL);
+			sqty[tmp] = bkup;
+		}
+
+		fprintf(stdout, "POSRPT\t%s\n", pos->sym);
+	}
 	return;
 }
 
 static void
-muca_cb(const struct xmpl_s *ctx, int s)
+muca_cb(const struct xmpl_s *UNUSED(ctx), int s)
 {
 	static char buf[UDPC_PKTLEN];
 	union ud_sockaddr_u sa;
@@ -221,6 +360,7 @@ muca_cb(const struct xmpl_s *ctx, int s)
 	case POS_RPT_RPL: {
 		/* great, fix message parsing */
 		pr_pos_rpt(UDPC_PAYLOAD(buf), UDPC_PAYLLEN(nrd));
+		buf[nrd] = '\0';
 		break;
 	}
 	default:
@@ -255,19 +395,10 @@ post_work(const struct xmpl_s *UNUSED(ctx))
 static void
 work(const struct xmpl_s *ctx)
 {
-/* generate market orders */
-	struct udpc_seria_s ser[1];
-	static char buf[UDPC_PKTLEN];
-	static ud_packet_t pkt = {0, buf};
-	struct timeval now[1];
-
-#define RESET_SER						\
-	udpc_make_pkt(pkt, 0, pno++, UTE);			\
-	udpc_seria_init(ser, UDPC_PAYLOAD(buf), UDPC_PLLEN)
-
 	while (1) {
 		struct timeval tv[2];
 		struct epoll_event ev[1];
+		udpc_seria_t ser;
 		int slp = 1000;
 
 		gettimeofday(tv + 0, NULL);
@@ -282,6 +413,12 @@ work(const struct xmpl_s *ctx)
 			} else {
 				slp = 0;
 			}
+		}
+		/* check all positions */
+		if ((ser = check_poss(ctx))) {
+			/* first off announce ourselves */
+			shout_syms(ctx);
+			ud_chan_send_ser(ctx->ud_ox, ser);
 		}
 
 		fprintf(stderr, "BANG\n");

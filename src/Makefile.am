@@ -195,6 +195,14 @@ tk_example_CPPFLAGS += $(unserding_CFLAGS)
 tk_example_LDFLAGS = $(AM_LDFLAGS)
 tk_example_LDFLAGS += $(unserding_LIBS)
 
+noinst_PROGRAMS += annul-pf
+annul_pf_SOURCES = annul-pf.c
+annul_pf_CPPFLAGS = $(AM_CPPFLAGS)
+annul_pf_CPPFLAGS += $(uterus_CFLAGS)
+annul_pf_CPPFLAGS += $(unserding_CFLAGS)
+annul_pf_LDFLAGS = $(AM_LDFLAGS)
+annul_pf_LDFLAGS += $(unserding_LIBS)
+
 ## our rule for gengetopt
 %.c %.h: %.ggo
 	gengetopt -l -i $< -F $*

@@ -355,6 +355,9 @@ fix_pos_rpt(const char *ac, struct pf_pos_s pos)
 		ui8tostr(p - 4, ep - p, chksum);
 		*p = '\0';
 
+		/* and now plen again, this time with the footer */
+		plen = p - sp;
+
 #if !defined BENCHMARK
 		ud_chan_send(ch, (ud_packet_t){plen + UDPC_HDRLEN, buf});
 #if defined DEBUG_FLAG

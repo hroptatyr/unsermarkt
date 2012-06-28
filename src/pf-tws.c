@@ -374,7 +374,7 @@ fix_pos_rpt(const char *ac, struct pf_pos_s pos)
 		plen = p - sp;
 		chksum = fix_chksum(sp, plen);
 		BANGL(p, ep, fix_stdftr);
-		ui8tostr(p - 4, ep - p, chksum);
+		ui8tostr_pad(p - 4, ep - p, chksum, 3);
 		*p = '\0';
 
 		/* and now plen again, this time with the footer */

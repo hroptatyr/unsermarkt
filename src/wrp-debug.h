@@ -55,6 +55,7 @@ wrp_debug(void *c, const char *fmt, ...)
 	vfprintf(LOGERR, fmt, vap);
 	va_end(vap);
 	fputc('\n', LOGERR);
+	fflush(LOGERR);
 	return;
 }
 
@@ -69,6 +70,7 @@ glu_debug(void *c, const char *fmt, ...)
 	vfprintf(LOGERR, fmt, vap);
 	va_end(vap);
 	fputc('\n', LOGERR);
+	fflush(LOGERR);
 	return;
 }
 

@@ -67,7 +67,6 @@ struct tws_order_s {
 
 
 extern void *logerr;
-#define LOGERR		((FILE*)logerr)
 
 extern int init_tws(my_tws_t);
 extern int fini_tws(my_tws_t);

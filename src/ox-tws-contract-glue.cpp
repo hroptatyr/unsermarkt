@@ -46,12 +46,13 @@
 #include <twsapi/Contract.h>
 #include "ox-tws-wrapper.h"
 #include "iso4217.h"
+#include "wrp-debug.h"
 
 #if defined DEBUG_FLAG
 # include <assert.h>
-# define OX_DEBUG(args...)	fprintf(LOGERR, args)
 #else  /* !DEBUG_FLAG */
-# define OX_DEBUG(args...)
+# define glu_debug(args...)
+# define wrp_debug(args...)
 # define assert(x)
 #endif	/* DEBUG_FLAG */
 
@@ -85,7 +86,7 @@ tws_assemble_instr(const char *sym)
 	res->currency = std::string(trm->sym);
 	res->secType = std::string("CASH");
 	res->exchange = std::string("IDEALPRO");
-	OX_DEBUG("[glue/contract]: created %p\n", res);
+	glu_debug((void*)res, "created");
 	return (tws_instr_t)res;
 }
 
@@ -95,7 +96,7 @@ tws_disassemble_instr(tws_instr_t ins)
 	IB::Contract *ibi = (IB::Contract*)ins;
 
 	if (ibi) {
-		OX_DEBUG("[glue/contract]: deleting %p\n", ibi);
+		glu_debug((void*)ibi, "deleting");
 		delete ibi;
 	}
 	return;

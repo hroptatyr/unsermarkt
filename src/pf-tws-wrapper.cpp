@@ -494,7 +494,6 @@ tws_connect(my_tws_t foo, const char *host, uint16_t port, int client)
 
 	// just request a lot of buggery here
 	cli->reqCurrentTime();
-	cli->reqAccountUpdates(true, std::string(""));
 	return cli->fd();
 }
 
@@ -524,6 +523,16 @@ tws_send(my_tws_t foo)
 		return 0;
 	}
 	cli->onSend();
+	return 0;
+}
+
+int
+tws_req_ac(my_tws_t foo, const char *name)
+{
+	IB::EPosixClientSocket *cli = (IB::EPosixClientSocket*)foo->cli;
+	IB::IBString ac = std::string(name ?: "");
+
+	cli->reqAccountUpdates(true, ac);
 	return 0;
 }
 

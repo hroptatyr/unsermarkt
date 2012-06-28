@@ -66,6 +66,8 @@ extern int tws_disconnect(my_tws_t);
 extern int tws_recv(my_tws_t);
 extern int tws_send(my_tws_t);
 
+extern int tws_req_ac(my_tws_t, const char *ac_name);
+
 #if defined __cplusplus
 }
 #endif	/* __cplusplus */

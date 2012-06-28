@@ -41,6 +41,7 @@
 #include <stdarg.h>
 
 /* logerr should be defined to void* somewhere  */
+extern void *logerr;
 #define LOGERR		((FILE*)logerr)
 
 static inline void

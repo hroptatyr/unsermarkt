@@ -69,6 +69,7 @@
 #include "pf-tws-wrapper.h"
 #include "pf-tws-private.h"
 #include "nifty.h"
+#include "strops.h"
 
 #if defined __INTEL_COMPILER
 # pragma warning (disable:981)
@@ -90,108 +91,6 @@ struct comp_s {
 	uint16_t port;
 };
 
-static size_t
-ui8tostr(char *restrict buf, size_t UNUSED(bsz), uint8_t d)
-{
-/* all strings should be little */
-#define C(x, d)	(char)((x) / (d) % 10 + '0')
-	size_t i = 0;
-
-	if (d >= 100) {
-		buf[i++] = C(d, 100);
-	}
-	if (d >= 10) {
-		buf[i++] = C(d, 10);
-	}
-	buf[i++] = C(d, 1);
-	return i;
-}
-
-static size_t
-ui16tostr(char *restrict buf, size_t UNUSED(bsz), uint16_t d)
-{
-/* all strings should be little */
-#define C(x, d)	(char)((x) / (d) % 10 + '0')
-	size_t i = 0;
-
-	if (d >= 10000) {
-		buf[i++] = C(d, 10000);
-	}
-	if (d >= 1000) {
-		buf[i++] = C(d, 1000);
-	}
-	if (d >= 100) {
-		buf[i++] = C(d, 100);
-	}
-	if (d >= 10) {
-		buf[i++] = C(d, 10);
-	}
-	buf[i++] = C(d, 1);
-	return i;
-}
-
-static size_t
-ui16tostr_pad(char *restrict buf, size_t UNUSED(bsz), uint16_t d, size_t pad)
-{
-/* all strings should be little */
-#define C(x, d)	(char)((x) / (d) % 10 + '0')
-	switch (pad) {
-	case 5:
-		buf[pad - 5] = C(d, 10000);
-	case 4:
-		buf[pad - 4] = C(d, 1000);
-	case 3:
-		buf[pad - 3] = C(d, 100);
-	case 2:
-		buf[pad - 2] = C(d, 10);
-	case 1:
-		buf[pad - 1] = C(d, 1);
-		break;
-	case 0:
-	default:
-		break;
-	}
-	return pad;
-}
-
-static size_t
-ui32tostr(char *restrict buf, size_t UNUSED(bsz), uint32_t d)
-{
-/* all strings should be little */
-#define C(x, d)	(char)((x) / (d) % 10 + '0')
-	size_t i = 0;
-
-	if (d >= 1000000000) {
-		buf[i++] = C(d, 1000000000);
-	}
-	if (d >= 100000000) {
-		buf[i++] = C(d, 100000000);
-	}
-	if (d >= 10000000) {
-		buf[i++] = C(d, 10000000);
-	}
-	if (d >= 1000000) {
-		buf[i++] = C(d, 1000000);
-	}
-	if (d >= 100000) {
-		buf[i++] = C(d, 100000);
-	}
-	if (d >= 10000) {
-		buf[i++] = C(d, 10000);
-	}
-	if (d >= 1000) {
-		buf[i++] = C(d, 1000);
-	}
-	if (d >= 100) {
-		buf[i++] = C(d, 100);
-	}
-	if (d >= 10) {
-		buf[i++] = C(d, 10);
-	}
-	buf[i++] = C(d, 1);
-	return i;
-}
-
 
 /* the actual core */
 #define POS_RPT		(0x757a)
@@ -203,11 +102,7 @@ static struct comp_s counter = {0};
 static size_t nbeef = 0;
 static ev_io *beef = NULL;
 
-#if defined DEBUG_FLAG
-# define SOH		"|"
-#else  /* !DEBUG_FLAG */
-# define SOH		"\001"
-#endif	/* DEBUG_FLAG */
+#define SOH		"\001"
 static const char fix_stdhdr[] = "8=FIXT.1.1" SOH "9=0000" SOH;
 static const char fix_stdftr[] = "10=xyz" SOH;
 
@@ -356,15 +251,24 @@ fix_pos_rpt(const char *ac, struct pf_pos_s pos)
 		plen = p - sp;
 		chksum = fix_chksum(sp, plen);
 		BANGL(p, ep, fix_stdftr);
-		ui8tostr(p - 4, ep - p, chksum);
+		ui8tostr_pad(p - 4, ep - p, chksum, 3);
 		*p = '\0';
 
-#if defined DEBUG_FLAG && !defined BENCHMARK
+		/* and now plen again, this time with the footer */
+		plen = p - sp;
+
+#if !defined BENCHMARK
+		ud_chan_send(ch, (ud_packet_t){plen + UDPC_HDRLEN, buf});
+#if defined DEBUG_FLAG
+		/* quickly massage the string suitable for printing */
+		for (p = sp; p < ep; p++) {
+			if (*p == *SOH) {
+				*p = '|';
+			}
+		}
 		fputs(sp, logerr);
 		fputc('\n', logerr);
 #endif	/* DEBUG_FLAG */
-#if !defined BENCHMARK
-		ud_chan_send(ch, (ud_packet_t){plen + UDPC_HDRLEN, buf});
 #endif	/* BENCHMARK */
 		sno++;
 	}

@@ -66,6 +66,7 @@ AC_DEFUN([SXE_CHECK_LIBLTDL], [dnl
 
 	LT_CONFIG_LTDL_DIR([libltdl])
 	LTDL_INIT([convenience])
+	AC_CHECK_HEADERS([ltdl.h])
 
 	AM_CONDITIONAL([DESCEND_LIBLTDL], [test "$with_included_ltdl" = "yes"])
 ])dnl SXE_CHECK_LIBLTDL

@@ -220,6 +220,8 @@ AC_DEFUN([SXE_FEATFLAGS], [dnl
 		cflags="${cflags} ${XFLAG} -static-intel"])
 	SXE_CHECK_COMPILER_FLAGS([-static-libgcc], [
 		cflags="${cflags} ${XFLAG} -static-libgcc"])
+	CXXLD="${CC} ${XFLAG} -lstdc++ ${cflags}"
+	AC_SUBST([CXXLD])
 ])dnl SXE_FEATFLAGS
 
 

@@ -108,6 +108,27 @@ ui8tostr(char *restrict buf, size_t UNUSED(bsz), uint8_t d)
 }
 
 static size_t
+ui8tostr_pad(char *restrict buf, size_t UNUSED(bsz), uint8_t d, size_t pad)
+{
+/* all strings should be little */
+#define C(x, d)	(char)((x) / (d) % 10 + '0')
+	switch (pad) {
+	case 3:
+		buf[pad - 3] = C(d, 100);
+	case 2:
+		buf[pad - 2] = C(d, 10);
+	case 1:
+		buf[pad - 1] = C(d, 1);
+		break;
+	case 0:
+	default:
+		pad = 0;
+		break;
+	}
+	return pad;
+}
+
+static size_t
 ui16tostr(char *restrict buf, size_t UNUSED(bsz), uint16_t d)
 {
 /* all strings should be little */

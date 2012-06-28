@@ -156,7 +156,7 @@ ox_tws_LDFLAGS += $(unserding_LIBS)
 ox_tws_LDFLAGS += $(twsapi_LIBS)
 ox_tws_LDFLAGS += $(libev_LIBS)
 ox_tws_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) \
-	$(LIBTOOLFLAGS) --mode=link $(CCLD) $(AM_CFLAGS) $(CFLAGS) \
+	$(LIBTOOLFLAGS) --mode=link $(CXXLD) $(AM_CFLAGS) $(CFLAGS) \
 	$(ox_tws_LDFLAGS) $(LDFLAGS) -o $@
 
 noinst_PROGRAMS += pf-tws
@@ -175,7 +175,7 @@ pf_tws_LDFLAGS += $(unserding_LIBS)
 pf_tws_LDFLAGS += $(twsapi_LIBS)
 pf_tws_LDFLAGS += $(libev_LIBS)
 pf_tws_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) \
-	$(LIBTOOLFLAGS) --mode=link $(CCLD) $(AM_CFLAGS) $(CFLAGS) \
+	$(LIBTOOLFLAGS) --mode=link $(CXXLD) $(AM_CFLAGS) $(CFLAGS) \
 	$(pf_tws_LDFLAGS) $(LDFLAGS) -o $@
 endif  ## HAVE_TWSAPI
 

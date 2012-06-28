@@ -214,13 +214,12 @@ AC_DEFUN([SXE_OPTIFLAGS], [dnl
 ])dnl SXE_OPTIFLAGS
 
 AC_DEFUN([SXE_FEATFLAGS], [dnl
-	## if libtool then
-	dnl XFLAG="-XCClinker"
+	XFLAG=
 	## default flags for needed features
 	SXE_CHECK_COMPILER_FLAGS([-static-intel], [
-		ldflags="${ldflags} ${XFLAG} -static-intel"])
+		cflags="${cflags} ${XFLAG} -static-intel"])
 	SXE_CHECK_COMPILER_FLAGS([-static-libgcc], [
-		ldflags="${ldflags} ${XFLAG} -static-libgcc"])
+		cflags="${cflags} ${XFLAG} -static-libgcc"])
 ])dnl SXE_FEATFLAGS
 
 
@@ -267,7 +266,7 @@ AC_DEFUN([SXE_CHECK_CFLAGS], [dnl
 	SXE_WARNFLAGS
 	SXE_OPTIFLAGS
 	SXE_FEATFLAGS
-	SXE_CFLAGS="$debugflags $featflags $optiflags $warnflags"
+	SXE_CFLAGS="$debugflags $featflags $optiflags $warnflags ${cflags}"
 
 	## unset the werror flag again
 	SXE_LANG_WERROR([off])

@@ -69,6 +69,7 @@
 #include "pf-tws-wrapper.h"
 #include "pf-tws-private.h"
 #include "nifty.h"
+#include "strops.h"
 
 #if defined __INTEL_COMPILER
 # pragma warning (disable:981)
@@ -89,130 +90,6 @@ struct comp_s {
 	struct in6_addr addr;
 	uint16_t port;
 };
-
-static size_t
-ui8tostr(char *restrict buf, size_t UNUSED(bsz), uint8_t d)
-{
-/* all strings should be little */
-#define C(x, d)	(char)((x) / (d) % 10 + '0')
-	size_t i = 0;
-
-	if (d >= 100) {
-		buf[i++] = C(d, 100);
-	}
-	if (d >= 10) {
-		buf[i++] = C(d, 10);
-	}
-	buf[i++] = C(d, 1);
-	return i;
-}
-
-static size_t
-ui8tostr_pad(char *restrict buf, size_t UNUSED(bsz), uint8_t d, size_t pad)
-{
-/* all strings should be little */
-#define C(x, d)	(char)((x) / (d) % 10 + '0')
-	switch (pad) {
-	case 3:
-		buf[pad - 3] = C(d, 100);
-	case 2:
-		buf[pad - 2] = C(d, 10);
-	case 1:
-		buf[pad - 1] = C(d, 1);
-		break;
-	case 0:
-	default:
-		pad = 0;
-		break;
-	}
-	return pad;
-}
-
-static size_t
-ui16tostr(char *restrict buf, size_t UNUSED(bsz), uint16_t d)
-{
-/* all strings should be little */
-#define C(x, d)	(char)((x) / (d) % 10 + '0')
-	size_t i = 0;
-
-	if (d >= 10000) {
-		buf[i++] = C(d, 10000);
-	}
-	if (d >= 1000) {
-		buf[i++] = C(d, 1000);
-	}
-	if (d >= 100) {
-		buf[i++] = C(d, 100);
-	}
-	if (d >= 10) {
-		buf[i++] = C(d, 10);
-	}
-	buf[i++] = C(d, 1);
-	return i;
-}
-
-static size_t
-ui16tostr_pad(char *restrict buf, size_t UNUSED(bsz), uint16_t d, size_t pad)
-{
-/* all strings should be little */
-#define C(x, d)	(char)((x) / (d) % 10 + '0')
-	switch (pad) {
-	case 5:
-		buf[pad - 5] = C(d, 10000);
-	case 4:
-		buf[pad - 4] = C(d, 1000);
-	case 3:
-		buf[pad - 3] = C(d, 100);
-	case 2:
-		buf[pad - 2] = C(d, 10);
-	case 1:
-		buf[pad - 1] = C(d, 1);
-		break;
-	case 0:
-	default:
-		pad = 0;
-		break;
-	}
-	return pad;
-}
-
-static size_t
-ui32tostr(char *restrict buf, size_t UNUSED(bsz), uint32_t d)
-{
-/* all strings should be little */
-#define C(x, d)	(char)((x) / (d) % 10 + '0')
-	size_t i = 0;
-
-	if (d >= 1000000000) {
-		buf[i++] = C(d, 1000000000);
-	}
-	if (d >= 100000000) {
-		buf[i++] = C(d, 100000000);
-	}
-	if (d >= 10000000) {
-		buf[i++] = C(d, 10000000);
-	}
-	if (d >= 1000000) {
-		buf[i++] = C(d, 1000000);
-	}
-	if (d >= 100000) {
-		buf[i++] = C(d, 100000);
-	}
-	if (d >= 10000) {
-		buf[i++] = C(d, 10000);
-	}
-	if (d >= 1000) {
-		buf[i++] = C(d, 1000);
-	}
-	if (d >= 100) {
-		buf[i++] = C(d, 100);
-	}
-	if (d >= 10) {
-		buf[i++] = C(d, 10);
-	}
-	buf[i++] = C(d, 1);
-	return i;
-}
 
 
 /* the actual core */

@@ -170,6 +170,7 @@ ui16tostr_pad(char *restrict buf, size_t UNUSED(bsz), uint16_t d, size_t pad)
 		break;
 	case 0:
 	default:
+		pad = 0;
 		break;
 	}
 	return pad;

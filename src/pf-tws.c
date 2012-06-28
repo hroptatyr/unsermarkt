@@ -203,11 +203,7 @@ static struct comp_s counter = {0};
 static size_t nbeef = 0;
 static ev_io *beef = NULL;
 
-#if defined DEBUG_FLAG
-# define SOH		"|"
-#else  /* !DEBUG_FLAG */
-# define SOH		"\001"
-#endif	/* DEBUG_FLAG */
+#define SOH		"\001"
 static const char fix_stdhdr[] = "8=FIXT.1.1" SOH "9=0000" SOH;
 static const char fix_stdftr[] = "10=xyz" SOH;
 
@@ -359,12 +355,18 @@ fix_pos_rpt(const char *ac, struct pf_pos_s pos)
 		ui8tostr(p - 4, ep - p, chksum);
 		*p = '\0';
 
-#if defined DEBUG_FLAG && !defined BENCHMARK
+#if !defined BENCHMARK
+		ud_chan_send(ch, (ud_packet_t){plen + UDPC_HDRLEN, buf});
+#if defined DEBUG_FLAG
+		/* quickly massage the string suitable for printing */
+		for (p = sp; p < ep; p++) {
+			if (*p == *SOH) {
+				*p = '|';
+			}
+		}
 		fputs(sp, logerr);
 		fputc('\n', logerr);
 #endif	/* DEBUG_FLAG */
-#if !defined BENCHMARK
-		ud_chan_send(ch, (ud_packet_t){plen + UDPC_HDRLEN, buf});
 #endif	/* BENCHMARK */
 		sno++;
 	}

@@ -255,6 +255,7 @@ __wrapper::updatePortfolio(
 	double upnl, double rpnl,
 	const IB::IBString &acct_name)
 {
+	my_tws_t tws = this->ctx;
 	const char *ac = acct_name.c_str();
 	struct pf_pos_s p = {
 		c.localSymbol.c_str(),
@@ -263,7 +264,7 @@ __wrapper::updatePortfolio(
 	};
 
 	WRP_DEBUG("acct %s: portfolio %s -> %d", ac, p.sym, pos);
-	fix_pos_rpt(ac, p);
+	fix_pos_rpt(tws->pq, ac, p);
 	return;
 }
 

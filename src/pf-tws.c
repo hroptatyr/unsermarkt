@@ -115,7 +115,7 @@ fix_chksum(const char *str, size_t len)
 }
 
 void
-fix_pos_rpt(const char *ac, struct pf_pos_s pos)
+fix_pos_rpt(pf_pq_t UNUSED(pf), const char *ac, struct pf_pos_s pos)
 {
 #define PKT(x)		((ud_packet_t){sizeof(x), x})
 	static size_t pno = 0;

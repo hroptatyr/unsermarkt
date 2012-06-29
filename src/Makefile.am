@@ -23,7 +23,6 @@ noinst_HEADERS += nifty.h
 if HAVE_MXML
 mod_LTLIBRARIES += dso-unsermarkt.la
 dso_unsermarkt_la_LDFLAGS = -module
-dso_unsermarkt_la_LDFLAGS += $(unserding_LDFLAGS) -lsqlite3 -lmxml
 dso_unsermarkt_la_CPPFLAGS = $(AM_CPPFLAGS) -D_GNU_SOURCE
 dso_unsermarkt_la_SOURCES = dso-unsermarkt.c
 dso_unsermarkt_la_SOURCES += md5.c md5.h
@@ -39,6 +38,11 @@ dso_unsermarkt_la_SOURCES += um-types.h
 dso_unsermarkt_la_SOURCES += um-xml.h
 dso_unsermarkt_la_CPPFLAGS += $(unserding_CFLAGS)
 dso_unsermarkt_la_CPPFLAGS += $(uterus_CFLAGS)
+dso_unsermarkt_la_CPPFLAGS += $(mxml_CFLAGS)
+dso_unsermarkt_la_LDFLAGS += $(mxml_LIBS)
+dso_unsermarkt_la_LDADD =
+## check for me!
+dso_unsermarkt_la_LDADD += -lsqlite3
 EXTRA_dso_unsermarkt_la_SOURCES =
 EXTRA_dso_unsermarkt_la_SOURCES += con6ity.c
 EXTRA_dso_unsermarkt_la_SOURCES += mmls.c
@@ -62,10 +66,12 @@ uschi_LDFLAGS = $(AM_LDFLAGS) -lsqlite3
 
 if HAVE_MXML
 noinst_PROGRAMS += blood-mm
-blood_mm_LDFLAGS = $(unserding_LDFLAGS) -lmxml -lpthread
+blood_mm_LDFLAGS =
 blood_mm_CPPFLAGS = $(AM_CPPFLAGS)
 blood_mm_CPPFLAGS += $(unserding_CFLAGS)
 blood_mm_CPPFLAGS += $(uterus_CFLAGS)
+blood_mm_CPPFLAGS += $(mxml_CFLAGS)
+blood_mm_LDFLAGS += $(mxml_LIBS)
 endif  ## HAVE_MXML
 
 bin_PROGRAMS += um-quomon
@@ -202,6 +208,8 @@ annul_pf_CPPFLAGS += $(uterus_CFLAGS)
 annul_pf_CPPFLAGS += $(unserding_CFLAGS)
 annul_pf_LDFLAGS = $(AM_LDFLAGS)
 annul_pf_LDFLAGS += $(unserding_LIBS)
+annul_pf_LDADD =
+annul_pf_LDADD += -lm
 
 ## our rule for gengetopt
 %.c %.h: %.ggo

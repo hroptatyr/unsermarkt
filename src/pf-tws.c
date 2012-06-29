@@ -101,9 +101,12 @@ struct pf_pq_s {
 struct pf_pqpr_s {
 	struct ox_item_s i;
 
-	struct pf_pos_s pr;
 	/* a/c name */
 	char ac[16];
+	/* symbol not as big, but fits in neatly with the 16b a/c identifier */
+	char sym[48];
+	double lqty;
+	double sqty;
 };
 
 
@@ -239,7 +242,7 @@ udpc_seria_add_pr(udpc_seria_t ser, pf_pqpr_t pr)
 
 		/* instr name */
 		BANGL(p, ep, "55=");
-		BANGP(p, ep, pr->pr.sym);
+		BANGP(p, ep, pr->sym);
 		*p++ = *SOH;
 
 		/* #positions */
@@ -249,14 +252,14 @@ udpc_seria_add_pr(udpc_seria_t ser, pf_pqpr_t pr)
 		/* qty long */
 		BANGL(p, ep, "704=");
 		{
-			m30_t qty = ffff_m30_get_d(pr->pr.lqty);
+			m30_t qty = ffff_m30_get_d(pr->lqty);
 			p += ffff_m30_s(p, qty);
 		}
 		*p++ = *SOH;
 		/* qty long */
 		BANGL(p, ep, "705=");
 		{
-			m30_t qty = ffff_m30_get_d(pr->pr.sqty);
+			m30_t qty = ffff_m30_get_d(pr->sqty);
 			p += ffff_m30_s(p, qty);
 		}
 		*p++ = *SOH;
@@ -391,11 +394,17 @@ fix_pos_rpt(pf_pq_t UNUSED(pf), const char *ac, struct pf_pos_s pos)
 /* shall we rely on c++ code passing us a pointer we handed out earlier? */
 	pf_pqpr_t pr = pop_pr();
 
-	pr->pr = pos;
 	/* keep a rough note of the account name
 	 * not that it does anything at the mo */
 	strncpy(pr->ac, ac, sizeof(pr->ac));
 	pr->ac[sizeof(pr->ac) - 1] = '\0';
+	/* keep a rough note of the account name
+	 * not that it does anything at the mo */
+	strncpy(pr->sym, pos.sym, sizeof(pr->sym));
+	pr->sym[sizeof(pr->sym) - 1] = '\0';
+	/* and of course our quantities */
+	pr->lqty = pos.lqty;
+	pr->sqty = pos.sqty;
 
 	gq_push_tail(pq.sbuf, (ox_item_t)pr);
 	PF_DEBUG("pushed %p\n", pr);

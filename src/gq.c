@@ -37,7 +37,15 @@
 #if defined HAVE_CONFIG_H
 # include "config.h"
 #endif	/* HAVE_CONFIG_H */
+#include <sys/mman.h>
 #include "gq.h"
+
+#if !defined PROT_MEM
+# define PROT_MEM	(PROT_READ | PROT_WRITE)
+#endif	/* PROT_MEM */
+#if !defined MAP_MEM
+# define MAP_MEM	(MAP_ANONYMOUS | MAP_PRIVATE)
+#endif	/* MAP_MEM */
 
 static size_t __attribute__((const, pure))
 gq_nmemb(size_t mbsz, size_t n)
@@ -122,18 +130,22 @@ init_gq(ox_gq_t q, size_t mbsz, size_t at_least)
 	q->items = nu_items;
 	q->nitems = nusz;
 
+	/* fixup sizes for the free list fiddling */
+	olsz -= olsz % mbsz;
+	nusz -= nusz % mbsz;
 	/* fill up the free list */
 	{
-		char *ep = (char*)nu_items + olsz;
+		char *const ep = (char*)nu_items + olsz;
+		const char *const eep = ep + (nusz - olsz);
 		ox_item_t eip = (void*)ep;
 
-		for (char *sp = ep, *eep = ep + (nusz - olsz); sp < eep; sp += mbsz) {
+		for (char *sp = ep; sp < eep; sp += mbsz) {
 			ox_item_t ip = (void*)sp;
 
 			if (sp + mbsz < eep) {
 				ip->next = (void*)(sp + mbsz);
 			}
-			if ((char*)ip > ep) {
+			if (sp > ep) {
 				ip->prev = (void*)(sp - mbsz);
 			}
 		}
@@ -146,7 +158,7 @@ init_gq(ox_gq_t q, size_t mbsz, size_t at_least)
 		}
 		if (q->free->i1st == NULL) {
 			q->free->i1st = eip;
-			q->free->ilst = (void*)(ep + (nusz - olsz - mbsz));
+			q->free->ilst = (void*)(eep - mbsz);
 		}
 	}
 	return res;

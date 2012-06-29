@@ -680,14 +680,20 @@ main(int argc, char *argv[])
 
 #if defined BENCHMARK
 /* benchmark */
-	struct pf_pos_s p = {
-		.sym = "EURUSD",
-		.lqty = 17200000,
-		.sqty = 1200000,
+	struct pf_pqpr_s p = {
+		.pr = {
+			.sym = "EURUSD",
+			.lqty = 17200000,
+			.sqty = 1200000,
+		},
+		.ac = "TESTMSG",
 	};
 	/* encode fix messages */
-	for (size_t i = 0; i < 5000000; i++) {
-		fix_pos_rpt("", p);
+	for (size_t i = 0; i < 1000000; i++) {
+		static char buf[UDPC_PKTLEN];
+		struct udpc_seria_s ser[1];
+		udpc_seria_init(ser, buf, sizeof(buf));
+		udpc_seria_add_pr(ser, &p);
 	}
 	exit(1);
 #endif	/* BENCHMARK */

@@ -48,7 +48,6 @@
 #endif	/* HAVE_EV_H */
 #include <netinet/in.h>
 #include <netdb.h>
-#include <sys/mman.h>
 
 #if defined HAVE_UTERUS_UTERUS_H
 # include <uterus/uterus.h>
@@ -135,13 +134,6 @@ struct ox_cl_s {
 };
 
 
-#if !defined PROT_MEM
-# define PROT_MEM	(PROT_READ | PROT_WRITE)
-#endif	/* PROT_MEM */
-#if !defined MAP_MEM
-# define MAP_MEM	(MAP_ANONYMOUS | MAP_PRIVATE)
-#endif	/* MAP_MEM */
-
 static size_t umm_pno = 0;
 static struct ox_cq_s cq = {0};
 static struct ox_oq_s oq = {0};

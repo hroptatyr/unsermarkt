@@ -50,7 +50,6 @@
 #endif	/* HAVE_EV_H */
 #include <netinet/in.h>
 #include <netdb.h>
-#include <sys/mman.h>
 
 #include <unserding/unserding.h>
 #include <unserding/protocore.h>

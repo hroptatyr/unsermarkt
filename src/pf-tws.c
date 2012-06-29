@@ -119,7 +119,7 @@ struct pf_pqpr_s {
 static struct comp_s counter = {0};
 /* our beef channels */
 static size_t nbeef = 0;
-static ev_io *beef = NULL;
+static ev_io beef[1];
 
 /* the sender buffer queue */
 static struct pf_pq_s pq = {0};
@@ -171,8 +171,8 @@ udpc_seria_add_pr(udpc_seria_t ser, pf_pqpr_t pr)
 		strftime(dt, sizeof(dt), "%Y%m%d-%H:%M:%S", tm);
 	}
 
-	for (size_t i = 1; i <= nbeef; i = nbeef + 1) {
-		ud_chan_t ch = beef[i].data;
+	if (LIKELY(nbeef)) {
+		ud_chan_t ch = beef->data;
 		const struct in6_addr *addr = &ch->sa.sa6.sin6_addr;
 		char ntop_tgt[INET6_ADDRSTRLEN];
 		uint16_t port_tgt;
@@ -305,12 +305,10 @@ udpc_seria_add_pr(udpc_seria_t ser, pf_pqpr_t pr)
 static void
 ud_chan_send_ser_all(udpc_seria_t ser)
 {
-	for (size_t i = 1; i < nbeef; i++) {
-		ud_chan_t ch = beef[i].data;
+	ud_chan_t ch = beef->data;
 
-		/* assume it's possible to write */
-		ud_chan_send_ser(ch, ser);
-	}
+	/* assume it's possible to write */
+	ud_chan_send_ser(ch, ser);
 	return;
 }
 
@@ -568,6 +566,7 @@ main(int argc, char *argv[])
 	const char *host;
 	uint16_t port;
 	int client;
+	ev_io ctrl[1];
 	ev_io cake[1];
 	ev_prepare prp[1];
 	/* final result */
@@ -606,13 +605,6 @@ main(int argc, char *argv[])
 		client = now->tv_sec;
 	}
 
-	/* make some room for the control channel and the beef chans */
-	nbeef = argi->beef_given + 1;
-	if ((beef = malloc(nbeef * sizeof(*beef))) == NULL) {
-		res = 1;
-		goto out;
-	}
-
 	/* initialise the main loop */
 	loop = ev_default_loop(EVFLAG_AUTO);
 
@@ -636,19 +628,20 @@ main(int argc, char *argv[])
 		union __chan_u x = {ud_chan_init(UD_NETWORK_SERVICE)};
 		int s = ud_chan_init_mcast(x.c);
 
-		beef->data = x.p;
-		ev_io_init(beef, beef_cb, s, EV_READ);
-		ev_io_start(EV_A_ beef);
+		ctrl->data = x.p;
+		ev_io_init(ctrl, beef_cb, s, EV_READ);
+		ev_io_start(EV_A_ ctrl);
 	}
 
 	/* go through all beef channels */
-	for (unsigned int i = 0; i < argi->beef_given; i++) {
-		union __chan_u x = {ud_chan_init(argi->beef_arg[i])};
+	if (argi->beef_given) {
+		union __chan_u x = {ud_chan_init(argi->beef_arg)};
 		int s = ud_chan_init_mcast(x.c);
 
-		beef[i + 1].data = x.p;
-		ev_io_init(beef + i + 1, beef_cb, s, EV_READ);
-		ev_io_start(EV_A_ beef + i + 1);
+		beef->data = x.p;
+		ev_io_init(beef, beef_cb, s, EV_READ);
+		ev_io_start(EV_A_ beef);
+		nbeef = 1;
 	}
 
 	/* we init this late, because the tws connection is not a requirement
@@ -715,15 +708,19 @@ past_loop:
 	check_pq();
 	fini_gq(pq.q);
 
-	/* detaching beef channels */
-	for (size_t i = 0; i < nbeef; i++) {
-		ud_chan_t c = beef[i].data;
+	/* detaching beef and ctrl channels */
+	if (argi->beef_given) {
+		ud_chan_t c = beef->data;
 
-		ev_io_stop(EV_A_ beef + i);
+		ev_io_stop(EV_A_ beef);
 		ud_chan_fini(c);
 	}
-	/* free beef resources */
-	free(beef);
+	{
+		ud_chan_t c = ctrl->data;
+
+		ev_io_stop(EV_A_ ctrl);
+		ud_chan_fini(c);
+	}
 
 unroll:
 	/* destroy the default evloop */

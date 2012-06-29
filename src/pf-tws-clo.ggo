@@ -1,7 +1,7 @@
 args "--unamed-opts --no-handle-error --long-help -a pf_args_info -f pf_parser"
 package "pf-tws"
 usage "pf-tws [OPTION]..."
-description "watch tws portfolios and populate to beef channels"
+description "watch tws portfolios and populate to beef channel"
 
 option "daemonise" d
 	"Detach from tty and runs as daemon"
@@ -13,8 +13,8 @@ option "port" p
 	int default="8653" optional
 
 option "beef" -
-	"Multicast payload channels, can be used multiple times"
-	int optional multiple
+	"Multicast payload channel"
+	int optional
 
 section "TWS options"
 option "tws-host" -

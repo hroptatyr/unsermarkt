@@ -50,7 +50,7 @@ struct my_tws_s {
 	unsigned int time;
 	void *wrp;
 	void *cli;
-	void *pf;
+	void *pq;
 };
 
 

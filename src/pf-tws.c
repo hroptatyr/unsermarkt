@@ -87,21 +87,42 @@
 #endif	/* DEBUG_FLAG */
 void *logerr;
 
+typedef struct pf_pqpr_s *pf_pqpr_t;
+
 struct comp_s {
 	struct in6_addr addr;
 	uint16_t port;
 };
 
+struct pf_pq_s {
+	struct ox_gq_s q[1];
+	struct ox_dll_s sbuf[1];
+};
+
+struct pf_pqpr_s {
+	struct ox_item_s i;
+
+	struct pf_pos_s pr;
+	/* a/c name */
+	char ac[16];
+};
+
 
-/* the actual core */
+/* the actual core, ud and fix stuff */
 #define POS_RPT		(0x757a)
 #define POS_RPT_RPL	(UDPC_PKT_RPL(POS_RPT))
+
+/* for them pf oper queues */
+#include "gq.c"
 
 /* our tws conn(s?) */
 static struct comp_s counter = {0};
 /* our beef channels */
 static size_t nbeef = 0;
 static ev_io *beef = NULL;
+
+/* the sender buffer queue */
+static struct pf_pq_s pq = {0};
 
 #define SOH		"\001"
 static const char fix_stdhdr[] = "8=FIXT.1.1" SOH "9=0000" SOH;
@@ -115,13 +136,21 @@ fix_chksum(const char *str, size_t len)
 	return res;
 }
 
-void
-fix_pos_rpt(pf_pq_t UNUSED(pf), const char *ac, struct pf_pos_s pos)
+static bool
+udpc_seria_pr_feasible_p(udpc_seria_t ser, pf_pqpr_t UNUSED(pr))
 {
-#define PKT(x)		((ud_packet_t){sizeof(x), x})
-	static size_t pno = 0;
+	/* super quick check if we can afford to take it the pkt on
+	 * we need roughly 256 bytes */
+	if (ser->msgoff + 256 > ser->len) {
+		return false;
+	}
+	return true;
+}
+
+static void
+udpc_seria_add_pr(udpc_seria_t ser, pf_pqpr_t pr)
+{
 	static size_t sno = 0;
-	char buf[UDPC_PKTLEN];
 	char ntop_src[INET6_ADDRSTRLEN];
 	uint16_t port_src;
 	char dt[24];
@@ -142,7 +171,7 @@ fix_pos_rpt(pf_pq_t UNUSED(pf), const char *ac, struct pf_pos_s pos)
 		strftime(dt, sizeof(dt), "%Y%m%d-%H:%M:%S", tm);
 	}
 
-	for (size_t i = 1; i < nbeef; i++) {
+	for (size_t i = 1; i <= nbeef; i = nbeef + 1) {
 		ud_chan_t ch = beef[i].data;
 		const struct in6_addr *addr = &ch->sa.sa6.sin6_addr;
 		char ntop_tgt[INET6_ADDRSTRLEN];
@@ -152,12 +181,8 @@ fix_pos_rpt(pf_pq_t UNUSED(pf), const char *ac, struct pf_pos_s pos)
 		inet_ntop(AF_INET6, addr, ntop_tgt, sizeof(ntop_tgt));
 		port_tgt = ntohs(ch->sa.sa6.sin6_port);
 
-		/* get the packet ctor'd */
-		udpc_make_pkt(PKT(buf), 0, pno, POS_RPT_RPL);
-		udpc_set_data_pkt(PKT(buf));
-
-		sp = p = UDPC_PAYLOAD(buf);
-		plen = UDPC_PAYLLEN(sizeof(buf));
+		sp = p = ser->msg + ser->msgoff;
+		plen = ser->len - ser->msgoff;
 		ep = p + plen;
 
 /* unsafe BANG */
@@ -210,12 +235,12 @@ fix_pos_rpt(pf_pq_t UNUSED(pf), const char *ac, struct pf_pos_s pos)
 		BANGL(p, ep, "453=0" SOH);
 		/* ac name */
 		BANGL(p, ep, "1=");
-		BANGP(p, ep, ac);
+		BANGP(p, ep, pr->ac);
 		*p++ = *SOH;
 
 		/* instr name */
 		BANGL(p, ep, "55=");
-		BANGP(p, ep, pos.sym);
+		BANGP(p, ep, pr->pr.sym);
 		*p++ = *SOH;
 
 		/* #positions */
@@ -225,14 +250,14 @@ fix_pos_rpt(pf_pq_t UNUSED(pf), const char *ac, struct pf_pos_s pos)
 		/* qty long */
 		BANGL(p, ep, "704=");
 		{
-			m30_t qty = ffff_m30_get_d(pos.lqty);
+			m30_t qty = ffff_m30_get_d(pr->pr.lqty);
 			p += ffff_m30_s(p, qty);
 		}
 		*p++ = *SOH;
 		/* qty long */
 		BANGL(p, ep, "705=");
 		{
-			m30_t qty = ffff_m30_get_d(pos.sqty);
+			m30_t qty = ffff_m30_get_d(pr->pr.sqty);
 			p += ffff_m30_s(p, qty);
 		}
 		*p++ = *SOH;
@@ -257,23 +282,126 @@ fix_pos_rpt(pf_pq_t UNUSED(pf), const char *ac, struct pf_pos_s pos)
 
 		/* and now plen again, this time with the footer */
 		plen = p - sp;
+		ep = sp + plen;
 
-#if !defined BENCHMARK
-		ud_chan_send(ch, (ud_packet_t){plen + UDPC_HDRLEN, buf});
-#if defined DEBUG_FLAG
+#if !defined BENCHMARK && defined DEBUG_FLAG
 		/* quickly massage the string suitable for printing */
 		for (p = sp; p < ep; p++) {
 			if (*p == *SOH) {
 				*p = '|';
 			}
 		}
-		fputs(sp, logerr);
+		fwrite(sp, sizeof(char), plen, logerr);
 		fputc('\n', logerr);
-#endif	/* DEBUG_FLAG */
-#endif	/* BENCHMARK */
+#endif	/* !BENCHMARK && DEBUG_FLAG */
+
+		/* up the seria msgoff*/
+		ser->msgoff += plen;
 		sno++;
 	}
-	pno++;
+	return;
+}
+
+static void
+ud_chan_send_ser_all(udpc_seria_t ser)
+{
+	for (size_t i = 1; i < nbeef; i++) {
+		ud_chan_t ch = beef[i].data;
+
+		/* assume it's possible to write */
+		ud_chan_send_ser(ch, ser);
+	}
+	return;
+}
+
+static void
+flush_queue(my_tws_t UNUSED(tws))
+{
+	static size_t pno = 0;
+	char buf[UDPC_PKTLEN];
+	struct udpc_seria_s ser[1];
+	size_t nsnt = 0;
+
+#define PKT(x)		((ud_packet_t){sizeof(x), x})
+#define MAKE_PKT							\
+	udpc_make_pkt(PKT(buf), 0, pno++, POS_RPT_RPL);			\
+	udpc_set_data_pkt(PKT(buf));					\
+	udpc_seria_init(ser, UDPC_PAYLOAD(buf), UDPC_PAYLLEN(sizeof(buf)))
+
+	/* get the packet ctor'd */
+	MAKE_PKT;
+	for (ox_item_t ip; (ip = gq_pop_head(pq.sbuf)); nsnt++) {
+		pf_pqpr_t pr = (pf_pqpr_t)ip;
+
+		if (!udpc_seria_pr_feasible_p(ser, pr)) {
+			ud_chan_send_ser_all(ser);
+			MAKE_PKT;
+		}
+		udpc_seria_add_pr(ser, pr);
+		gq_push_tail(pq.q->free, ip);
+	}
+	ud_chan_send_ser_all(ser);
+	return;
+}
+
+
+/* the queue */
+static void
+check_pq(void)
+{
+#if defined DEBUG_FLAG
+	/* count all items */
+	size_t ni = 0;
+
+	for (ox_item_t ip = pq.q->free->i1st; ip; ip = ip->next, ni++);
+	for (ox_item_t ip = pq.sbuf->i1st; ip; ip = ip->next, ni++);
+	PF_DEBUG("forw %zu oall\n", ni);
+	assert(ni == pq.q->nitems / sizeof(struct pf_pqpr_s));
+
+	ni = 0;
+	for (ox_item_t ip = pq.q->free->ilst; ip; ip = ip->prev, ni++);
+	for (ox_item_t ip = pq.sbuf->ilst; ip; ip = ip->prev, ni++);
+	PF_DEBUG("back %zu oall\n", ni);
+	assert(ni == pq.q->nitems / sizeof(struct pf_pqpr_s));
+#endif	/* DEBUG_FLAG */
+	return;
+}
+
+static pf_pqpr_t
+pop_pr(void)
+{
+	pf_pqpr_t res;
+
+	if (pq.q->free->i1st == NULL) {
+		size_t nitems = pq.q->nitems / sizeof(*res);
+		ptrdiff_t df;
+
+		assert(pq.q->free->ilst == NULL);
+		PF_DEBUG("PQ RESIZE -> %zu\n", nitems + 64);
+		df = init_gq(pq.q, sizeof(*res), nitems + 64);
+		gq_rbld_dll(pq.sbuf, df);
+		check_pq();
+	}
+	/* get us a new client and populate the object */
+	res = (void*)gq_pop_head(pq.q->free);
+	memset(res, 0, sizeof(*res));
+	return res;
+}
+
+void
+fix_pos_rpt(pf_pq_t UNUSED(pf), const char *ac, struct pf_pos_s pos)
+{
+/* shall we rely on c++ code passing us a pointer we handed out earlier? */
+	pf_pqpr_t pr = pop_pr();
+
+	pr->pr = pos;
+	/* keep a rough note of the account name
+	 * not that it does anything at the mo */
+	strncpy(pr->ac, ac, sizeof(pr->ac));
+	pr->ac[sizeof(pr->ac) - 1] = '\0';
+
+	gq_push_tail(pq.sbuf, (ox_item_t)pr);
+	PF_DEBUG("pushed %p\n", pr);
 	return;
 }
 
@@ -345,8 +473,18 @@ req_cb(EV_P_ ev_timer *w, int UNUSED(revents))
 }
 
 static void
-prep_cb(EV_P_ ev_prepare *UNUSED(w), int UNUSED(revents))
+prep_cb(EV_P_ ev_prepare *w, int UNUSED(revents))
 {
+	my_tws_t tws = w->data;
+
+	/* check the queue integrity */
+	check_pq();
+
+	/* maybe we've got something up our sleeve */
+	flush_queue(tws);
+
+	/* and check the queue's integrity again */
+	check_pq();
 	return;
 }
 
@@ -572,6 +710,10 @@ main(int argc, char *argv[])
 
 past_loop:
 	(void)fini_tws(tws);
+
+	/* finish the order queue */
+	check_pq();
+	fini_gq(pq.q);
 
 	/* detaching beef channels */
 	for (size_t i = 0; i < nbeef; i++) {

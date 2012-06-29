@@ -189,7 +189,7 @@ check_poss(const struct xmpl_s *UNUSED(ctx))
 			double qty = calc_qty(pos->lqty);
 
 			fprintf(stderr, "\
-ORDER\t%s\tSELL\t%.8f\n", pos->sym, qty);
+ORDER\t%s\tSELL\t%.8f\t% 12.0f\n", pos->sym, qty, pos->lqty);
 			sl1t_set_ttf(t, SL1T_TTF_ASK);
 
 			t->qty = ffff_m30_get_d(qty).u;
@@ -199,7 +199,7 @@ ORDER\t%s\tSELL\t%.8f\n", pos->sym, qty);
 			double qty = calc_qty(pos->sqty);
 
 			fprintf(stderr, "\
-ORDER\t%s\tBUY\t%.8f\n", pos->sym, qty);
+ORDER\t%s\tBUY\t%.8f\t% 12.0f\n", pos->sym, qty, pos->sqty);
 			sl1t_set_ttf(t, SL1T_TTF_BID);
 
 			t->qty = ffff_m30_get_d(qty).u;

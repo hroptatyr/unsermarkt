@@ -70,6 +70,7 @@
 #include "pf-tws-private.h"
 #include "nifty.h"
 #include "strops.h"
+#include "gq.h"
 
 #if defined __INTEL_COMPILER
 # pragma warning (disable:981)

@@ -41,6 +41,7 @@
 extern "C" {
 #endif	/* __cplusplus */
 
+typedef void *pf_pq_t;
 typedef struct pf_pos_s *pf_pos_t;
 
 struct pf_pos_s {
@@ -49,7 +50,7 @@ struct pf_pos_s {
 	double sqty;
 };
 
-extern void fix_pos_rpt(const char *ac, struct pf_pos_s);
+extern void fix_pos_rpt(pf_pq_t, const char *ac, struct pf_pos_s);
 
 #if defined __cplusplus
 }

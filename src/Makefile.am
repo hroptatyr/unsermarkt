@@ -202,6 +202,8 @@ annul_pf_CPPFLAGS += $(uterus_CFLAGS)
 annul_pf_CPPFLAGS += $(unserding_CFLAGS)
 annul_pf_LDFLAGS = $(AM_LDFLAGS)
 annul_pf_LDFLAGS += $(unserding_LIBS)
+annul_pf_LDADD =
+annul_pf_LDADD += -lm
 
 ## our rule for gengetopt
 %.c %.h: %.ggo

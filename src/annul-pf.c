@@ -45,6 +45,8 @@ static struct __pos_s poss[] = {
 	{
 		"AUDCAD", 0, 0,
 	}, {
+		"AUDCHF", 0, 0,
+	}, {
 		"AUDUSD", 0, 0,
 	}, {
 		"EURAUD", 0, 0,
@@ -158,7 +160,11 @@ static double
 calc_qty(double pos)
 {
 #define LOT_SIZE	(100000.0)
-	return fmod(pos / LOT_SIZE, 1.0) + 1.0;
+	double res = fmod(pos / LOT_SIZE, 1.0);
+	if (res < 0.60000) {
+		res += 1.0;
+	}
+	return res;
 }
 
 static udpc_seria_t
@@ -218,10 +224,10 @@ static size_t
 find_fix_fld(char **p, char *msg, const char *key)
 {
 #define SOH	"\001"
-	char *cand = msg;
+	char *cand = msg - 1;
 	char *eocand;
 
-	while ((cand = strstr(cand, key)) && cand != msg && cand[-1] != *SOH);
+	while ((cand = strstr(cand + 1, key)) && cand != msg && cand[-1] != *SOH);
 	/* cand should be either NULL or point to the key */
 	if (UNLIKELY(cand == NULL)) {
 		return 0;

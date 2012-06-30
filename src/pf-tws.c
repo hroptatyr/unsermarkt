@@ -286,7 +286,7 @@ udpc_seria_add_pr(udpc_seria_t ser, pf_pqpr_t pr)
 		plen = p - sp;
 		ep = sp + plen;
 
-#if !defined BENCHMARK && defined DEBUG_FLAG
+#if !defined BENCHMARK && defined DEBUG_FLAG && 0
 		/* quickly massage the string suitable for printing */
 		for (p = sp; p < ep; p++) {
 			if (*p == *SOH) {

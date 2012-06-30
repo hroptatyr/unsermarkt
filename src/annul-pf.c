@@ -218,10 +218,10 @@ static size_t
 find_fix_fld(char **p, char *msg, const char *key)
 {
 #define SOH	"\001"
-	char *cand = msg;
+	char *cand = msg - 1;
 	char *eocand;
 
-	while ((cand = strstr(cand, key)) && cand != msg && cand[-1] != *SOH);
+	while ((cand = strstr(cand + 1, key)) && cand != msg && cand[-1] != *SOH);
 	/* cand should be either NULL or point to the key */
 	if (UNLIKELY(cand == NULL)) {
 		return 0;

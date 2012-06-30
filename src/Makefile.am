@@ -40,9 +40,9 @@ dso_unsermarkt_la_CPPFLAGS += $(unserding_CFLAGS)
 dso_unsermarkt_la_CPPFLAGS += $(uterus_CFLAGS)
 dso_unsermarkt_la_CPPFLAGS += $(mxml_CFLAGS)
 dso_unsermarkt_la_LDFLAGS += $(mxml_LIBS)
-dso_unsermarkt_la_LDADD =
+dso_unsermarkt_la_LIBADD =
 ## check for me!
-dso_unsermarkt_la_LDADD += -lsqlite3
+dso_unsermarkt_la_LIBADD += -lsqlite3
 EXTRA_dso_unsermarkt_la_SOURCES =
 EXTRA_dso_unsermarkt_la_SOURCES += con6ity.c
 EXTRA_dso_unsermarkt_la_SOURCES += mmls.c

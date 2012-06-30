@@ -158,7 +158,11 @@ static double
 calc_qty(double pos)
 {
 #define LOT_SIZE	(100000.0)
-	return fmod(pos / LOT_SIZE, 1.0) + 1.0;
+	double res = fmod(pos / LOT_SIZE, 1.0);
+	if (res < 0.60000) {
+		res += 1.0;
+	}
+	return res;
 }
 
 static udpc_seria_t

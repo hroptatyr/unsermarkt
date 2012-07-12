@@ -44,37 +44,37 @@ extern "C" {
 #endif	/* __cplusplus */
 
 /* generic queues */
-typedef struct ox_gq_s *ox_gq_t;
-typedef struct ox_dll_s *ox_dll_t;
-typedef struct ox_item_s *ox_item_t;
+typedef struct gq_s *gq_t;
+typedef struct gq_ll_s *gq_ll_t;
+typedef struct gq_item_s *gq_item_t;
 
-struct ox_item_s {
-	ox_item_t next;
-	ox_item_t prev;
+struct gq_item_s {
+	gq_item_t next;
+	gq_item_t prev;
 
 	char data[];
 };
 
-struct ox_dll_s {
-	ox_item_t i1st;
-	ox_item_t ilst;
+struct gq_ll_s {
+	gq_item_t i1st;
+	gq_item_t ilst;
 };
 
-struct ox_gq_s {
-	ox_item_t items;
+struct gq_s {
+	gq_item_t items;
 	size_t nitems;
 
-	struct ox_dll_s free[1];
+	struct gq_ll_s free[1];
 };
 
 
-extern ptrdiff_t init_gq(ox_gq_t, size_t mbsz, size_t at_least);
-extern void fini_gq(ox_gq_t);
-extern void gq_rbld_dll(ox_dll_t dll, ptrdiff_t);
+extern ptrdiff_t init_gq(gq_t, size_t mbsz, size_t at_least);
+extern void fini_gq(gq_t);
+extern void gq_rbld_ll(gq_ll_t dll, ptrdiff_t);
 
-extern ox_item_t gq_pop_head(ox_dll_t);
-extern void gq_push_tail(ox_dll_t, ox_item_t);
-extern void gq_pop_item(ox_dll_t dll, ox_item_t i);
+extern gq_item_t gq_pop_head(gq_ll_t);
+extern void gq_push_tail(gq_ll_t, gq_item_t);
+extern void gq_pop_item(gq_ll_t dll, gq_item_t i);
 
 #if defined __cplusplus
 }

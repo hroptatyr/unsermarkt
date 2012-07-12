@@ -875,13 +875,13 @@ keypress_cb(EV_P_ ev_io *UNUSED(io), int UNUSED(revents))
 			break;
 		}
 		w->sel = (void*)w->sel->i.next;
-		break;
+		goto redraw;
 	case KEY_UP:
 		if (w->sel == NULL || w->sel->i.prev == NULL) {
 			break;
 		}
 		w->sel = (void*)w->sel->i.prev;
-		break;
+		goto redraw;
 	case KEY_RIGHT:
 		break;
 	case KEY_LEFT:

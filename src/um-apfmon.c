@@ -351,6 +351,21 @@ pop_pfi(cli_t c)
 	return res;
 }
 
+static pfi_t
+find_pos(cli_t c, const char *sym)
+{
+	gq_ll_t q = CLI(c)->poss;
+
+	for (gq_item_t i = q->i1st; i; i = i->next) {
+		pfi_t pos = (void*)i;
+
+		if (strcmp(pos->sym, sym) == 0) {
+			return pos;
+		}
+	}
+	return NULL;
+}
+
 
 /* fix guts */
 static size_t
@@ -454,8 +469,17 @@ pr_pos_rpt(job_t j)
 		if (UNLIKELY(tmp >= sizeof(pos->sym))) {
 			tmp = sizeof(pos->sym) - 1;
 		}
-		/* all's fine */
-		memcpy(pos->sym, sym, tmp);
+		if ((pos = find_pos(c, sym))) {
+			/* nothing to do */
+			;
+		} else if ((pos = pop_pfi(c))) {
+			/* all's fine, copy the sym */
+			memcpy(pos->sym, sym, tmp);
+			pos->sym[tmp] = '\0';
+		} else {
+			/* big fuck up */
+			continue;
+		}
 
 		/* find the long quantity */
 		pos->lqty = find_fix_dbl(p, fix_lqty, sizeof(fix_lqty) - 1);

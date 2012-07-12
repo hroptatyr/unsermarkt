@@ -352,18 +352,34 @@ pop_pfi(cli_t c)
 }
 
 static pfi_t
-find_pos(cli_t c, const char *sym)
+find_pos(cli_t c, const char *sym, size_t ssz)
 {
 	gq_ll_t q = CLI(c)->poss;
 
 	for (gq_item_t i = q->i1st; i; i = i->next) {
 		pfi_t pos = (void*)i;
 
-		if (strcmp(pos->sym, sym) == 0) {
+		if (memcmp(pos->sym, sym, ssz) == 0) {
 			return pos;
 		}
 	}
 	return NULL;
+}
+
+static pfi_t
+add_pos(cli_t c, const char *sym, size_t ssz)
+{
+	pfi_t res = pop_pfi(c);
+
+	if (UNLIKELY((res = pop_pfi(c)) == NULL)) {
+		return NULL;
+	}
+	/* all's fine, copy the sym */
+	memcpy(res->sym, sym, ssz);
+	res->sym[ssz] = '\0';
+	/* and shove it onto our poss list */
+	gq_push_tail(CLI(c)->poss, (gq_item_t)res);
+	return res;
 }
 
 
@@ -421,7 +437,7 @@ find_fix_dbl(char *msg, const char *fld, size_t nfld)
 	return res;
 }
 
-static void
+static int
 pr_pos_rpt(job_t j)
 {
 /* process them posrpts */
@@ -436,16 +452,17 @@ pr_pos_rpt(job_t j)
 		.sa = &j->sa,
 	};
 	cli_t c;
+	int res = 0;
 
 	if (UNLIKELY(plen == 0)) {
-		return;
+		return 0;
 	} else if ((c = find_cli(k))) {
 		;
 	} else if ((c = add_cli(k))) {
 		;
 	} else {
 		/* fuck */
-		return;
+		return -1;
 	}
 
 	/* update last seen */
@@ -469,13 +486,12 @@ pr_pos_rpt(job_t j)
 		if (UNLIKELY(tmp >= sizeof(pos->sym))) {
 			tmp = sizeof(pos->sym) - 1;
 		}
-		if ((pos = find_pos(c, sym))) {
+		if ((pos = find_pos(c, sym, tmp))) {
 			/* nothing to do */
 			;
-		} else if ((pos = pop_pfi(c))) {
-			/* all's fine, copy the sym */
-			memcpy(pos->sym, sym, tmp);
-			pos->sym[tmp] = '\0';
+		} else if ((pos = add_pos(c, sym, tmp))) {
+			/* i cant believe how lucky i am */
+			;
 		} else {
 			/* big fuck up */
 			continue;
@@ -484,8 +500,9 @@ pr_pos_rpt(job_t j)
 		/* find the long quantity */
 		pos->lqty = find_fix_dbl(p, fix_lqty, sizeof(fix_lqty) - 1);
 		pos->sqty = find_fix_dbl(p, fix_sqty, sizeof(fix_sqty) - 1);
+		res++;
 	}
-	return;
+	return res;
 }
 
 
@@ -520,7 +537,7 @@ mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
 	case POS_RPT:
 	case POS_RPT_RPL:
 		/* parse the message here */
-		pr_pos_rpt(j);
+		changep = pr_pos_rpt(j) > 0;
 		break;
 	default:
 		break;
@@ -688,6 +705,18 @@ fini_wins(void)
 }
 
 static void
+wadddbl(WINDOW *w, double foo)
+{
+/* curses helper, prints double values */
+	char buf[64];
+	int bsz;
+
+	bsz = snprintf(buf, sizeof(buf), "% 16.4f", foo);
+	waddnstr(w, buf, bsz);
+	return;
+}
+
+static void
 render_win(widx_t wi)
 {
 	win_t w = __gwins + wi;
@@ -714,7 +743,28 @@ render_win(widx_t wi)
 	}
 
 	/* actual rendering goes here */
-	;
+	if (ncli) {
+		cli_t c = 1;
+		gq_ll_t ll = CLI(c)->poss;
+		size_t j = 2;
+
+		for (gq_item_t ip = ll->i1st; ip; ip = ip->next) {
+			const struct pfi_s *pos = (void*)ip;
+
+			wmove(w->w, j++, 4);
+			waddstr(w->w, pos->sym);
+
+			waddch(w->w, ' ');
+			wattron(w->w, COLOR_PAIR(JUST_GREEN));
+			wadddbl(w->w, pos->lqty);
+
+			waddch(w->w, ' ');
+			wattron(w->w, COLOR_PAIR(JUST_RED));
+			wadddbl(w->w, pos->sqty);
+
+			wattrset(w->w, A_NORMAL);
+		}
+	}
 
 	/* actually render the window */
 	wmove(w->w, nwr - 1, nwc - 1);

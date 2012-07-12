@@ -93,7 +93,7 @@ typedef struct ox_cl_s *ox_cl_t;
 
 struct ox_oq_item_s {
 	union {
-		struct ox_item_s i;
+		struct gq_item_s i;
 		struct {
 			ox_oq_item_t next;
 			ox_oq_item_t prev;
@@ -115,12 +115,12 @@ struct ox_oq_item_s {
 
 /* client queue, generic */
 struct ox_cq_s {
-	struct ox_gq_s q[1];
-	struct ox_dll_s used[1];
+	struct gq_s q[1];
+	struct gq_ll_s used[1];
 };
 
 struct ox_cl_s {
-	struct ox_item_s i;
+	struct gq_item_s i;
 
 	struct umm_agt_s agt;
 	/* ib contract */
@@ -148,7 +148,7 @@ check_oq(void)
 	/* count all items */
 	size_t ni = 0;
 
-	for (ox_item_t ip = oq.q->free->i1st; ip; ip = ip->next, ni++);
+	for (gq_item_t ip = oq.q->free->i1st; ip; ip = ip->next, ni++);
 	for (ox_oq_item_t ip = oq.unpr->i1st; ip; ip = ip->next, ni++);
 	for (ox_oq_item_t ip = oq.sent->i1st; ip; ip = ip->next, ni++);
 	for (ox_oq_item_t ip = oq.ackd->i1st; ip; ip = ip->next, ni++);
@@ -158,7 +158,7 @@ check_oq(void)
 	assert(ni == oq.q->nitems / sizeof(struct ox_oq_item_s));
 
 	ni = 0;
-	for (ox_item_t ip = oq.q->free->ilst; ip; ip = ip->prev, ni++);
+	for (gq_item_t ip = oq.q->free->ilst; ip; ip = ip->prev, ni++);
 	for (ox_oq_item_t ip = oq.unpr->ilst; ip; ip = ip->prev, ni++);
 	for (ox_oq_item_t ip = oq.sent->ilst; ip; ip = ip->prev, ni++);
 	for (ox_oq_item_t ip = oq.ackd->ilst; ip; ip = ip->prev, ni++);
@@ -183,11 +183,11 @@ pop_free(void)
 		OX_DEBUG("OQ RESIZE -> %zu\n", nitems + 256);
 		df = init_gq(oq.q, sizeof(*res), nitems + 256);
 		/* fix up all lists */
-		gq_rbld_dll((ox_dll_t)oq.flld, df);
-		gq_rbld_dll((ox_dll_t)oq.cncd, df);
-		gq_rbld_dll((ox_dll_t)oq.ackd, df);
-		gq_rbld_dll((ox_dll_t)oq.sent, df);
-		gq_rbld_dll((ox_dll_t)oq.unpr, df);
+		gq_rbld_ll((gq_ll_t)oq.flld, df);
+		gq_rbld_ll((gq_ll_t)oq.cncd, df);
+		gq_rbld_ll((gq_ll_t)oq.ackd, df);
+		gq_rbld_ll((gq_ll_t)oq.sent, df);
+		gq_rbld_ll((gq_ll_t)oq.unpr, df);
 		check_oq();
 	}
 	res = (ox_oq_item_t)gq_pop_head(oq.q->free);
@@ -198,7 +198,7 @@ pop_free(void)
 static void
 push_free(ox_oq_item_t i)
 {
-	gq_push_tail(oq.q->free, (ox_item_t)i);
+	gq_push_tail(oq.q->free, (gq_item_t)i);
 	return;
 }
 
@@ -238,7 +238,7 @@ find_match_oid(ox_oq_dll_t dll, tws_oid_t oid)
 static ox_cl_t
 find_cli(struct umm_agt_s agt)
 {
-	for (ox_item_t ip = cq.used->i1st; ip; ip = ip->next) {
+	for (gq_item_t ip = cq.used->i1st; ip; ip = ip->next) {
 		ox_cl_t cp = (ox_cl_t)ip;
 		if (memcmp(&cp->agt, &agt, sizeof(agt)) == 0) {
 			return cp;
@@ -259,13 +259,13 @@ add_cli(struct umm_agt_s agt)
 		assert(cq.q->free->ilst == NULL);
 		OX_DEBUG("CQ RESIZE -> %zu\n", nitems + 64);
 		df = init_gq(cq.q, sizeof(*res), nitems + 64);
-		gq_rbld_dll(cq.used, df);
+		gq_rbld_ll(cq.used, df);
 	}
 	/* get us a new client and populate the object */
 	res = (ox_cl_t)gq_pop_head(cq.q->free);
 	memset(res, 0, sizeof(*res));
 	res->agt = agt;
-	gq_push_tail(cq.used, (ox_item_t)res);
+	gq_push_tail(cq.used, (gq_item_t)res);
 	return res;
 }
 

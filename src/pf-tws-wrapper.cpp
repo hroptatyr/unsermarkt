@@ -505,7 +505,7 @@ tws_recv(my_tws_t foo)
 	IB::EPosixClientSocket *cli = (IB::EPosixClientSocket*)foo->cli;
 
 	cli->onReceive();
-	return 0;
+	return cli->isSocketOK() ? 0 : -1;
 }
 
 int
@@ -517,7 +517,7 @@ tws_send(my_tws_t foo)
 		return 0;
 	}
 	cli->onSend();
-	return 0;
+	return cli->isSocketOK() ? 0 : -1;
 }
 
 int
@@ -527,7 +527,7 @@ tws_req_ac(my_tws_t foo, const char *name)
 	IB::IBString ac = std::string(name ?: "");
 
 	cli->reqAccountUpdates(true, ac);
-	return 0;
+	return cli->isSocketOK() ? 0 : -1;
 }
 
 /* pf-tws-wrapper.cpp ends here */

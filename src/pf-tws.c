@@ -86,7 +86,19 @@
 #endif	/* DEBUG_FLAG */
 void *logerr;
 
+typedef struct ctx_s *ctx_t;
 typedef struct pf_pqpr_s *pf_pqpr_t;
+
+struct ctx_s {
+	/* static context */
+	const char *host;
+	uint16_t port;
+	int client;
+
+	/* dynamic context */
+	my_tws_t tws;
+	int tws_sock;
+};
 
 struct comp_s {
 	struct in6_addr addr;
@@ -355,13 +367,11 @@ check_pq(void)
 
 	for (gq_item_t ip = pq.q->free->i1st; ip; ip = ip->next, ni++);
 	for (gq_item_t ip = pq.sbuf->i1st; ip; ip = ip->next, ni++);
-	PF_DEBUG("forw %zu oall\n", ni);
 	assert(ni == pq.q->nitems / sizeof(struct pf_pqpr_s));
 
 	ni = 0;
 	for (gq_item_t ip = pq.q->free->ilst; ip; ip = ip->prev, ni++);
 	for (gq_item_t ip = pq.sbuf->ilst; ip; ip = ip->prev, ni++);
-	PF_DEBUG("back %zu oall\n", ni);
 	assert(ni == pq.q->nitems / sizeof(struct pf_pqpr_s));
 #endif	/* DEBUG_FLAG */
 	return;
@@ -455,42 +465,140 @@ cake_cb(EV_P_ ev_io *w, int revents)
 	my_tws_t tws = w->data;
 
 	if (revents & EV_READ) {
-		tws_recv(tws);
+		if (tws_recv(tws) < 0) {
+			/* grrrr */
+			goto del_cake;
+		}
 	}
 	if (revents & EV_WRITE) {
-		tws_send(tws);
+		if (tws_send(tws) < 0) {
+			/* brilliant */
+			goto del_cake;
+		}
 	}
+	return;
+del_cake:
+	ev_io_stop(EV_A_ w);
+	w->fd = -1;
+	w->data = NULL;
+	PF_DEBUG("cake stopped\n");
 	return;
 }
 
 static void
 req_cb(EV_P_ ev_timer *w, int UNUSED(revents))
 {
-#define TWS_ALL_ACCOUNTS	(NULL)
 	my_tws_t tws = w->data;
 
-	/* call the a/c requester */
-	tws_req_ac(tws, TWS_ALL_ACCOUNTS);
+	PF_DEBUG("req\n");
+	if (UNLIKELY(tws == NULL)) {
+		/* stop ourselves */
+		goto del_req;
+	}
 
-	/* reschedule ourselves */
-	ev_timer_again(EV_A_ w);
+#define TWS_ALL_ACCOUNTS	(NULL)
+	/* call the a/c requester */
+	if (tws_req_ac(tws, TWS_ALL_ACCOUNTS) < 0) {
+		goto del_req;
+	}
 #undef TWS_ALL_ACCOUNTS
+	return;
+del_req:
+	ev_timer_stop(EV_A_ w);
+	w->data = NULL;
+	PF_DEBUG("req stopped\n");
+	return;
+}
+
+static void
+reco_cb(EV_P_ ev_timer *w, int UNUSED(revents))
+{
+/* this is a do fuckall thing */
+	ctx_t p = w->data;
+	int s;
+
+	if ((s = tws_connect(p->tws, p->host, p->port, p->client)) < 0) {
+		/* retry later */
+		return;
+	}
+
+	/* also hand out details to the COUNTER struct */
+	{
+		union ud_sockaddr_u sa;
+		socklen_t ss = sizeof(sa);
+
+		getsockname(s, &sa.sa, &ss);
+		counter.addr = sa.sa6.sin6_addr;
+		counter.port = htons(p->port);
+	}
+
+	/* pass on the socket we've got */
+	p->tws_sock = s;
+
+	/* stop ourselves */
+	ev_timer_stop(EV_A_ w);
+	w->data = NULL;
+	PF_DEBUG("reco stopped\n");
 	return;
 }
 
 static void
 prep_cb(EV_P_ ev_prepare *w, int UNUSED(revents))
 {
-	my_tws_t tws = w->data;
+	static ev_io cake[1] = {{0}};
+	static ev_timer tm_req[1] = {{0}};
+	static ev_timer tm_reco[1] = {{0}};
+	ctx_t ctx = w->data;
+	my_tws_t tws = ctx->tws;
 
-	/* check the queue integrity */
-	check_pq();
+	/* check if the tws is there */
+	if (cake->fd <= 0 && ctx->tws_sock <= 0 && tm_reco->data == NULL) {
+		/* uh oh! */
+		ev_timer_stop(EV_A_ tm_req);
+		ev_io_stop(EV_A_ cake);
+		cake->data = NULL;
+		tm_req->data = NULL;
 
-	/* maybe we've got something up our sleeve */
-	flush_queue(tws);
+		/* start the reconnection timer */
+		tm_reco->data = ctx;
+		ev_timer_init(tm_reco, reco_cb, 0.0, 2.0/*option?*/);
+		ev_timer_start(EV_A_ tm_reco);
+		PF_DEBUG("reco started\n");
+
+	} else if (cake->fd <= 0 && ctx->tws_sock <= 0) {
+		/* great, no connection yet */
+		cake->data = NULL;
+		tm_req->data = NULL;
+		PF_DEBUG("no cake yet\n");
+
+	} else if (cake->fd <= 0) {
+		/* ah, connection is back up, init the watcher */
+		cake->data = ctx->tws;
+		ev_io_init(cake, cake_cb, ctx->tws_sock, EV_READ);
+		ev_io_start(EV_A_ cake);
+		PF_DEBUG("cake started\n");
+
+		/* also set up the timer to emit the portfolio regularly */
+		ev_timer_init(tm_req, req_cb, 0.0, 60.0/*option?*/);
+		tm_req->data = tws;
+		ev_timer_start(EV_A_ tm_req);
+		PF_DEBUG("req started\n");
+
+		/* clear tws_sock */
+		ctx->tws_sock = -1;
+
+	} else {
+		/* check the queue integrity */
+		check_pq();
+
+		/* maybe we've got something up our sleeve */
+		flush_queue(ctx->tws);
+	}
 
 	/* and check the queue's integrity again */
 	check_pq();
+
+	PF_DEBUG("queue %zu\n", pq.q->nitems / sizeof(struct pf_pqpr_s));
 	return;
 }
 
@@ -498,6 +606,7 @@ static void
 sigall_cb(EV_P_ ev_signal *UNUSED(w), int UNUSED(revents))
 {
 	ev_unloop(EV_A_ EVUNLOOP_ALL);
+	PF_DEBUG("unlooping\n");
 	return;
 }
 
@@ -560,6 +669,7 @@ detach(void)
 int
 main(int argc, char *argv[])
 {
+	struct ctx_s ctx[1];
 	/* args */
 	struct pf_args_info argi[1];
 	/* use the default event loop unless you have special needs */
@@ -568,15 +678,10 @@ main(int argc, char *argv[])
 	ev_signal sigint_watcher[1];
 	ev_signal sighup_watcher[1];
 	ev_signal sigterm_watcher[1];
-	ev_timer tm_req[1];
-	/* tws specific stuff */
-	struct my_tws_s tws[1];
-	const char *host;
-	uint16_t port;
-	int client;
 	ev_io ctrl[1];
-	ev_io cake[1];
 	ev_prepare prp[1];
+	/* tws stuff */
+	struct my_tws_s tws[1];
 	/* final result */
 	int res = 0;
 
@@ -595,22 +700,22 @@ main(int argc, char *argv[])
 
 	/* snarf host name and port */
 	if (argi->tws_host_given) {
-		host = argi->tws_host_arg;
+		ctx->host = argi->tws_host_arg;
 	} else {
-		host = "localhost";
+		ctx->host = "localhost";
 	}
 	if (argi->tws_port_given) {
-		port = (uint16_t)argi->tws_port_arg;
+		ctx->port = (uint16_t)argi->tws_port_arg;
 	} else {
-		port = (uint16_t)7474;
+		ctx->port = (uint16_t)7474;
 	}
 	if (argi->tws_client_id_given) {
-		client = argi->tws_client_id_arg;
+		ctx->client = argi->tws_client_id_arg;
 	} else {
 		struct timeval now[1];
 
 		(void)gettimeofday(now, NULL);
-		client = now->tv_sec;
+		ctx->client = now->tv_sec;
 	}
 
 	/* initialise the main loop */
@@ -652,71 +757,27 @@ main(int argc, char *argv[])
 		nbeef = 1;
 	}
 
-	/* we init this late, because the tws connection is not a requirement
-	 * and we may have support for changing/closing/reopening it later
-	 * on anyway, maybe through a nice shell, who knows */
-	{
-		int s;
-
-		if (init_tws(tws) < 0) {
-			res = 1;
-			goto unroll;
-		} else if ((s = tws_connect(tws, host, port, client)) < 0) {
-			res = 1;
-			goto past_loop;
-		}
-
-		/* init a watcher */
-		cake->data = tws;
-		ev_io_init(cake, cake_cb, s, EV_READ);
-		ev_io_start(EV_A_ cake);
-
-		/* pre and post poll hooks */
-		prp->data = tws;
-		ev_prepare_init(prp, prep_cb);
-		ev_prepare_start(EV_A_ prp);
-
-		/* also hand out details to the COUNTER struct */
-		{
-			union ud_sockaddr_u sa;
-			socklen_t ss = sizeof(sa);
-
-			getsockname(s, &sa.sa, &ss);
-			counter.addr = sa.sa6.sin6_addr;
-			counter.port = htons(port);
-		}
+	if (init_tws(tws) < 0) {
+		res = 1;
+		goto unroll;
 	}
-
-#if defined BENCHMARK
-/* benchmark */
-	struct pf_pqpr_s p = {
-		.pr = {
-			.sym = "EURUSD",
-			.lqty = 17200000,
-			.sqty = 1200000,
-		},
-		.ac = "TESTMSG",
-	};
-	/* encode fix messages */
-	for (size_t i = 0; i < 1000000; i++) {
-		static char buf[UDPC_PKTLEN];
-		struct udpc_seria_s ser[1];
-		udpc_seria_init(ser, buf, sizeof(buf));
-		udpc_seria_add_pr(ser, &p);
-	}
-	exit(1);
-#endif	/* BENCHMARK */
-
-	/* set up the timer to emit the portfolio regularly */
-	ev_timer_init(tm_req, req_cb, 0.0, 60.0/*option?*/);
-	tm_req->data = tws;
-	ev_timer_start(EV_A_ tm_req);
+	/* prepare the context */
+	ctx->tws = tws;
+	ctx->tws_sock = -1;
+	/* pre and post poll hooks */
+	prp->data = ctx;
+	ev_prepare_init(prp, prep_cb);
+	ev_prepare_start(EV_A_ prp);
 
 	/* now wait for events to arrive */
 	ev_loop(EV_A_ 0);
 
-past_loop:
-	(void)fini_tws(tws);
+	/* cancel them timers and stuff */
+	ev_prepare_stop(EV_A_ prp);
+
+	/* first off, get rid of the tws intrinsics */
+	PF_DEBUG("finalising tws guts\n");
+	(void)fini_tws(ctx->tws);
 
 	/* finish the order queue */
 	check_pq();

@@ -91,11 +91,11 @@
 
 /* maximum allowed age for clients (in seconds) */
 #if defined DEBUG_FLAG
-# define MAX_CLI_AGE	(60.0)
-# define PRUNE_INTV	(10.0)
+# define MAX_CLI_AGE	(600U)
+# define PRUNE_INTV	(100U)
 #else  /* !DEBUG_FLAG */
-# define MAX_CLI_AGE	(1800)
-# define PRUNE_INTV	(60.0)
+# define MAX_CLI_AGE	(18000U)
+# define PRUNE_INTV	(600U)
 #endif	/* DEBUG_FLAG */
 
 static FILE *logerr;

@@ -102,6 +102,7 @@ um_quodmp_LDFLAGS += $(libev_LIBS)
 bin_PROGRAMS += um-apfmon
 um_apfmon_SOURCES = um-apfmon.c um-apfmon-clo.ggo
 BUILT_SOURCES += um-apfmon-clo.c um-apfmon-clo.h
+um_apfmon_SOURCES += gq.c gq.h
 um_apfmon_CPPFLAGS = $(AM_CPPFLAGS) -D_GNU_SOURCE
 um_apfmon_CPPFLAGS += $(libev_CFLAGS)
 um_apfmon_CPPFLAGS += $(unserding_CFLAGS)

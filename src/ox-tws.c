@@ -87,9 +87,21 @@ void *logerr;
 
 typedef uint32_t ox_idx_t;
 
+typedef struct ctx_s *ctx_t;
 typedef struct ox_cl_s *ox_cl_t;
 
 #define CL(x)		(x)
+
+struct ctx_s {
+	/* static context */
+	const char *host;
+	uint16_t port;
+	int client;
+
+	/* dynamic context */
+	my_tws_t tws;
+	int tws_sock;
+};
 
 struct ox_oq_item_s {
 	union {
@@ -733,28 +745,103 @@ cake_cb(EV_P_ ev_io *w, int revents)
 	my_tws_t tws = w->data;
 
 	if (revents & EV_READ) {
-		tws_recv(tws);
+		if (tws_recv(tws) < 0) {
+			/* nice one, tws */
+			goto del_cake;
+		}
 	}
 	if (revents & EV_WRITE) {
-		tws_send(tws);
+		if (tws_send(tws) < 0) {
+			/* fuck this */
+			goto del_cake;
+		}
 	}
+	return;
+del_cake:
+	ev_io_stop(EV_A_ w);
+	w->fd = -1;
+	w->data = NULL;
+	OX_DEBUG("cake stopped\n");
+	return;
+}
+
+static void
+reco_cb(EV_P_ ev_timer *w, int UNUSED(revents))
+{
+	ctx_t p = w->data;
+	int s;
+
+	if ((s = tws_connect(p->tws, p->host, p->port, p->client)) < 0) {
+		/* retry later */
+		return;
+	}
+
+	/* also hand out details to the COUNTER struct */
+	{
+		union ud_sockaddr_u sa;
+		socklen_t ss = sizeof(sa);
+
+		getsockname(s, &sa.sa, &ss);
+		counter.addr = sa.sa6.sin6_addr;
+		counter.port = htons(p->port);
+	}
+
+	/* pass on the socket we've got */
+	p->tws_sock = s;
+
+	/* stop ourselves */
+	ev_timer_stop(EV_A_ w);
+	w->data = NULL;
+	OX_DEBUG("reco stopped\n");
 	return;
 }
 
 static void
 prep_cb(EV_P_ ev_prepare *w, int UNUSED(revents))
 {
-	my_tws_t tws = w->data;
+	static ev_io cake[1] = {{0}};
+	static ev_timer tm_reco[1] = {{0}};
+	ctx_t ctx = w->data;
+	my_tws_t tws = ctx->tws;
 
-	/* check the queue integrity */
-	check_oq();
+	/* check if the tws is there */
+	if (cake->fd <= 0 && ctx->tws_sock <= 0 && tm_reco->data == NULL) {
+		/* uh oh! */
+		ev_io_stop(EV_A_ cake);
+		cake->data = NULL;
 
-	/* maybe we've got something up our sleeve */
-	flush_queue(tws);
-	/* inform everyone about fills */
-	flush_flld();
-	/* check cancellation list */
-	flush_cncd();
+		/* start the reconnection timer */
+		tm_reco->data = ctx;
+		ev_timer_init(tm_reco, reco_cb, 0.0, 2.0/*option?*/);
+		ev_timer_start(EV_A_ tm_reco);
+		OX_DEBUG("reco started\n");
+
+	} else if (cake->fd <= 0 && ctx->tws_sock <= 0) {
+		/* great, no connection yet */
+		cake->data = NULL;
+		OX_DEBUG("no cake yet\n");
+
+	} else if (cake->fd <= 0) {
+		/* ah, connection is back up, init the watcher */
+		cake->data = ctx->tws;
+		ev_io_init(cake, cake_cb, ctx->tws_sock, EV_READ);
+		ev_io_start(EV_A_ cake);
+		OX_DEBUG("cake started\n");
+
+		/* clear tws_sock */
+		ctx->tws_sock = -1;
+
+	} else {
+		/* check the queue integrity */
+		check_oq();
+
+		/* maybe we've got something up our sleeve */
+		flush_queue(tws);
+		/* inform everyone about fills */
+		flush_flld();
+		/* check cancellation list */
+		flush_cncd();
+	}
 
 	/* and check the queue's integrity again */
 	check_oq();
@@ -827,6 +914,7 @@ detach(void)
 int
 main(int argc, char *argv[])
 {
+	struct ctx_s ctx[1];
 	/* args */
 	struct ox_args_info argi[1];
 	/* use the default event loop unless you have special needs */
@@ -835,16 +923,12 @@ main(int argc, char *argv[])
 	ev_signal sigint_watcher[1];
 	ev_signal sighup_watcher[1];
 	ev_signal sigterm_watcher[1];
-	/* tws specific stuff */
-	struct my_tws_s tws[1];
-	const char *host;
-	uint16_t port;
-	int client;
-	ev_io cake[1];
 	ev_prepare prp[1];
 	/* our beef channels */
 	size_t nbeef = 0;
 	ev_io *beef = NULL;
+	/* tws stuff */
+	struct my_tws_s tws[1];
 	/* final result */
 	int res = 0;
 
@@ -863,22 +947,22 @@ main(int argc, char *argv[])
 
 	/* snarf host name and port */
 	if (argi->tws_host_given) {
-		host = argi->tws_host_arg;
+		ctx->host = argi->tws_host_arg;
 	} else {
-		host = "localhost";
+		ctx->host = "localhost";
 	}
 	if (argi->tws_port_given) {
-		port = (uint16_t)argi->tws_port_arg;
+		ctx->port = (uint16_t)argi->tws_port_arg;
 	} else {
-		port = (uint16_t)7474;
+		ctx->port = (uint16_t)7474;
 	}
 	if (argi->tws_client_id_given) {
-		client = argi->tws_client_id_arg;
+		ctx->client = argi->tws_client_id_arg;
 	} else {
 		struct timeval now[1];
 
 		(void)gettimeofday(now, NULL);
-		client = now->tv_sec;
+		ctx->client = now->tv_sec;
 	}
 
 	/* make some room for the control channel and the beef chans */
@@ -926,51 +1010,32 @@ main(int argc, char *argv[])
 		ev_io_start(EV_A_ beef + i + 1);
 	}
 
-	/* we init this late, because the tws connection is not a requirement
-	 * and we may have support for changing/closing/reopening it later
-	 * on anyway, maybe through a nice shell, who knows */
-	{
-		int s;
-
-		if (init_tws(tws) < 0) {
-			res = 1;
-			goto unroll;
-		} else if ((s = tws_connect(tws, host, port, client)) < 0) {
-			res = 1;
-			goto past_loop;
-		}
-
-		/* init a watcher */
-		cake->data = tws;
-		ev_io_init(cake, cake_cb, s, EV_READ);
-		ev_io_start(EV_A_ cake);
-
-		/* pre and post poll hooks */
-		prp->data = tws;
-		ev_prepare_init(prp, prep_cb);
-		ev_prepare_start(EV_A_ prp);
-
-		/* make sure we know about the global order queue */
-		tws->oq = &oq;
-		/* also hand out details to the COUNTER struct */
-		{
-			union ud_sockaddr_u sa;
-			socklen_t ss = sizeof(sa);
-
-			getsockname(s, &sa.sa, &ss);
-			counter.addr = sa.sa6.sin6_addr;
-			counter.port = htons(port);
-			counter.uidx = 0;
-		}
+	if (init_tws(tws) < 0) {
+		res = 1;
+		goto unroll;
 	}
+	/* make sure we know about the global order queue */
+	tws->oq = &oq;
+	/* prepare the context */
+	ctx->tws = tws;
+	ctx->tws_sock = -1;
+	/* pre and post poll hooks */
+	prp->data = ctx;
+	ev_prepare_init(prp, prep_cb);
+	ev_prepare_start(EV_A_ prp);
 
 	/* now wait for events to arrive */
 	ev_loop(EV_A_ 0);
 
-past_loop:
-	(void)fini_tws(tws);
+	/* cancel them timers and stuff */
+	ev_prepare_stop(EV_A_ prp);
+
+	/* first off, get rid of the tws intrinsics */
+	OX_DEBUG("finalising tws guts\n");
+	(void)fini_tws(ctx->tws);
 
 	/* finish the order queue */
+	check_oq();
 	fini_gq(oq.q);
 	fini_gq(cq.q);
 

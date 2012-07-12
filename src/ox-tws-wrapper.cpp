@@ -603,7 +603,7 @@ tws_recv(my_tws_t foo)
 	IB::EPosixClientSocket *cli = (IB::EPosixClientSocket*)foo->cli;
 
 	cli->onReceive();
-	return 0;
+	return cli->isSocketOK() ? 0 : -1;
 }
 
 int
@@ -615,7 +615,7 @@ tws_send(my_tws_t foo)
 		return 0;
 	}
 	cli->onSend();
-	return 0;
+	return cli->isSocketOK() ? 0 : -1;
 }
 
 
@@ -691,7 +691,7 @@ tws_reconcile(my_tws_t tws)
 
 	wrp_debug(tws, "reconciliation");
 	cli->reqOpenOrders();
-	return 0;
+	return cli->isSocketOK() ? 0 : -1;
 }
 
 /* ox-tws-wrapper.cpp ends here */

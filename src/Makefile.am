@@ -183,6 +183,7 @@ pf_tws_SOURCES = pf-tws.c pf-tws-clo.ggo
 pf_tws_SOURCES += pf-tws-wrapper.cpp pf-tws-wrapper.h
 pf_tws_SOURCES += iso4217.c iso4217.h
 pf_tws_SOURCES += strops.h
+pf_tws_SOURCES += pf-tws-private.h
 pf_tws_SOURCES += wrp-debug.h
 BUILT_SOURCES += pf-tws-clo.c pf-tws-clo.h
 pf_tws_CPPFLAGS = $(AM_CPPFLAGS)

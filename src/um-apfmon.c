@@ -287,11 +287,11 @@ sa_eq_p(ud_sockaddr_t sa1, ud_sockaddr_t sa2)
 static cli_t
 find_cli(struct key_s k)
 {
-	for (size_t i = 0; i < ncli; i++) {
+	for (size_t i = 1; i <= ncli; i++) {
 		ud_sockaddr_t cur_sa = &CLI(i)->sa;
 
 		if (sa_eq_p(cur_sa, k.sa)) {
-			return i + 1;
+			return i;
 		}
 	}
 	return 0;

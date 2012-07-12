@@ -1,0 +1,19 @@
+args "--unamed-opts --no-handle-error --long-help -a umam_args_info -f umam_parser"
+package "um-apfmon"
+usage "um-apfmon [OPTION]..."
+description "monitor portfolios on unserding beef channels"
+
+section "Display options"
+option "fps" -
+	"Rerender the screen NUM times a second."
+	int default="10" typestr="NUM" optional
+
+section "Network options"
+option "port" p
+	"Multicast control channel port"
+	int default="8653" optional
+
+option "beef" -
+	"Multicast payload channels, can be used multiple times"
+	int optional multiple
+

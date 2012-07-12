@@ -37,8 +37,16 @@
 #if defined HAVE_CONFIG_H
 # include "config.h"
 #endif	/* HAVE_CONFIG_H */
+#include <unistd.h>
+#include <string.h>
 #include <sys/mman.h>
 #include "gq.h"
+
+#if defined DEBUG_FLAG
+# include <assert.h>
+#else  /* !DEBUG_FLAG */
+# define assert(x)
+#endif	/* DEBUG_FLAG */
 
 #if !defined PROT_MEM
 # define PROT_MEM	(PROT_READ | PROT_WRITE)
@@ -46,6 +54,16 @@
 #if !defined MAP_MEM
 # define MAP_MEM	(MAP_ANONYMOUS | MAP_PRIVATE)
 #endif	/* MAP_MEM */
+
+#if !defined LIKELY
+# define LIKELY(_x)	__builtin_expect((_x), 1)
+#endif
+#if !defined UNLIKELY
+# define UNLIKELY(_x)	__builtin_expect((_x), 0)
+#endif
+#if !defined UNUSED
+# define UNUSED(_x)	_x __attribute__((unused))
+#endif	/* !UNUSED */
 
 static size_t __attribute__((const, pure))
 gq_nmemb(size_t mbsz, size_t n)

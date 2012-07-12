@@ -166,7 +166,6 @@ check_oq(void)
 	for (ox_oq_item_t ip = oq.ackd->i1st; ip; ip = ip->next, ni++);
 	for (ox_oq_item_t ip = oq.cncd->i1st; ip; ip = ip->next, ni++);
 	for (ox_oq_item_t ip = oq.flld->i1st; ip; ip = ip->next, ni++);
-	OX_DEBUG("forw %zu oall\n", ni);
 	assert(ni == oq.q->nitems / sizeof(struct ox_oq_item_s));
 
 	ni = 0;
@@ -176,7 +175,6 @@ check_oq(void)
 	for (ox_oq_item_t ip = oq.ackd->ilst; ip; ip = ip->prev, ni++);
 	for (ox_oq_item_t ip = oq.cncd->ilst; ip; ip = ip->prev, ni++);
 	for (ox_oq_item_t ip = oq.flld->ilst; ip; ip = ip->prev, ni++);
-	OX_DEBUG("back %zu oall\n", ni);
 	assert(ni == oq.q->nitems / sizeof(struct ox_oq_item_s));
 #endif	/* DEBUG_FLAG */
 	return;
@@ -845,6 +843,8 @@ prep_cb(EV_P_ ev_prepare *w, int UNUSED(revents))
 
 	/* and check the queue's integrity again */
 	check_oq();
+
+	OX_DEBUG("queue %zu\n", oq.q->nitems / sizeof(struct ox_oq_item_s));
 	return;
 }
 

@@ -692,9 +692,11 @@ render_win(widx_t wi)
 
 			wmove(w->w, j++, 4);
 			if (pos == w->sel) {
-				wattron(w->w, COLOR_PAIR(A_STANDOUT));
+				wattron(w->w, A_STANDOUT);
 			} else if (pos->mark) {
 				wattron(w->w, COLOR_PAIR(CLIMARK));
+			} else {
+				wattrset(w->w, A_NORMAL);
 			}
 			waddstr(w->w, pos->sym);
 

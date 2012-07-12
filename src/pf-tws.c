@@ -94,12 +94,12 @@ struct comp_s {
 };
 
 struct pf_pq_s {
-	struct ox_gq_s q[1];
-	struct ox_dll_s sbuf[1];
+	struct gq_s q[1];
+	struct gq_ll_s sbuf[1];
 };
 
 struct pf_pqpr_s {
-	struct ox_item_s i;
+	struct gq_item_s i;
 
 	/* a/c name */
 	char ac[16];
@@ -330,7 +330,7 @@ flush_queue(my_tws_t UNUSED(tws))
 
 	/* get the packet ctor'd */
 	MAKE_PKT;
-	for (ox_item_t ip; (ip = gq_pop_head(pq.sbuf)); nsnt++) {
+	for (gq_item_t ip; (ip = gq_pop_head(pq.sbuf)); nsnt++) {
 		pf_pqpr_t pr = (pf_pqpr_t)ip;
 
 		if (!udpc_seria_pr_feasible_p(ser, pr)) {
@@ -353,14 +353,14 @@ check_pq(void)
 	/* count all items */
 	size_t ni = 0;
 
-	for (ox_item_t ip = pq.q->free->i1st; ip; ip = ip->next, ni++);
-	for (ox_item_t ip = pq.sbuf->i1st; ip; ip = ip->next, ni++);
+	for (gq_item_t ip = pq.q->free->i1st; ip; ip = ip->next, ni++);
+	for (gq_item_t ip = pq.sbuf->i1st; ip; ip = ip->next, ni++);
 	PF_DEBUG("forw %zu oall\n", ni);
 	assert(ni == pq.q->nitems / sizeof(struct pf_pqpr_s));
 
 	ni = 0;
-	for (ox_item_t ip = pq.q->free->ilst; ip; ip = ip->prev, ni++);
-	for (ox_item_t ip = pq.sbuf->ilst; ip; ip = ip->prev, ni++);
+	for (gq_item_t ip = pq.q->free->ilst; ip; ip = ip->prev, ni++);
+	for (gq_item_t ip = pq.sbuf->ilst; ip; ip = ip->prev, ni++);
 	PF_DEBUG("back %zu oall\n", ni);
 	assert(ni == pq.q->nitems / sizeof(struct pf_pqpr_s));
 #endif	/* DEBUG_FLAG */
@@ -379,7 +379,7 @@ pop_pr(void)
 		assert(pq.q->free->ilst == NULL);
 		PF_DEBUG("PQ RESIZE -> %zu\n", nitems + 64);
 		df = init_gq(pq.q, sizeof(*res), nitems + 64);
-		gq_rbld_dll(pq.sbuf, df);
+		gq_rbld_ll(pq.sbuf, df);
 		check_pq();
 	}
 	/* get us a new client and populate the object */
@@ -406,7 +406,7 @@ fix_pos_rpt(pf_pq_t UNUSED(pf), const char *ac, struct pf_pos_s pos)
 	pr->lqty = pos.lqty;
 	pr->sqty = pos.sqty;
 
-	gq_push_tail(pq.sbuf, (ox_item_t)pr);
+	gq_push_tail(pq.sbuf, (gq_item_t)pr);
 	PF_DEBUG("pushed %p\n", pr);
 	return;
 }

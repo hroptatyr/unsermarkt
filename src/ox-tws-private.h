@@ -51,7 +51,7 @@ struct ox_oq_dll_s {
 };
 
 struct ox_oq_s {
-	struct ox_gq_s q[1];
+	struct gq_s q[1];
 
 	struct ox_oq_dll_s flld[1];
 	struct ox_oq_dll_s cncd[1];
@@ -74,20 +74,20 @@ extern void set_qty(ox_oq_item_t, double qty);
 static inline ox_oq_item_t
 oq_pop_head(ox_oq_dll_t dll)
 {
-	return (ox_oq_item_t)gq_pop_head((ox_dll_t)dll);
+	return (ox_oq_item_t)gq_pop_head((gq_ll_t)dll);
 }
 
 static inline void
 oq_push_tail(ox_oq_dll_t dll, ox_oq_item_t i)
 {
-	gq_push_tail((ox_dll_t)dll, (ox_item_t)i);
+	gq_push_tail((gq_ll_t)dll, (gq_item_t)i);
 	return;
 }
 
 static inline void
 oq_pop_item(ox_oq_dll_t dll, ox_oq_item_t i)
 {
-	gq_pop_item((ox_dll_t)dll, (ox_item_t)i);
+	gq_pop_item((gq_ll_t)dll, (gq_item_t)i);
 	return;
 }
 

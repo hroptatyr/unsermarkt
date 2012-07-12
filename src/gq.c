@@ -59,7 +59,7 @@ gq_nmemb(size_t mbsz, size_t n)
 }
 
 void
-gq_rbld_dll(ox_dll_t dll, ptrdiff_t df)
+gq_rbld_ll(gq_ll_t dll, ptrdiff_t df)
 {
 	if (UNLIKELY(df == 0)) {
 		/* thank you thank you thank you */
@@ -76,7 +76,7 @@ gq_rbld_dll(ox_dll_t dll, ptrdiff_t df)
 }
 
 static ptrdiff_t
-gq_rbld(ox_gq_t q, ox_item_t nu_ref, size_t mbsz)
+gq_rbld(gq_t q, gq_item_t nu_ref, size_t mbsz)
 {
 	ptrdiff_t df = nu_ref - q->items;
 
@@ -86,10 +86,10 @@ gq_rbld(ox_gq_t q, ox_item_t nu_ref, size_t mbsz)
 	}
 
 	/* rebuild the free dll */
-	gq_rbld_dll(q->free, df);
+	gq_rbld_ll(q->free, df);
 	/* hop along all items and up the next and prev pointers */
 	for (char *sp = (void*)nu_ref, *ep = sp + q->nitems; sp < ep; sp += mbsz) {
-		ox_item_t ip = (void*)sp;
+		gq_item_t ip = (void*)sp;
 
 		if (ip->next) {
 			ip->next += df;
@@ -102,12 +102,12 @@ gq_rbld(ox_gq_t q, ox_item_t nu_ref, size_t mbsz)
 }
 
 ptrdiff_t
-init_gq(ox_gq_t q, size_t mbsz, size_t at_least)
+init_gq(gq_t q, size_t mbsz, size_t at_least)
 {
 	size_t nusz = gq_nmemb(mbsz, at_least);
 	size_t olsz = q->nitems;
-	ox_item_t ol_items = q->items;
-	ox_item_t nu_items;
+	gq_item_t ol_items = q->items;
+	gq_item_t nu_items;
 	ptrdiff_t res = 0;
 
 	if (q->nitems > nusz) {
@@ -137,10 +137,10 @@ init_gq(ox_gq_t q, size_t mbsz, size_t at_least)
 	{
 		char *const ep = (char*)nu_items + olsz;
 		const char *const eep = ep + (nusz - olsz);
-		ox_item_t eip = (void*)ep;
+		gq_item_t eip = (void*)ep;
 
 		for (char *sp = ep; sp < eep; sp += mbsz) {
-			ox_item_t ip = (void*)sp;
+			gq_item_t ip = (void*)sp;
 
 			if (sp + mbsz < eep) {
 				ip->next = (void*)(sp + mbsz);
@@ -165,7 +165,7 @@ init_gq(ox_gq_t q, size_t mbsz, size_t at_least)
 }
 
 void
-fini_gq(ox_gq_t q)
+fini_gq(gq_t q)
 {
 	if (q->items) {
 		munmap(q->items, q->nitems);
@@ -175,10 +175,10 @@ fini_gq(ox_gq_t q)
 	return;
 }
 
-ox_item_t
-gq_pop_head(ox_dll_t dll)
+gq_item_t
+gq_pop_head(gq_ll_t dll)
 {
-	ox_item_t res;
+	gq_item_t res;
 
 	if ((res = dll->i1st) && (dll->i1st = dll->i1st->next) == NULL) {
 		dll->ilst = NULL;
@@ -189,7 +189,7 @@ gq_pop_head(ox_dll_t dll)
 }
 
 void
-gq_push_tail(ox_dll_t dll, ox_item_t i)
+gq_push_tail(gq_ll_t dll, gq_item_t i)
 {
 	if (dll->ilst) {
 		dll->ilst->next = i;
@@ -206,7 +206,7 @@ gq_push_tail(ox_dll_t dll, ox_item_t i)
 }
 
 void
-gq_pop_item(ox_dll_t dll, ox_item_t ip)
+gq_pop_item(gq_ll_t dll, gq_item_t ip)
 {
 	if (ip->prev) {
 		ip->prev->next = ip->next;

@@ -451,7 +451,7 @@ pr_pos_rpt(job_t j)
 		sym += sizeof(fix_inssym) - 1;
 		tmp -= sizeof(fix_inssym) - 1;
 		/* we don't want no steenkin buffer overfloes */
-		if (UNLIKELY(tmp > sizeof(pos->sym))) {
+		if (UNLIKELY(tmp >= sizeof(pos->sym))) {
 			tmp = sizeof(pos->sym) - 1;
 		}
 		/* all's fine */

@@ -442,6 +442,7 @@ pr_pos_rpt(job_t j)
 		/* find the long quantity */
 		pos->lqty = find_fix_dbl(p, fix_lqty, sizeof(fix_lqty) - 1);
 		pos->sqty = find_fix_dbl(p, fix_sqty, sizeof(fix_sqty) - 1);
+		pos->last_seen = NOW;
 		res++;
 	}
 	return res;

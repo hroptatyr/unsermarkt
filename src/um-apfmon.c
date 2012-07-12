@@ -123,6 +123,9 @@ struct pfi_s {
 	char sym[32];
 	double lqty;
 	double sqty;
+
+	int mark;
+	unsigned int last_seen;
 };
 
 /* the client */
@@ -137,9 +140,6 @@ struct cli_s {
 	char pf[32];
 	size_t pfsz;
 
-	int mark;
-	unsigned int last_seen;
-
 	/* all them positions */
 	struct gq_s pool[1];
 	struct gq_ll_s poss[1];
@@ -152,7 +152,7 @@ struct win_s {
 	char name[32];
 	size_t namesz;
 
-	cli_t sel;
+	pfi_t sel;
 };
 
 
@@ -195,60 +195,6 @@ resz_cli(size_t nu)
 {
 	cli = mremap(cli, alloc_cli, nu, MREMAP_MAYMOVE);
 	alloc_cli = nu;
-	return;
-}
-
-static void
-prune_cli(cli_t c)
-{
-	/* wipe it all */
-	memset(CLI(c), 0, sizeof(struct cli_s));
-	return;
-}
-
-static bool
-cli_pruned_p(cli_t c)
-{
-	return CLI(c)->sa.sa6.sin6_family == 0;
-}
-
-static void
-prune_clis(void)
-{
-	size_t nu_ncli = ncli;
-
-	/* prune clis */
-	for (cli_t i = 1, ei = ncli; i <= ei; i++) {
-		if (CLI(i)->last_seen + MAX_CLI_AGE < NOW) {
-			UMAM_DEBUG("pruning %zu\n", i);
-			prune_cli(i);
-		}
-	}
-
-	/* condense the cli array a bit */
-	for (cli_t i = 1, ei = ncli; i <= ei; i++) {
-		size_t consec;
-
-		for (consec = 0; i <= ei && cli_pruned_p(i); i++) {
-			consec++;
-		}
-		assert(consec <= ei);
-		assert(consec <= i);
-		if (consec && i <= ei) {
-			/* shrink */
-			size_t nmv = CLI(i) - CLI(i - consec);
-
-			UMAM_DEBUG("condensing %zu/%zu clis\n", nmv, ei);
-			memcpy(CLI(i - consec), CLI(i), nmv * sizeof(*cli));
-			nu_ncli -= nmv;
-		} else if (consec) {
-			UMAM_DEBUG("condensing %zu/%zu clis\n", consec, ei);
-			nu_ncli -= consec;
-		}
-	}
-
-	/* let everyone know how many clis we've got */
-	ncli = nu_ncli;
 	return;
 }
 
@@ -307,7 +253,6 @@ add_cli(struct key_s k)
 	}
 
 	cli[idx].sa = *k.sa;
-	cli[idx].last_seen = 0;
 
 	/* obtain the address in human readable form */
 	{
@@ -464,9 +409,6 @@ pr_pos_rpt(job_t j)
 		/* fuck */
 		return -1;
 	}
-
-	/* update last seen */
-	CLI(c)->last_seen = NOW;
 
 	for (char *p = pbuf, *ep = pbuf + plen;
 	     p && p < ep && (p = find_fix_eofld(p, fix_pos_rpt));
@@ -634,7 +576,7 @@ add_win(const char *name)
 		__gwins[res].namesz = 0;
 	}
 
-	__gwins[res].sel = 0;
+	__gwins[res].sel = NULL;
 	return res;
 }
 
@@ -736,15 +678,23 @@ render_win(widx_t wi)
 	}
 
 	/* actual rendering goes here */
-	if (ncli) {
-		cli_t c = 1;
-		gq_ll_t ll = CLI(c)->poss;
+	for (cli_t c = 1; c <= ncli; c++) {
+		gq_ll_t poss = CLI(c)->poss;
 		size_t j = 2;
 
-		for (gq_item_t ip = ll->i1st; ip; ip = ip->next) {
+		if (w->sel == NULL) {
+			w->sel = (void*)poss->i1st;
+		}
+
+		for (gq_item_t ip = poss->i1st; ip; ip = ip->next) {
 			const struct pfi_s *pos = (void*)ip;
 
 			wmove(w->w, j++, 4);
+			if (pos == w->sel) {
+				wattron(w->w, COLOR_PAIR(A_STANDOUT));
+			} else if (pos->mark) {
+				wattron(w->w, COLOR_PAIR(CLIMARK));
+			}
 			waddstr(w->w, pos->sym);
 
 			waddch(w->w, ' ');
@@ -785,8 +735,6 @@ render_cb(EV_P_ ev_timer *w, int UNUSED(revents))
 		}
 	}
 
-	/* prune old clients */
-	prune_clis();
 	/* update the rendering counter*/
 	nrend++;
 	/* and then set the timer again */
@@ -803,31 +751,36 @@ sigwinch_cb(EV_P_ ev_signal *UNUSED(w), int UNUSED(revents))
 }
 
 static void
-reass_cli(cli_t ci, widx_t UNUSED(wi))
+reass_pos(pfi_t pos, widx_t UNUSED(wi))
 {
 	/* unmark client */
-	CLI(ci)->mark = 0;
+	pos->mark = 0;
 
 	/* unassign the currently selected client */
-	__gwins[curw].sel = 0;
+	__gwins[curw].sel = NULL;
 	return;
 }
 
 static void
-reass_clis(widx_t wi)
+reass_poss(widx_t wi)
 {
 	int markp = 0;
 
 	/* if there's no marks, just use the currently selected cli */
-	for (size_t i = 1; i <= ncli; i++) {
-		if (CLI(i)->mark) {
-			reass_cli(i, wi);
-			markp = 1;
+	for (size_t c = 1; c <= ncli; c++) {
+		gq_ll_t poss = CLI(c)->poss;
+		for (gq_item_t i = poss->i1st; i; i = i->next) {
+			pfi_t pos = (void*)i;
+
+			if (pos->mark) {
+				reass_pos(pos, wi);
+				markp = 1;
+			}
 		}
 	}
-	if (!markp) {
+	if (!markp && __gwins[curw].sel) {
 		/* no marks found, reass the current selection */
-		reass_cli(__gwins[curw].sel, wi);
+		reass_pos(__gwins[curw].sel, wi);
 	}
 	return;
 }
@@ -857,7 +810,7 @@ handle_el(char *line)
 	wi = add_win(line);
 reass:
 	/* the selected client gets a new lob */
-	reass_clis(wi);
+	reass_poss(wi);
 
 out:
 	/* ah, user entered something? */
@@ -874,7 +827,6 @@ out:
 static void
 keypress_cb(EV_P_ ev_io *UNUSED(io), int UNUSED(revents))
 {
-	int k;
 	win_t w = __gwins + curw;
 
 	if (UNLIKELY(symw != NULL)) {
@@ -889,7 +841,7 @@ keypress_cb(EV_P_ ev_io *UNUSED(io), int UNUSED(revents))
 		return;
 	}
 
-	switch ((k = getch())) {
+	switch (getch()) {
 	case 'q':
 		ev_unloop(EV_A_ EVUNLOOP_ALL);
 		break;
@@ -908,15 +860,24 @@ keypress_cb(EV_P_ ev_io *UNUSED(io), int UNUSED(revents))
 
 		/* marking */
 	case ' ':
-		CLI(w->sel)->mark = !CLI(w->sel)->mark;
-		/* pretend we was a key_down */
-		k = KEY_DOWN;
-		/* fallthrough */
-	case KEY_UP:
-	case KEY_DOWN:
-		if (w->sel) {
-			;
+		if (w->sel == NULL) {
+			break;
 		}
+		/* toggle mark */
+		w->sel->mark = !w->sel->mark;
+		/* pretend we was a key_down and ... */
+		/* fallthrough */
+	case KEY_DOWN:
+		if (w->sel == NULL || w->sel->i.next == NULL) {
+			break;
+		}
+		w->sel = (void*)w->sel->i.next;
+		break;
+	case KEY_UP:
+		if (w->sel == NULL || w->sel->i.prev == NULL) {
+			break;
+		}
+		w->sel = (void*)w->sel->i.prev;
 		break;
 	case KEY_RIGHT:
 		break;

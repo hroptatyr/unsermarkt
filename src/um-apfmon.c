@@ -65,8 +65,6 @@
 # undef EV_P
 # define EV_P  struct ev_loop *loop __attribute__((unused))
 #endif	/* HAVE_EV_H */
-/* for gettimeofday() */
-#include <sys/time.h>
 
 #include <readline/readline.h>
 #include <readline/history.h>
@@ -217,15 +215,11 @@ cli_pruned_p(cli_t c)
 static void
 prune_clis(void)
 {
-	struct timeval tv[1];
 	size_t nu_ncli = ncli;
-
-	/* what's the time? */
-	gettimeofday(tv, NULL);
 
 	/* prune clis */
 	for (cli_t i = 1, ei = ncli; i <= ei; i++) {
-		if (CLI(i)->last_seen + MAX_CLI_AGE < tv->tv_sec) {
+		if (CLI(i)->last_seen + MAX_CLI_AGE < NOW) {
 			UMAM_DEBUG("pruning %zu\n", i);
 			prune_cli(i);
 		}

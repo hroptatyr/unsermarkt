@@ -974,6 +974,9 @@ main(int argc, char *argv[])
 	ev_signal sigwinch_watcher[1];
 	ev_timer render[1];
 
+	/* big assignment for logging purposes */
+	logerr = fopen("/tmp/um-apfmon.log", "a");
+
 	/* parse the command line */
 	if (umam_parser(argc, argv, argi)) {
 		exit(1);
@@ -1066,6 +1069,9 @@ main(int argc, char *argv[])
 
 	/* kick the config context */
 	umam_parser_free(argi);
+
+	/* close log file */
+	fclose(logerr);
 
 	/* unloop was called, so exit */
 	return 0;

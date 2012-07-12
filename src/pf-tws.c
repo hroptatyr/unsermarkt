@@ -367,13 +367,11 @@ check_pq(void)
 
 	for (gq_item_t ip = pq.q->free->i1st; ip; ip = ip->next, ni++);
 	for (gq_item_t ip = pq.sbuf->i1st; ip; ip = ip->next, ni++);
-	PF_DEBUG("forw %zu oall\n", ni);
 	assert(ni == pq.q->nitems / sizeof(struct pf_pqpr_s));
 
 	ni = 0;
 	for (gq_item_t ip = pq.q->free->ilst; ip; ip = ip->prev, ni++);
 	for (gq_item_t ip = pq.sbuf->ilst; ip; ip = ip->prev, ni++);
-	PF_DEBUG("back %zu oall\n", ni);
 	assert(ni == pq.q->nitems / sizeof(struct pf_pqpr_s));
 #endif	/* DEBUG_FLAG */
 	return;

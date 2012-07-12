@@ -607,9 +607,6 @@ rem_win(widx_t li)
 {
 	fini_win(li);
 	__gwins[li].namesz = 0;
-
-	//rem_lob(__gwins[li].bbook);
-	//rem_lob(__gwins[li].abook);
 	return;
 }
 
@@ -636,10 +633,6 @@ add_win(const char *name)
 		__gwins[res].name[0] = '\0';
 		__gwins[res].namesz = 0;
 	}
-
-	/* oh, and get us some order books */
-	//__gwins[res].bbook = add_lob();
-	//__gwins[res].abook = add_lob();
 
 	__gwins[res].sel = 0;
 	return res;

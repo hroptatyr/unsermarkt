@@ -74,6 +74,7 @@ blood_mm_CPPFLAGS += $(mxml_CFLAGS)
 blood_mm_LDFLAGS += $(mxml_LIBS)
 endif  ## HAVE_MXML
 
+if HAVE_LIBEV
 bin_PROGRAMS += um-quomon
 um_quomon_SOURCES = um-quomon.c um-quomon-clo.ggo
 BUILT_SOURCES += um-quomon-clo.c um-quomon-clo.h
@@ -112,6 +113,7 @@ um_apfmon_LDFLAGS += $(AM_LDFLAGS) -lncurses
 um_apfmon_LDFLAGS += $(unserding_LIBS)
 um_apfmon_LDFLAGS += $(libev_LIBS)
 um_apfmon_LDFLAGS += -lreadline
+endif  ## HAVE_LIBEV
 
 bin_PROGRAMS += um-xmit
 um_xmit_SOURCES = um-xmit.c
@@ -123,6 +125,7 @@ um_xmit_LDFLAGS = $(AM_LDFLAGS)
 um_xmit_LDFLAGS += $(uterus_LIBS)
 um_xmit_LDFLAGS += $(unserding_LIBS)
 
+if HAVE_LIBEV
 noinst_PROGRAMS += ox-matchall
 ox_matchall_SOURCES = ox-matchall.c
 BUILT_SOURCES += ox-matchall-clo.c ox-matchall-clo.h
@@ -134,6 +137,7 @@ ox_matchall_LDFLAGS = $(AM_LDFLAGS)
 ox_matchall_LDFLAGS += $(uterus_LIBS)
 ox_matchall_LDFLAGS += $(unserding_LIBS)
 ox_matchall_LDFLAGS += $(libev_LIBS)
+endif  ## HAVE_LIBEV
 
 if HAVE_TWSTOOLS
 noinst_LTLIBRARIES += tws-snarf.la
@@ -157,6 +161,7 @@ tws_order_la_LDFLAGS += $(unserding_LIBS)
 endif  ## HAVE_TWSTOOLS
 
 if HAVE_TWSAPI
+if HAVE_LIBEV
 noinst_PROGRAMS += ox-tws
 EXTRA_ox_tws_SOURCES =
 ox_tws_SOURCES = ox-tws.c ox-tws-clo.ggo
@@ -195,8 +200,10 @@ pf_tws_LDFLAGS = $(AM_LDFLAGS)
 pf_tws_LDFLAGS += $(unserding_LIBS)
 pf_tws_LDFLAGS += $(twsapi_LIBS)
 pf_tws_LDFLAGS += $(libev_LIBS)
+endif  ## HAVE_LIBEV
 endif  ## HAVE_TWSAPI
 
+if HAVE_LIBEV
 bin_PROGRAMS += um-netdania
 um_netdania_SOURCES = um-netdania.c um-netdania.h um-netdania-clo.ggo
 BUILT_SOURCES += um-netdania-clo.c um-netdania-clo.h
@@ -207,6 +214,7 @@ um_netdania_CPPFLAGS += $(libev_CFLAGS)
 um_netdania_LDFLAGS = $(AM_LDFLAGS)
 um_netdania_LDFLAGS += $(unserding_LIBS)
 um_netdania_LDFLAGS += $(libev_LIBS)
+endif  ## HAVE_LIBEV
 
 noinst_PROGRAMS += tk-example
 tk_example_SOURCES = tk-example.c

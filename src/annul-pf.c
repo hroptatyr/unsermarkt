@@ -51,6 +51,8 @@ static struct __pos_s poss[] = {
 	}, {
 		"EURAUD", 0, 0,
 	}, {
+		"EURCAD", 0, 0,
+	}, {
 		"EURCHF", 0, 0,
 	}, {
 		"EURGBP", 0, 0,

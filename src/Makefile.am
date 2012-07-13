@@ -21,6 +21,7 @@ noinst_HEADERS += boobs.h
 noinst_HEADERS += nifty.h
 
 if HAVE_MXML
+if HAVE_SQLITE
 mod_LTLIBRARIES += dso-unsermarkt.la
 dso_unsermarkt_la_LDFLAGS = -module
 dso_unsermarkt_la_CPPFLAGS = $(AM_CPPFLAGS) -D_GNU_SOURCE
@@ -39,13 +40,13 @@ dso_unsermarkt_la_SOURCES += um-xml.h
 dso_unsermarkt_la_CPPFLAGS += $(unserding_CFLAGS)
 dso_unsermarkt_la_CPPFLAGS += $(uterus_CFLAGS)
 dso_unsermarkt_la_CPPFLAGS += $(mxml_CFLAGS)
+dso_unsermarkt_la_CPPFLAGS += $(sqlite_CFLAGS)
 dso_unsermarkt_la_LDFLAGS += $(mxml_LIBS)
-dso_unsermarkt_la_LIBADD =
-## check for me!
-dso_unsermarkt_la_LIBADD += -lsqlite3
+dso_unsermarkt_la_LDFLAGS += $(sqlite_LIBS)
 EXTRA_dso_unsermarkt_la_SOURCES =
 EXTRA_dso_unsermarkt_la_SOURCES += con6ity.c
 EXTRA_dso_unsermarkt_la_SOURCES += mmls.c
+endif  ## HAVE_SQLITE
 endif  ## HAVE_MXML
 
 noinst_PROGRAMS += umoc
@@ -58,11 +59,15 @@ noinst_PROGRAMS += oq
 oq_CPPFLAGS = $(AM_CPPFLAGS) -DSTANDALONE
 oq_CPPFLAGS += $(unserding_CFLAGS) $(uterus_CFLAGS)
 
+if HAVE_SQLITE
 noinst_PROGRAMS += uschi
 uschi_CPPFLAGS = $(AM_CPPFLAGS) -DSTANDALONE
+uschi_CPPFLAGS += $(sqlite_CFLAGS)
 uschi_CPPFLAGS += $(unserding_CFLAGS)
 uschi_CPPFLAGS += $(uterus_CFLAGS)
-uschi_LDFLAGS = $(AM_LDFLAGS) -lsqlite3
+uschi_LDFLAGS = $(AM_LDFLAGS)
+uschi_LDFLAGS += $(sqlite_LIBS)
+endif  ## HAVE_SQLITE
 
 if HAVE_MXML
 noinst_PROGRAMS += blood-mm

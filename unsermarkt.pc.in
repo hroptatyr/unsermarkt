@@ -1,0 +1,11 @@
+prefix=@prefix@
+exec_prefix=@exec_prefix@
+includedir=@includedir@
+libdir=@libdir@
+
+Name: @PACKAGE_NAME@
+Description: various tools to mimick a market place
+Version: @PACKAGE_VERSION@
+Libs: @LDFLAGS@ -L${libdir}
+Cflags: @CPPFLAGS@ -I${includedir}
+

@@ -5,6 +5,9 @@ ACLOCAL_AMFLAGS = -I m4
 
 SUBDIRS = libltdl src
 
+pkgconfigdir = @libdir@/pkgconfig
+pkgconfig_DATA = unsermarkt.pc
+
 EXTRA_DIST = .version git-version-gen
 
 # Version string management.  There are two files to be aware of:

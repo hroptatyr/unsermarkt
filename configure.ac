@@ -132,6 +132,7 @@ AM_CONDITIONAL([HAVE_TWSAPI], [test -n "${pkg_cv_twsapi_LIBS}"])
 
 AC_CONFIG_FILES([Makefile])
 AC_CONFIG_FILES([src/Makefile])
+AC_CONFIG_FILES([unsermarkt.pc])
 AC_OUTPUT
 
 dnl configure.ac ends here

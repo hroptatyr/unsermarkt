@@ -91,7 +91,6 @@ fi
 AM_CONDITIONAL([HAVE_UTERUS], [test "${have_uterus}" = "yes"])
 
 ## check for mxml
-## check for ute
 PKG_CHECK_MODULES([mxml], [mxml >= 2.7],
 	[have_mxml="yes"], [have_mxml="no"])
 if test "${have_mxml}" = "yes"; then

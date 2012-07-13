@@ -91,6 +91,11 @@ if test "${have_uterus}" = "yes"; then
 fi
 AM_CONDITIONAL([HAVE_UTERUS], [test "${have_uterus}" = "yes"])
 
+## check for sqlite3 libs
+PKG_CHECK_MODULES([sqlite], [sqlite3 >= 3.7],
+	[have_sqlite="yes"], [have_sqlite="no"])
+AM_CONDITIONAL([HAVE_SQLITE], [test "${have_sqlite}" = "yes"])
+
 ## check for mxml
 PKG_CHECK_MODULES([mxml], [mxml >= 2.7],
 	[have_mxml="yes"], [have_mxml="no"])

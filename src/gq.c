@@ -39,6 +39,7 @@
 #endif	/* HAVE_CONFIG_H */
 #include <unistd.h>
 #include <string.h>
+#include <stddef.h>
 #include <sys/mman.h>
 #include "gq.h"
 

@@ -38,6 +38,7 @@
 #define INCLUDED_gq_h_
 
 #include "stdint.h"
+#include <stddef.h>
 
 #if defined __cplusplus
 extern "C" {

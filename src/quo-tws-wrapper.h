@@ -42,6 +42,8 @@ extern "C" {
 #endif	/* __cplusplus */
 
 typedef struct my_tws_s *my_tws_t;
+/* abstract type for ib contracts */
+typedef void *tws_instr_t;
 
 typedef unsigned int tws_oid_t;
 
@@ -64,6 +66,8 @@ extern int tws_disconnect(my_tws_t);
 
 extern int tws_recv(my_tws_t);
 extern int tws_send(my_tws_t);
+
+extern int tws_req_quo(my_tws_t, tws_instr_t);
 
 #if defined __cplusplus
 }

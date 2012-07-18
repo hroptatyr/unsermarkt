@@ -516,4 +516,14 @@ tws_send(my_tws_t foo)
 	return cli->isSocketOK() ? 0 : -1;
 }
 
+int
+tws_req_quo(my_tws_t foo, tws_instr_t i)
+{
+	IB::EPosixClientSocket *cli = (IB::EPosixClientSocket*)foo->cli;
+	IB::Contract *c = (IB::Contract*)i;
+
+	cli->reqMktData(foo->next_oid++, *c, NULL, false);
+	return cli->isSocketOK() ? 0 : -1;
+}
+
 /* quo-tws-wrapper.cpp ends here */

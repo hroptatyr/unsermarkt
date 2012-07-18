@@ -521,8 +521,9 @@ tws_req_quo(my_tws_t foo, tws_instr_t i)
 {
 	IB::EPosixClientSocket *cli = (IB::EPosixClientSocket*)foo->cli;
 	IB::Contract *c = (IB::Contract*)i;
+	IB::IBString x = std::string("");
 
-	cli->reqMktData(foo->next_oid++, *c, NULL, false);
+	cli->reqMktData(foo->next_oid++, *c, x, false);
 	return cli->isSocketOK() ? 0 : -1;
 }
 

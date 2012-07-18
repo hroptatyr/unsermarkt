@@ -69,6 +69,10 @@ extern int tws_send(my_tws_t);
 
 extern int tws_req_quo(my_tws_t, tws_instr_t);
 
+/* builder and dismantler for ib contracts */
+extern tws_instr_t tws_assemble_instr(const char *sym);
+extern void tws_disassemble_instr(tws_instr_t);
+
 #if defined __cplusplus
 }
 #endif	/* __cplusplus */

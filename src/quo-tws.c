@@ -343,6 +343,8 @@ del_cake:
 	return;
 }
 
+static tws_instr_t subs = NULL;
+
 static void
 req_cb(EV_P_ ev_timer *w, int UNUSED(revents))
 {
@@ -354,14 +356,15 @@ req_cb(EV_P_ ev_timer *w, int UNUSED(revents))
 		goto del_req;
 	}
 
-#define TWS_ALL_ACCOUNTS	(NULL)
-#if 0
+	/* construct the subscription list */
+	if (subs == NULL) {
+		subs = tws_assemble_instr("EURSEK");
+	}
+
 	/* call the a/c requester */
-	if (tws_req_ac(tws, TWS_ALL_ACCOUNTS) < 0) {
+	if (tws_req_quo(tws, subs) < 0) {
 		goto del_req;
 	}
-#endif
-#undef TWS_ALL_ACCOUNTS
 	return;
 del_req:
 	ev_timer_stop(EV_A_ w);

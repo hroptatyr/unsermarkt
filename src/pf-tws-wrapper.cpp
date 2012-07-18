@@ -243,8 +243,25 @@ __wrapper::connectionClosed(void)
 void
 __wrapper::updateAccountValue(
 	const IB::IBString &key, const IB::IBString &val,
-	const IB::IBString &currency, const IB::IBString &accountName)
+	const IB::IBString &ccy, const IB::IBString &acct_name)
 {
+	my_tws_t tws = this->ctx;
+	const char *ck = key.c_str();
+
+	if (strcmp(ck, "CashBalance") == 0) {
+		const char *ac = acct_name.c_str();
+		const char *cc = ccy.c_str();
+		const char *cv = val.c_str();
+		double pos = strtod(cv, NULL);
+		struct pf_pos_s p = {
+			cc,
+			pos > 0 ? pos : 0.0,
+			pos < 0 ? -pos : 0.0,
+		};
+
+		WRP_DEBUG("acct %s: portfolio %s -> %s", ac, cc, cv);
+		fix_pos_rpt(tws->pq, ac, p);
+	}
 	return;
 }
 

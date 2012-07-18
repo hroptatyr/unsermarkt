@@ -41,7 +41,7 @@
 #include <stdbool.h>
 #include <netinet/in.h>
 #include <stdarg.h>
-#include <string>
+#include <string.h>
 
 /* the tws api */
 #include <twsapi/EWrapper.h>

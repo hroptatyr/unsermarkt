@@ -205,6 +205,25 @@ pf_tws_LDFLAGS = $(AM_LDFLAGS)
 pf_tws_LDFLAGS += $(unserding_LIBS)
 pf_tws_LDFLAGS += $(twsapi_LIBS)
 pf_tws_LDFLAGS += $(libev_LIBS)
+
+noinst_PROGRAMS += quo-tws
+EXTRA_quo_tws_SOURCES =
+quo_tws_SOURCES = quo-tws.c quo-tws-clo.ggo
+quo_tws_SOURCES += quo-tws-wrapper.cpp quo-tws-wrapper.h
+quo_tws_SOURCES += strops.h
+quo_tws_SOURCES += quo-tws-private.h
+quo_tws_SOURCES += wrp-debug.h
+BUILT_SOURCES += quo-tws-clo.c quo-tws-clo.h
+quo_tws_CPPFLAGS = $(AM_CPPFLAGS)
+quo_tws_CPPFLAGS += $(uterus_CFLAGS)
+quo_tws_CPPFLAGS += $(unserding_CFLAGS)
+quo_tws_CPPFLAGS += $(twsapi_CFLAGS)
+quo_tws_CPPFLAGS += $(libev_CFLAGS)
+quo_tws_LDFLAGS = $(AM_LDFLAGS)
+quo_tws_LDFLAGS += $(uterus_LIBS)
+quo_tws_LDFLAGS += $(unserding_LIBS)
+quo_tws_LDFLAGS += $(twsapi_LIBS)
+quo_tws_LDFLAGS += $(libev_LIBS)
 endif  ## HAVE_LIBEV
 endif  ## HAVE_TWSAPI
 

@@ -129,7 +129,10 @@ static size_t nquos = 0;
 static inline q30_t
 make_q30(uint16_t iidx, quo_typ_t t)
 {
-	return iidx * 4 + (t & ~1);
+	if (LIKELY(t >= QUO_TYP_BID && t <= QUO_TYP_ASZ)) {
+		return iidx * 4 + (t & ~1);
+	}
+	return 0;
 }
 
 static inline uint16_t
@@ -306,7 +309,7 @@ fix_quot(quo_qq_t UNUSED(qq_unused), struct quo_s q)
 	}
 
 	/* only when the coffee is roasted to perfection */
-	if ((tgt = make_q30(iidx, q.typ)) >= nquos) {
+	if ((tgt = make_q30(iidx, q.typ)) && tgt >= nquos) {
 		/* resize, yay */
 		static size_t pgsz = 0;
 		size_t new_sz;

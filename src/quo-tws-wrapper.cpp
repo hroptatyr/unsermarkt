@@ -158,16 +158,70 @@ public:
 #endif
 
 void 
-__wrapper::tickPrice(IB::TickerId id, IB::TickType fld, double pri, int autop)
+__wrapper::tickPrice(IB::TickerId id, IB::TickType fld, double pri, int)
 {
+	my_tws_t tws = this->ctx;
+	struct quo_s q;
+
 	WRP_DEBUG("prc %ld %u %.6f", id, fld, pri);
+
+	// IB goes bsz bid ask asz tra tsz
+	// we go   bid bsz ask asz tra tsz
+	// so we need to swap the type if it's bid or bsz
+	switch (fld) {
+	case IB::BID:
+	case IB::CLOSE:
+		q.typ = (quo_typ_t)(unsigned int)fld;
+		break;
+	case IB::ASK:
+	case IB::LAST:
+		q.typ = (quo_typ_t)((unsigned int)fld + 1);
+		break;
+	default:
+		q.typ = QUO_TYP_UNK;
+		return;
+	}
+
+	// populate the rest
+	q.sym = "FUCK";
+	q.val = pri;
+
+	fix_quot(tws->qq, q);
 	return;
 }
 
 void
 __wrapper::tickSize(IB::TickerId id, IB::TickType fld, int size)
 {
+	my_tws_t tws = this->ctx;
+	struct quo_s q;
+
 	WRP_DEBUG("qty %ld %u %d", id, fld, size);
+
+	// IB goes bsz bid ask asz tra tsz
+	// we go   bid bsz ask asz tra tsz
+	// so we need to swap the type if it's bid or bsz
+	switch (fld) {
+	case IB::BID_SIZE:
+		q.typ = QUO_TYP_BSZ;
+		break;
+	case IB::ASK_SIZE:
+	case IB::LAST_SIZE:
+		q.typ = (quo_typ_t)((unsigned int)fld + 1);
+		break;
+	case IB::VOLUME:
+		q.typ = (quo_typ_t)(unsigned int)fld;
+		break;
+	default:
+		q.typ = QUO_TYP_UNK;
+		return;
+	}
+
+	// populate the rest
+	q.sym = "FUCK";
+	q.val = (double)size;
+
+	fix_quot(tws->qq, q);
 	return;
 }
 

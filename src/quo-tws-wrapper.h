@@ -52,7 +52,7 @@ struct my_tws_s {
 	unsigned int time;
 	void *wrp;
 	void *cli;
-	void *pq;
+	void *qq;
 };
 
 

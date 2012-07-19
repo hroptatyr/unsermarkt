@@ -158,16 +158,72 @@ public:
 #endif
 
 void 
-__wrapper::tickPrice(IB::TickerId id, IB::TickType fld, double pri, int autop)
+__wrapper::tickPrice(IB::TickerId id, IB::TickType fld, double pri, int)
 {
-	WRP_DEBUG("prc %ld %u %.6f", id, fld, pri);
+	my_tws_t tws = this->ctx;
+	struct quo_s q;
+	uint16_t real_idx = id - tws->next_oid;
+
+	WRP_DEBUG("prc %ld (%hu) %u %.6f", id, real_idx, fld, pri);
+
+	// IB goes bsz bid ask asz tra tsz
+	// we go   bid bsz ask asz tra tsz
+	// so we need to swap the type if it's bid or bsz
+	switch (fld) {
+	case IB::BID:
+	case IB::CLOSE:
+		q.typ = (quo_typ_t)(unsigned int)fld;
+		break;
+	case IB::ASK:
+	case IB::LAST:
+		q.typ = (quo_typ_t)((unsigned int)fld + 1);
+		break;
+	default:
+		q.typ = QUO_TYP_UNK;
+		return;
+	}
+
+	// populate the rest
+	q.idx = real_idx;
+	q.val = pri;
+
+	fix_quot(tws->qq, q);
 	return;
 }
 
 void
 __wrapper::tickSize(IB::TickerId id, IB::TickType fld, int size)
 {
-	WRP_DEBUG("qty %ld %u %d", id, fld, size);
+	my_tws_t tws = this->ctx;
+	struct quo_s q;
+	uint16_t real_idx = id - tws->next_oid;
+
+	WRP_DEBUG("qty %ld (%hu) %u %d", id, real_idx, fld, size);
+
+	// IB goes bsz bid ask asz tra tsz
+	// we go   bid bsz ask asz tra tsz
+	// so we need to swap the type if it's bid or bsz
+	switch (fld) {
+	case IB::BID_SIZE:
+		q.typ = QUO_TYP_BSZ;
+		break;
+	case IB::ASK_SIZE:
+	case IB::LAST_SIZE:
+		q.typ = (quo_typ_t)((unsigned int)fld + 1);
+		break;
+	case IB::VOLUME:
+		q.typ = (quo_typ_t)(unsigned int)fld;
+		break;
+	default:
+		q.typ = QUO_TYP_UNK;
+		return;
+	}
+
+	// populate the rest
+	q.idx = real_idx;
+	q.val = (double)size;
+
+	fix_quot(tws->qq, q);
 	return;
 }
 
@@ -517,13 +573,19 @@ tws_send(my_tws_t foo)
 }
 
 int
-tws_req_quo(my_tws_t foo, tws_instr_t i)
+tws_req_quo(my_tws_t foo, unsigned int idx, tws_instr_t i)
 {
 	IB::EPosixClientSocket *cli = (IB::EPosixClientSocket*)foo->cli;
-	IB::Contract *c = (IB::Contract*)i;
-	IB::IBString x = std::string("");
+	long int real_idx;
 
-	cli->reqMktData(foo->next_oid++, *c, x, false);
+	if (foo->next_oid == 0) {
+		wrp_debug(foo, "subscription req'd no ticker ids available");
+		return -1;
+	}
+	// we request idx + next_oid
+	real_idx = foo->next_oid + idx;
+	// we just have to assume it works
+	cli->reqMktData(real_idx, *(IB::Contract*)i, std::string(""), false);
 	return cli->isSocketOK() ? 0 : -1;
 }
 

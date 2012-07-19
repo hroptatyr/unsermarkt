@@ -42,6 +42,8 @@
 #include <time.h>
 /* for gettimeofday() */
 #include <sys/time.h>
+/* for mmap */
+#include <sys/mman.h>
 #include <fcntl.h>
 #if defined HAVE_EV_H
 # include <ev.h>
@@ -88,6 +90,7 @@ void *logerr;
 
 typedef struct ctx_s *ctx_t;
 typedef struct quo_qqq_s *quo_qqq_t;
+typedef size_t q30_t;
 
 struct ctx_s {
 	/* static context */
@@ -114,12 +117,52 @@ struct quo_qq_s {
 struct quo_qqq_s {
 	struct gq_item_s i;
 
-	/* instrument index */
-	uint16_t iidx;
-	quo_typ_t typ;
-	double pri;
-	double qty;
+	/* pointer into our quotes array */
+	q30_t q;
 };
+
+/* AoV-based subscriptions class */
+struct quo_sub_s {
+	size_t nsubs;
+	tws_instr_t *inss;
+	m30_t *quos;
+	size_t nquos;
+};
+
+
+/* the quotes array */
+static inline size_t
+q30_size(size_t nsubs)
+{
+	return 4 * nsubs;
+}
+
+static inline q30_t
+make_q30(uint16_t iidx, quo_typ_t t)
+{
+	if (LIKELY(t >= QUO_TYP_BID && t <= QUO_TYP_ASZ)) {
+		return iidx * 4 + (t - 1);
+	}
+	return 0;
+}
+
+static inline uint16_t
+q30_idx(q30_t q)
+{
+	return q / 4;
+}
+
+static inline quo_typ_t
+q30_typ(q30_t q)
+{
+	return (quo_typ_t)(q % 4);
+}
+
+static inline unsigned int
+q30_sl1t_typ(q30_t q)
+{
+	return q30_typ(q) / 2 + SL1T_TTF_BID;
+}
 
 
 /* the actual core, ud and fix stuff */
@@ -130,12 +173,23 @@ struct quo_qqq_s {
 #include "gq.c"
 
 /* our beef channels */
-static size_t nbeef = 0;
 static ev_io beef[1];
+
+/* them top-level snapper */
+static struct quo_sub_s subs = {0};
 
 /* the sender buffer queue */
 static struct quo_qq_s qq = {0};
 static utectx_t uu = NULL;
+
+/* ute services come in 2 flavours little endian "ut" and big endian "UT" */
+#define UTE_CMD_LE	0x7574
+#define UTE_CMD_BE	0x5554
+#if defined WORDS_BIGENDIAN
+# define UTE_CMD	UTE_CMD_BE
+#else  /* !WORDS_BIGENDIAN */
+# define UTE_CMD	UTE_CMD_LE
+#endif	/* WORDS_BIGENDIAN */
 
 static bool
 udpc_seria_q_feasible_p(udpc_seria_t ser, quo_qqq_t UNUSED(q))
@@ -177,7 +231,7 @@ flush_queue(my_tws_t UNUSED(tws))
 
 #define PKT(x)		((ud_packet_t){sizeof(x), x})
 #define MAKE_PKT							\
-	udpc_make_pkt(PKT(buf), 0, pno++, POS_RPT_RPL);			\
+	udpc_make_pkt(PKT(buf), 0, pno++, UTE_CMD);			\
 	udpc_set_data_pkt(PKT(buf));					\
 	udpc_seria_init(ser, UDPC_PAYLOAD(buf), UDPC_PAYLLEN(sizeof(buf)))
 
@@ -193,25 +247,26 @@ flush_queue(my_tws_t UNUSED(tws))
 	for (gq_item_t ip; (ip = gq_pop_head(qq.sbuf));
 	     gq_push_tail(qq.q->free, ip)) {
 		quo_qqq_t q = (quo_qqq_t)ip;
+		uint16_t tblidx;
+		unsigned int ttf;
 
 		if (!udpc_seria_q_feasible_p(ser, q)) {
 			ud_chan_send_ser_all(ser);
 			MAKE_PKT;
 		}
 
-		if (q->iidx == 0) {
+		if ((tblidx = q30_idx(q->q)) == 0 ||
+		    (ttf = q30_sl1t_typ(q->q)) == SCOM_TTF_UNK) {
 			continue;
-		} else if (q->pri == 0.0) {
-			continue;
-		} else if (q->typ < SL1T_TTF_BID || q->typ > SL1T_TTF_TRA) {
+		} else if (subs.quos[q->q].u == 0) {
 			continue;
 		}
 		/* the typ was designed to coincide with ute's sl1t types */
-		sl1t_set_ttf(l1t, q->typ);
-		sl1t_set_tblidx(l1t, q->iidx);
+		sl1t_set_ttf(l1t, ttf);
+		sl1t_set_tblidx(l1t, tblidx);
 
-		l1t->pri = ffff_m30_get_d(q->pri).u;
-		l1t->qty = ffff_m30_get_d(q->qty).u;
+		l1t->pri = subs.quos[q->q].u;
+		l1t->qty = subs.quos[q->q + 1].u;
 
 		udpc_seria_add_scom(ser, AS_SCOM(l1t), sizeof(*l1t));
 	}
@@ -265,17 +320,31 @@ void
 fix_quot(quo_qq_t UNUSED(qq_unused), struct quo_s q)
 {
 /* shall we rely on c++ code passing us a pointer we handed out earlier? */
-	quo_qqq_t qi = pop_q();
+	q30_t tgt;
 
 	/* use the dummy ute file to do the sym2idx translation */
-	qi->iidx = ute_sym2idx(uu, q.sym);
-	/* and of course our quantities */
-	qi->typ = q.typ;
-	qi->pri = q.pri;
-	qi->qty = q.pri;
+	if (q.idx == 0) {
+		return;
+	} else if (q.typ == QUO_TYP_UNK || q.typ > QUO_TYP_ASZ) {
+		return;
+	} else if ((tgt = make_q30(q.idx, q.typ)) == 0) {
+		return;
+	} else if (tgt >= subs.nquos) {
+		/* that's actually so fatal I wanna vomit
+		 * that means IB sent us ticker ids we've never requested */
+		return;
+	}
 
-	gq_push_tail(qq.sbuf, (gq_item_t)qi);
-	QUO_DEBUG("pushed %p\n", qi);
+	/* only when the coffee is roasted to perfection:
+	 * update the slot TGT ... */
+	subs.quos[tgt] = ffff_m30_get_d(q.val);
+	/* ... and push a reminder on the queue */
+	{
+		quo_qqq_t qi = pop_q();
+		qi->q = tgt & ~1UL;
+		gq_push_tail(qq.sbuf, (gq_item_t)qi);
+		QUO_DEBUG("pushed %p\n", qi);
+	}
 	return;
 }
 
@@ -343,34 +412,101 @@ del_cake:
 	return;
 }
 
-static tws_instr_t subs = NULL;
-
 static void
-req_cb(EV_P_ ev_timer *w, int UNUSED(revents))
+redo_subs(my_tws_t tws)
 {
-	my_tws_t tws = w->data;
+	static const char test[] = "EURSEK";
+	uint16_t iidx;
 
 	QUO_DEBUG("req\n");
+
 	if (UNLIKELY(tws == NULL)) {
 		/* stop ourselves */
 		goto del_req;
 	}
 
-	/* construct the subscription list */
-	if (subs == NULL) {
-		subs = tws_assemble_instr("EURSEK");
+	/* get ourselves an index */
+	if (UNLIKELY((iidx = ute_sym2idx(uu, test)) == 0)) {
+		/* stop outselves */
+		goto del_req;
 	}
 
-	/* call the a/c requester */
-	if (tws_req_quo(tws, subs) < 0) {
+	if (iidx >= subs.nsubs) {
+		/* singleton/resizer */
+		static size_t pgsz = 0;
+		size_t new_sz;
+		size_t tmp;
+		void *new;
+
+		if (UNLIKELY(!pgsz)) {
+			pgsz = sysconf(_SC_PAGESIZE);
+		}
+
+		/* sort the subs array out first */
+		new_sz = ((iidx * sizeof(*subs.inss)) / pgsz + 1) * pgsz;
+		new = mmap(subs.inss, new_sz, PROT_MEM, MAP_MEM, -1, 0);
+		memcpy(new, subs.inss, subs.nsubs * sizeof(*subs.inss));
+		subs.inss = new;
+		subs.nsubs = new_sz / sizeof(*subs.inss);
+
+		/* while we're at it, resize the quos array */
+		/* we should at least accomodate 4 * iidx slots innit? */
+		tmp = q30_size(iidx);
+		new_sz = ((tmp * sizeof(*subs.quos)) / pgsz + 1) * pgsz;
+		new = mmap(subs.quos, new_sz, PROT_MEM, MAP_MEM, -1, 0);
+		memcpy(new, subs.quos, subs.nquos * sizeof(*subs.quos));
+		subs.quos = new;
+		subs.nquos = new_sz / sizeof(*subs.quos);
+	}
+
+	/* construct a contract */
+	if (UNLIKELY(subs.inss[iidx] == NULL &&
+		     (subs.inss[iidx] = tws_assemble_instr(test)) == NULL)) {
+		/* nightmare innit */
+		goto del_req;
+	}
+
+	/* and finally call the a/c requester */
+	if (tws_req_quo(tws, iidx, subs.inss[iidx]) < 0) {
+		/* hattrick, how can it go wrong at the last minute, fuck
+		 * on the other hand, we just leave the assembled instrument
+		 * where it is, maybe the (l)user is gonna retry later */
 		goto del_req;
 	}
 	return;
 del_req:
-	ev_timer_stop(EV_A_ w);
-	w->data = NULL;
+	/* clean up work if something got fucked */
 	QUO_DEBUG("req stopped\n");
 	return;
+}
+
+static void
+undo_subs(my_tws_t UNUSED(tws))
+{
+	for (size_t i = 0; i < subs.nsubs; i++) {
+		if (subs.inss[i]) {
+			tws_disassemble_instr(subs.inss[i]);
+			subs.inss[i] = NULL;
+		}
+	}
+	if (subs.nsubs) {
+		munmap(subs.inss, subs.nsubs * sizeof(*subs.inss));
+		subs.inss = NULL;
+		subs.nsubs = 0;
+	}
+	if (subs.nquos) {
+		munmap(subs.quos, subs.nquos * sizeof(*subs.quos));
+		subs.quos = NULL;
+		subs.nquos = 0;
+	}
+	return;
+}
+
+static inline bool
+got_oid_p(my_tws_t tws)
+{
+/* inspect TWS and return non-nil if requests to the tws can be made */
+	return tws->next_oid;
 }
 
 static void
@@ -399,18 +535,15 @@ static void
 prep_cb(EV_P_ ev_prepare *w, int UNUSED(revents))
 {
 	static ev_io cake[1] = {{0}};
-	static ev_timer tm_req[1] = {{0}};
 	static ev_timer tm_reco[1] = {{0}};
+	static int got_oid = 0;
 	ctx_t ctx = w->data;
-	my_tws_t tws = ctx->tws;
 
 	/* check if the tws is there */
 	if (cake->fd <= 0 && ctx->tws_sock <= 0 && tm_reco->data == NULL) {
 		/* uh oh! */
-		ev_timer_stop(EV_A_ tm_req);
 		ev_io_stop(EV_A_ cake);
 		cake->data = NULL;
-		tm_req->data = NULL;
 
 		/* start the reconnection timer */
 		tm_reco->data = ctx;
@@ -421,7 +554,6 @@ prep_cb(EV_P_ ev_prepare *w, int UNUSED(revents))
 	} else if (cake->fd <= 0 && ctx->tws_sock <= 0) {
 		/* great, no connection yet */
 		cake->data = NULL;
-		tm_req->data = NULL;
 		QUO_DEBUG("no cake yet\n");
 
 	} else if (cake->fd <= 0) {
@@ -431,14 +563,15 @@ prep_cb(EV_P_ ev_prepare *w, int UNUSED(revents))
 		ev_io_start(EV_A_ cake);
 		QUO_DEBUG("cake started\n");
 
-		/* also set up the timer to emit the portfolio regularly */
-		ev_timer_init(tm_req, req_cb, 0.0, 60.0/*option?*/);
-		tm_req->data = tws;
-		ev_timer_start(EV_A_ tm_req);
-		QUO_DEBUG("req started\n");
-
 		/* clear tws_sock */
 		ctx->tws_sock = -1;
+		/* and the oid semaphore */
+		got_oid = 0;
+
+	} else if (!got_oid && got_oid_p(ctx->tws)) {
+		/* a DREAM i tell ya, let's do our subscriptions */
+		redo_subs(ctx->tws);
+		got_oid = 1;
 
 	} else {
 		/* check the queue integrity */
@@ -607,7 +740,6 @@ main(int argc, char *argv[])
 		beef->data = x.p;
 		ev_io_init(beef, beef_cb, s, EV_READ);
 		ev_io_start(EV_A_ beef);
-		nbeef = 1;
 	}
 
 	if (init_tws(tws) < 0) {
@@ -632,7 +764,9 @@ main(int argc, char *argv[])
 	/* cancel them timers and stuff */
 	ev_prepare_stop(EV_A_ prp);
 
-	/* first off, get rid of the tws intrinsics */
+	/* kill all tws associated data */
+	undo_subs(tws);
+	/* secondly, get rid of the tws intrinsics */
 	QUO_DEBUG("finalising tws guts\n");
 	(void)fini_tws(ctx->tws);
 

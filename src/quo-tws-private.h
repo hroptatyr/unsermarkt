@@ -47,15 +47,21 @@ typedef struct quo_s *quo_t;
 typedef enum {
 	QUO_TYP_UNK,
 	QUO_TYP_BID,
+	QUO_TYP_BSZ,
 	QUO_TYP_ASK,
+	QUO_TYP_ASZ,
 	QUO_TYP_TRA,
+	QUO_TYP_TSZ,
+	QUO_TYP_VWP,
+	QUO_TYP_VOL,
+	QUO_TYP_CLO,
+	QUO_TYP_CSZ,
 } quo_typ_t;
 
 struct quo_s {
-	const char *sym;
+	uint16_t idx;
 	quo_typ_t typ;
-	double pri;
-	double qty;
+	double val;
 };
 
 extern void fix_quot(quo_qq_t, struct quo_s);

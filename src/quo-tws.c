@@ -474,6 +474,13 @@ del_req:
 	return;
 }
 
+static inline bool
+got_oid_p(my_tws_t tws)
+{
+/* inspect TWS and return non-nil if requests to the tws can be made */
+	return tws->next_oid;
+}
+
 static void
 reco_cb(EV_P_ ev_timer *w, int UNUSED(revents))
 {
@@ -533,7 +540,7 @@ prep_cb(EV_P_ ev_prepare *w, int UNUSED(revents))
 		/* and the oid semaphore */
 		got_oid = 0;
 
-	} else if (!got_oid && ctx->tws->next_oid) {
+	} else if (!got_oid && got_oid_p(ctx->tws)) {
 		/* a DREAM i tell ya, let's do our subscriptions */
 		redo_subs(ctx->tws);
 		got_oid = 1;

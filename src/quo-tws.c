@@ -42,6 +42,8 @@
 #include <time.h>
 /* for gettimeofday() */
 #include <sys/time.h>
+/* for mmap */
+#include <sys/mman.h>
 #include <fcntl.h>
 #if defined HAVE_EV_H
 # include <ev.h>
@@ -88,6 +90,7 @@ void *logerr;
 
 typedef struct ctx_s *ctx_t;
 typedef struct quo_qqq_s *quo_qqq_t;
+typedef size_t q30_t;
 
 struct ctx_s {
 	/* static context */
@@ -114,12 +117,38 @@ struct quo_qq_s {
 struct quo_qqq_s {
 	struct gq_item_s i;
 
-	/* instrument index */
-	uint16_t iidx;
-	quo_typ_t typ;
-	double pri;
-	double qty;
+	/* pointer into our quotes array */
+	q30_t q;
 };
+
+
+/* the quotes array */
+static m30_t *quos = NULL;
+static size_t nquos = 0;
+
+static inline q30_t
+make_q30(uint16_t iidx, quo_typ_t t)
+{
+	return iidx * 4 + (t & ~1);
+}
+
+static inline uint16_t
+q30_idx(q30_t q)
+{
+	return q / 4;
+}
+
+static inline quo_typ_t
+q30_typ(q30_t q)
+{
+	return (quo_typ_t)(q % 4);
+}
+
+static inline unsigned int
+q30_sl1t_typ(q30_t q)
+{
+	return q30_typ(q) / 2 + SL1T_TTF_BID;
+}
 
 
 /* the actual core, ud and fix stuff */
@@ -193,25 +222,26 @@ flush_queue(my_tws_t UNUSED(tws))
 	for (gq_item_t ip; (ip = gq_pop_head(qq.sbuf));
 	     gq_push_tail(qq.q->free, ip)) {
 		quo_qqq_t q = (quo_qqq_t)ip;
+		uint16_t tblidx;
+		unsigned int ttf;
 
 		if (!udpc_seria_q_feasible_p(ser, q)) {
 			ud_chan_send_ser_all(ser);
 			MAKE_PKT;
 		}
 
-		if (q->iidx == 0) {
+		if ((tblidx = q30_idx(q->q)) == 0 ||
+		    (ttf = q30_sl1t_typ(q->q)) == SCOM_TTF_UNK) {
 			continue;
-		} else if (q->pri == 0.0) {
-			continue;
-		} else if (q->typ < SL1T_TTF_BID || q->typ > SL1T_TTF_TRA) {
+		} else if (quos[q->q].u == 0) {
 			continue;
 		}
 		/* the typ was designed to coincide with ute's sl1t types */
-		sl1t_set_ttf(l1t, q->typ);
-		sl1t_set_tblidx(l1t, q->iidx);
+		sl1t_set_ttf(l1t, ttf);
+		sl1t_set_tblidx(l1t, tblidx);
 
-		l1t->pri = ffff_m30_get_d(q->pri).u;
-		l1t->qty = ffff_m30_get_d(q->qty).u;
+		l1t->pri = quos[q->q].u;
+		l1t->qty = quos[q->q + 1].u;
 
 		udpc_seria_add_scom(ser, AS_SCOM(l1t), sizeof(*l1t));
 	}
@@ -265,17 +295,42 @@ void
 fix_quot(quo_qq_t UNUSED(qq_unused), struct quo_s q)
 {
 /* shall we rely on c++ code passing us a pointer we handed out earlier? */
-	quo_qqq_t qi = pop_q();
+	uint16_t iidx;
+	q30_t tgt;
 
 	/* use the dummy ute file to do the sym2idx translation */
-	qi->iidx = ute_sym2idx(uu, q.sym);
-	/* and of course our quantities */
-	qi->typ = q.typ;
-	qi->pri = q.pri;
-	qi->qty = q.pri;
+	if ((iidx = ute_sym2idx(uu, q.sym)) == 0) {
+		return;
+	} else if (q.typ == QUO_TYP_UNK || q.typ > QUO_TYP_ASZ) {
+		return;
+	}
 
-	gq_push_tail(qq.sbuf, (gq_item_t)qi);
-	QUO_DEBUG("pushed %p\n", qi);
+	/* only when the coffee is roasted to perfection */
+	if ((tgt = make_q30(iidx, q.typ)) >= nquos) {
+		/* resize, yay */
+		static size_t pgsz = 0;
+		size_t new_sz;
+		void *new;
+
+		if (!pgsz) {
+			pgsz = sysconf(_SC_PAGESIZE);
+		}
+		/* we should at least accomodate 4 * iidx slots innit? */
+		new_sz = (tgt / pgsz + 1) * pgsz;
+
+		new = mmap(quos, new_sz, PROT_MEM, MAP_MEM, -1, 0);
+		memcpy(new, quos, nquos);
+		nquos = new_sz;
+	}
+	/* update the slot TGT ... */
+	quos[tgt] = ffff_m30_get_d(q.val);
+	/* ... and push a reminder on the queue */
+	{
+		quo_qqq_t qi = pop_q();
+		qi->q = tgt & ~1UL;
+		gq_push_tail(qq.sbuf, (gq_item_t)qi);
+		QUO_DEBUG("pushed %p\n", qi);
+	}
 	return;
 }
 

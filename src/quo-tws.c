@@ -500,18 +500,15 @@ static void
 prep_cb(EV_P_ ev_prepare *w, int UNUSED(revents))
 {
 	static ev_io cake[1] = {{0}};
-	static ev_timer tm_req[1] = {{0}};
 	static ev_timer tm_reco[1] = {{0}};
+	static int got_oid = 0;
 	ctx_t ctx = w->data;
-	my_tws_t tws = ctx->tws;
 
 	/* check if the tws is there */
 	if (cake->fd <= 0 && ctx->tws_sock <= 0 && tm_reco->data == NULL) {
 		/* uh oh! */
-		ev_timer_stop(EV_A_ tm_req);
 		ev_io_stop(EV_A_ cake);
 		cake->data = NULL;
-		tm_req->data = NULL;
 
 		/* start the reconnection timer */
 		tm_reco->data = ctx;
@@ -522,7 +519,6 @@ prep_cb(EV_P_ ev_prepare *w, int UNUSED(revents))
 	} else if (cake->fd <= 0 && ctx->tws_sock <= 0) {
 		/* great, no connection yet */
 		cake->data = NULL;
-		tm_req->data = NULL;
 		QUO_DEBUG("no cake yet\n");
 
 	} else if (cake->fd <= 0) {
@@ -534,6 +530,13 @@ prep_cb(EV_P_ ev_prepare *w, int UNUSED(revents))
 
 		/* clear tws_sock */
 		ctx->tws_sock = -1;
+		/* and the oid semaphore */
+		got_oid = 0;
+
+	} else if (!got_oid && ctx->tws->next_oid) {
+		/* a DREAM i tell ya, let's do our subscriptions */
+		redo_subs(ctx->tws);
+		got_oid = 1;
 
 	} else {
 		/* check the queue integrity */

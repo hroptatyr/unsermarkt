@@ -170,6 +170,15 @@ static size_t nquos = 0;
 static struct quo_qq_s qq = {0};
 static utectx_t uu = NULL;
 
+/* ute services come in 2 flavours little endian "ut" and big endian "UT" */
+#define UTE_CMD_LE	0x7574
+#define UTE_CMD_BE	0x5554
+#if defined WORDS_BIGENDIAN
+# define UTE_CMD	UTE_CMD_BE
+#else  /* !WORDS_BIGENDIAN */
+# define UTE_CMD	UTE_CMD_LE
+#endif	/* WORDS_BIGENDIAN */
+
 static bool
 udpc_seria_q_feasible_p(udpc_seria_t ser, quo_qqq_t UNUSED(q))
 {
@@ -210,7 +219,7 @@ flush_queue(my_tws_t UNUSED(tws))
 
 #define PKT(x)		((ud_packet_t){sizeof(x), x})
 #define MAKE_PKT							\
-	udpc_make_pkt(PKT(buf), 0, pno++, POS_RPT_RPL);			\
+	udpc_make_pkt(PKT(buf), 0, pno++, UTE_CMD);			\
 	udpc_set_data_pkt(PKT(buf));					\
 	udpc_seria_init(ser, UDPC_PAYLOAD(buf), UDPC_PAYLLEN(sizeof(buf)))
 

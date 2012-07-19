@@ -310,15 +310,14 @@ void
 fix_quot(quo_qq_t UNUSED(qq_unused), struct quo_s q)
 {
 /* shall we rely on c++ code passing us a pointer we handed out earlier? */
-	uint16_t iidx;
 	q30_t tgt;
 
 	/* use the dummy ute file to do the sym2idx translation */
-	if ((iidx = ute_sym2idx(uu, q.sym)) == 0) {
+	if (q.idx == 0) {
 		return;
 	} else if (q.typ == QUO_TYP_UNK || q.typ > QUO_TYP_ASZ) {
 		return;
-	} else if ((tgt = make_q30(iidx, q.typ)) == 0) {
+	} else if ((tgt = make_q30(q.idx, q.typ)) == 0) {
 		return;
 	}
 
@@ -415,32 +414,62 @@ del_cake:
 	return;
 }
 
-static tws_instr_t subs = NULL;
+static tws_instr_t *subs = NULL;
+static size_t nsubs = 0;
 
 static void
-req_cb(EV_P_ ev_timer *w, int UNUSED(revents))
+redo_subs(my_tws_t tws)
 {
-	my_tws_t tws = w->data;
+	static const char test[] = "EURSEK";
+	uint16_t iidx;
 
 	QUO_DEBUG("req\n");
+
 	if (UNLIKELY(tws == NULL)) {
 		/* stop ourselves */
 		goto del_req;
 	}
 
-	/* construct the subscription list */
-	if (subs == NULL) {
-		subs = tws_assemble_instr("EURSEK");
+	/* get ourselves an index */
+	if (UNLIKELY((iidx = ute_sym2idx(uu, test)) == 0)) {
+		/* stop outselves */
+		goto del_req;
 	}
 
-	/* call the a/c requester */
-	if (tws_req_quo(tws, subs) < 0) {
+	if (iidx >= nsubs) {
+		/* singleton */
+		size_t new_sz;
+		void *new;
+
+		if (UNLIKELY(!pgsz)) {
+			pgsz = sysconf(_SC_PAGESIZE);
+		}
+		/* we should at least accomodate 4 * iidx slots innit? */
+		new_sz = ((iidx * sizeof(*subs)) / pgsz + 1) * pgsz;
+
+		new = mmap(subs, new_sz, PROT_MEM, MAP_MEM, -1, 0);
+		memcpy(new, subs, nsubs * sizeof(*subs));
+		subs = new;
+		nsubs = new_sz / sizeof(*subs);
+	}
+
+	/* construct a contract */
+	if (UNLIKELY(subs[iidx] == NULL &&
+		     (subs[iidx] = tws_assemble_instr(test)) == NULL)) {
+		/* nightmare innit */
+		goto del_req;
+	}
+
+	/* and finally call the a/c requester */
+	if (tws_req_quo(tws, iidx, subs[iidx]) < 0) {
+		/* hattrick, how can it go wrong at the last minute, fuck
+		 * on the other hand, we just leave the assembled instrument
+		 * where it is, maybe the (l)user is gonna retry later */
 		goto del_req;
 	}
 	return;
 del_req:
-	ev_timer_stop(EV_A_ w);
-	w->data = NULL;
+	/* clean up work if something got fucked */
 	QUO_DEBUG("req stopped\n");
 	return;
 }
@@ -502,12 +531,6 @@ prep_cb(EV_P_ ev_prepare *w, int UNUSED(revents))
 		ev_io_init(cake, cake_cb, ctx->tws_sock, EV_READ);
 		ev_io_start(EV_A_ cake);
 		QUO_DEBUG("cake started\n");
-
-		/* also set up the timer to emit the portfolio regularly */
-		ev_timer_init(tm_req, req_cb, 0.0, 60.0/*option?*/);
-		tm_req->data = tws;
-		ev_timer_start(EV_A_ tm_req);
-		QUO_DEBUG("req started\n");
 
 		/* clear tws_sock */
 		ctx->tws_sock = -1;

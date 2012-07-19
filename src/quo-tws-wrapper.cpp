@@ -162,8 +162,9 @@ __wrapper::tickPrice(IB::TickerId id, IB::TickType fld, double pri, int)
 {
 	my_tws_t tws = this->ctx;
 	struct quo_s q;
+	uint16_t real_idx = id - tws->next_oid;
 
-	WRP_DEBUG("prc %ld %u %.6f", id, fld, pri);
+	WRP_DEBUG("prc %ld (%hu) %u %.6f", id, real_idx, fld, pri);
 
 	// IB goes bsz bid ask asz tra tsz
 	// we go   bid bsz ask asz tra tsz
@@ -183,7 +184,7 @@ __wrapper::tickPrice(IB::TickerId id, IB::TickType fld, double pri, int)
 	}
 
 	// populate the rest
-	q.sym = "FUCK";
+	q.idx = real_idx;
 	q.val = pri;
 
 	fix_quot(tws->qq, q);
@@ -195,8 +196,9 @@ __wrapper::tickSize(IB::TickerId id, IB::TickType fld, int size)
 {
 	my_tws_t tws = this->ctx;
 	struct quo_s q;
+	uint16_t real_idx = id - tws->next_oid;
 
-	WRP_DEBUG("qty %ld %u %d", id, fld, size);
+	WRP_DEBUG("qty %ld (%hu) %u %d", id, real_idx, fld, size);
 
 	// IB goes bsz bid ask asz tra tsz
 	// we go   bid bsz ask asz tra tsz
@@ -218,7 +220,7 @@ __wrapper::tickSize(IB::TickerId id, IB::TickType fld, int size)
 	}
 
 	// populate the rest
-	q.sym = "FUCK";
+	q.idx = real_idx;
 	q.val = (double)size;
 
 	fix_quot(tws->qq, q);
@@ -571,15 +573,19 @@ tws_send(my_tws_t foo)
 }
 
 int
-tws_req_quo(my_tws_t foo, tws_instr_t i)
+tws_req_quo(my_tws_t foo, unsigned int idx, tws_instr_t i)
 {
 	IB::EPosixClientSocket *cli = (IB::EPosixClientSocket*)foo->cli;
+	long int real_idx;
 
 	if (foo->next_oid == 0) {
 		wrp_debug(foo, "subscription req'd no ticker ids available");
 		return -1;
 	}
-	cli->reqMktData(foo->next_oid++, *(IB::Contract*)i, std::string(""), 0);
+	// we request idx + next_oid
+	real_idx = foo->next_oid + idx;
+	// we just have to assume it works
+	cli->reqMktData(real_idx, *(IB::Contract*)i, std::string(""), false);
 	return cli->isSocketOK() ? 0 : -1;
 }
 

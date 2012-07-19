@@ -67,7 +67,7 @@ extern int tws_disconnect(my_tws_t);
 extern int tws_recv(my_tws_t);
 extern int tws_send(my_tws_t);
 
-extern int tws_req_quo(my_tws_t, tws_instr_t);
+extern int tws_req_quo(my_tws_t, unsigned int idx, tws_instr_t);
 
 /* builder and dismantler for ib contracts */
 extern tws_instr_t tws_assemble_instr(const char *sym);

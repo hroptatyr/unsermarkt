@@ -307,10 +307,12 @@ fix_quot(quo_qq_t UNUSED(qq_unused), struct quo_s q)
 		return;
 	} else if (q.typ == QUO_TYP_UNK || q.typ > QUO_TYP_ASZ) {
 		return;
+	} else if ((tgt = make_q30(iidx, q.typ)) == 0) {
+		return;
 	}
 
 	/* only when the coffee is roasted to perfection */
-	if ((tgt = make_q30(iidx, q.typ)) && tgt >= nquos) {
+	if (tgt >= nquos) {
 		/* resize, yay */
 		static size_t pgsz = 0;
 		size_t new_sz;

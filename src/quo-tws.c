@@ -121,6 +121,8 @@ struct quo_qqq_s {
 	q30_t q;
 };
 
+static size_t pgsz = 0;
+
 
 /* the quotes array */
 static inline q30_t
@@ -323,7 +325,6 @@ fix_quot(quo_qq_t UNUSED(qq_unused), struct quo_s q)
 	/* only when the coffee is roasted to perfection */
 	if (tgt >= nquos) {
 		/* resize, yay */
-		static size_t pgsz = 0;
 		size_t new_sz;
 		void *new;
 

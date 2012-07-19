@@ -90,7 +90,8 @@ void *logerr;
 
 typedef struct ctx_s *ctx_t;
 typedef struct quo_qqq_s *quo_qqq_t;
-typedef size_t q30_t;
+typedef struct q30_s q30_t;
+typedef m30_t q30_pack_t[4];
 
 struct ctx_s {
 	/* static context */
@@ -113,6 +114,18 @@ struct quo_qq_s {
 	struct gq_ll_s sbuf[1];
 };
 
+/* indexing into the quo_sub_s->quos */
+struct q30_s {
+	union {
+		struct {
+			size_t subtyp:1;
+			size_t:1;
+		};
+		size_t typ:2;
+	};
+	size_t idx:16;
+};
+
 /* the quote-queue quote, i.e. an item of the quote queue */
 struct quo_qqq_s {
 	struct gq_item_s i;
@@ -125,37 +138,32 @@ struct quo_qqq_s {
 struct quo_sub_s {
 	size_t nsubs;
 	tws_instr_t *inss;
-	m30_t *quos;
-	size_t nquos;
+
+	/* actual quotes, this is bid, bsz, ask, asz  */
+	q30_pack_t *quos;
 };
 
 
 /* the quotes array */
-static inline size_t
-q30_size(size_t nsubs)
-{
-	return 4 * nsubs;
-}
-
 static inline q30_t
 make_q30(uint16_t iidx, quo_typ_t t)
 {
 	if (LIKELY(t >= QUO_TYP_BID && t <= QUO_TYP_ASZ)) {
-		return iidx * 4 + (t - 1);
+		return __extension__(q30_t){.typ = t - 1, .idx = iidx};
 	}
-	return 0;
+	return __extension__(q30_t){0};
 }
 
 static inline uint16_t
 q30_idx(q30_t q)
 {
-	return q / 4;
+	return (uint16_t)q.idx;
 }
 
 static inline quo_typ_t
 q30_typ(q30_t q)
 {
-	return (quo_typ_t)(q % 4);
+	return (quo_typ_t)q.typ;
 }
 
 static inline unsigned int
@@ -258,15 +266,15 @@ flush_queue(my_tws_t UNUSED(tws))
 		if ((tblidx = q30_idx(q->q)) == 0 ||
 		    (ttf = q30_sl1t_typ(q->q)) == SCOM_TTF_UNK) {
 			continue;
-		} else if (subs.quos[q->q].u == 0) {
+		} else if (subs.quos[tblidx - 1][q30_typ(q->q)].u == 0) {
 			continue;
 		}
 		/* the typ was designed to coincide with ute's sl1t types */
 		sl1t_set_ttf(l1t, ttf);
 		sl1t_set_tblidx(l1t, tblidx);
 
-		l1t->pri = subs.quos[q->q].u;
-		l1t->qty = subs.quos[q->q + 1].u;
+		l1t->pri = subs.quos[tblidx - 1][q30_typ(q->q)].u;
+		l1t->qty = subs.quos[tblidx - 1][q30_typ(q->q) + 1].u;
 
 		udpc_seria_add_scom(ser, AS_SCOM(l1t), sizeof(*l1t));
 	}
@@ -325,11 +333,9 @@ fix_quot(quo_qq_t UNUSED(qq_unused), struct quo_s q)
 	/* use the dummy ute file to do the sym2idx translation */
 	if (q.idx == 0) {
 		return;
-	} else if (q.typ == QUO_TYP_UNK || q.typ > QUO_TYP_ASZ) {
+	} else if (!(tgt = make_q30(q.idx, q.typ)).idx) {
 		return;
-	} else if ((tgt = make_q30(q.idx, q.typ)) == 0) {
-		return;
-	} else if (tgt >= subs.nquos) {
+	} else if (q.idx > subs.nsubs) {
 		/* that's actually so fatal I wanna vomit
 		 * that means IB sent us ticker ids we've never requested */
 		return;
@@ -337,11 +343,13 @@ fix_quot(quo_qq_t UNUSED(qq_unused), struct quo_s q)
 
 	/* only when the coffee is roasted to perfection:
 	 * update the slot TGT ... */
-	subs.quos[tgt] = ffff_m30_get_d(q.val);
+	subs.quos[tgt.idx - 1][tgt.typ] = ffff_m30_get_d(q.val);
 	/* ... and push a reminder on the queue */
 	{
 		quo_qqq_t qi = pop_q();
-		qi->q = tgt & ~1UL;
+
+		qi->q = tgt;
+		qi->q.subtyp = 0UL;
 		gq_push_tail(qq.sbuf, (gq_item_t)qi);
 		QUO_DEBUG("pushed %p\n", qi);
 	}
@@ -412,6 +420,17 @@ del_cake:
 	return;
 }
 
+static inline size_t
+mmap_size(size_t nelem, size_t elemsz)
+{
+	static size_t pgsz = 0;
+
+	if (UNLIKELY(!pgsz)) {
+		pgsz = sysconf(_SC_PAGESIZE);
+	}
+	return ((nelem * elemsz) / pgsz + 1) * pgsz;
+}
+
 static void
 redo_subs(my_tws_t tws)
 {
@@ -431,43 +450,39 @@ redo_subs(my_tws_t tws)
 		goto del_req;
 	}
 
-	if (iidx >= subs.nsubs) {
+	if (iidx > subs.nsubs) {
 		/* singleton/resizer */
-		static size_t pgsz = 0;
 		size_t new_sz;
-		size_t tmp;
 		void *new;
 
-		if (UNLIKELY(!pgsz)) {
-			pgsz = sysconf(_SC_PAGESIZE);
-		}
-
 		/* sort the subs array out first */
-		new_sz = ((iidx * sizeof(*subs.inss)) / pgsz + 1) * pgsz;
+		new_sz = mmap_size(iidx, sizeof(*subs.inss));
 		new = mmap(subs.inss, new_sz, PROT_MEM, MAP_MEM, -1, 0);
 		memcpy(new, subs.inss, subs.nsubs * sizeof(*subs.inss));
 		subs.inss = new;
-		subs.nsubs = new_sz / sizeof(*subs.inss);
 
 		/* while we're at it, resize the quos array */
 		/* we should at least accomodate 4 * iidx slots innit? */
-		tmp = q30_size(iidx);
-		new_sz = ((tmp * sizeof(*subs.quos)) / pgsz + 1) * pgsz;
+		new_sz = mmap_size(iidx, sizeof(*subs.quos));
 		new = mmap(subs.quos, new_sz, PROT_MEM, MAP_MEM, -1, 0);
-		memcpy(new, subs.quos, subs.nquos * sizeof(*subs.quos));
+		memcpy(new, subs.quos, subs.nsubs * sizeof(*subs.quos));
 		subs.quos = new;
-		subs.nquos = new_sz / sizeof(*subs.quos);
+
+		/* the largest guy determines the number of subs now */
+		subs.nsubs = mmap_size(iidx, sizeof(*subs.quos)) /
+			sizeof(*subs.quos) - 1;
 	}
 
 	/* construct a contract */
-	if (UNLIKELY(subs.inss[iidx] == NULL &&
-		     (subs.inss[iidx] = tws_assemble_instr(test)) == NULL)) {
+	if (UNLIKELY(
+		    subs.inss[iidx - 1] == NULL &&
+		    (subs.inss[iidx - 1] = tws_assemble_instr(test)) == NULL)) {
 		/* nightmare innit */
 		goto del_req;
 	}
 
 	/* and finally call the a/c requester */
-	if (tws_req_quo(tws, iidx, subs.inss[iidx]) < 0) {
+	if (tws_req_quo(tws, iidx, subs.inss[iidx - 1]) < 0) {
 		/* hattrick, how can it go wrong at the last minute, fuck
 		 * on the other hand, we just leave the assembled instrument
 		 * where it is, maybe the (l)user is gonna retry later */
@@ -490,14 +505,17 @@ undo_subs(my_tws_t UNUSED(tws))
 		}
 	}
 	if (subs.nsubs) {
-		munmap(subs.inss, subs.nsubs * sizeof(*subs.inss));
+		size_t alloc_sz;
+
+		alloc_sz = mmap_size(subs.nsubs, sizeof(*subs.inss));
+		munmap(subs.inss, alloc_sz);
 		subs.inss = NULL;
-		subs.nsubs = 0;
-	}
-	if (subs.nquos) {
-		munmap(subs.quos, subs.nquos * sizeof(*subs.quos));
+
+		alloc_sz = mmap_size(subs.nsubs, sizeof(*subs.quos));
+		munmap(subs.quos, alloc_sz);
 		subs.quos = NULL;
-		subs.nquos = 0;
+
+		subs.nsubs = 0;
 	}
 	return;
 }

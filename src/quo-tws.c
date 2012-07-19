@@ -480,6 +480,28 @@ del_req:
 	return;
 }
 
+static void
+undo_subs(my_tws_t UNUSED(tws))
+{
+	for (size_t i = 0; i < subs.nsubs; i++) {
+		if (subs.inss[i]) {
+			tws_disassemble_instr(subs.inss[i]);
+			subs.inss[i] = NULL;
+		}
+	}
+	if (subs.nsubs) {
+		munmap(subs.inss, subs.nsubs * sizeof(*subs.inss));
+		subs.inss = NULL;
+		subs.nsubs = 0;
+	}
+	if (subs.nquos) {
+		munmap(subs.quos, subs.nquos * sizeof(*subs.quos));
+		subs.quos = NULL;
+		subs.nquos = 0;
+	}
+	return;
+}
+
 static inline bool
 got_oid_p(my_tws_t tws)
 {
@@ -742,7 +764,9 @@ main(int argc, char *argv[])
 	/* cancel them timers and stuff */
 	ev_prepare_stop(EV_A_ prp);
 
-	/* first off, get rid of the tws intrinsics */
+	/* kill all tws associated data */
+	undo_subs(tws);
+	/* secondly, get rid of the tws intrinsics */
 	QUO_DEBUG("finalising tws guts\n");
 	(void)fini_tws(ctx->tws);
 

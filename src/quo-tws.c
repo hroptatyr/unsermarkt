@@ -326,6 +326,7 @@ fix_quot(quo_qq_t UNUSED(qq_unused), struct quo_s q)
 
 		new = mmap(quos, new_sz, PROT_MEM, MAP_MEM, -1, 0);
 		memcpy(new, quos, nquos);
+		quos = new;
 		nquos = new_sz;
 	}
 	/* update the slot TGT ... */

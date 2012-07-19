@@ -314,9 +314,10 @@ dnl standards are flavours supported by the compiler chosen with AC_PROG_CC
 				std="-std=${i}"
 				save_CC="${CC}"
 				CC="${CC} ${std}"
-				SXE_CHECK_ANON_STRUCTS
+				SXE_CHECK_ANON_STRUCTS_DECL
 				CC="${save_CC}"
-				if test "${sxe_cv_have_anon_structs}" = "yes"; then
+				if test "${sxe_cv_have_anon_structs_decl}" \
+					= "yes"; then
 					break
 				fi
 			])
@@ -325,14 +326,18 @@ dnl standards are flavours supported by the compiler chosen with AC_PROG_CC
 		AC_MSG_CHECKING([for preferred CC std])
 		AC_MSG_RESULT([${std}])
 		CC="${CC} ${std}"
+
+		## while we're at it, check for anon initialising too
+		SXE_CHECK_ANON_STRUCTS_INIT
 		;;
 	esac
 
 	popdef([stds])
 ])dnl SXE_CHECK_CC
 
-AC_DEFUN([SXE_CHECK_ANON_STRUCTS], [
-	AC_MSG_CHECKING([whether C compiler can cope with anonymous structures])
+AC_DEFUN([SXE_CHECK_ANON_STRUCTS_INIT], [
+	AC_MSG_CHECKING([dnl
+whether C compiler can initialise anonymous structs and unions])
 	AC_LANG_PUSH([C])
 
 	## backup our CFLAGS and unset it
@@ -351,18 +356,18 @@ union __test_u {
 	]], [[
 	union __test_u tmp = {.c = '4'};
 	]])], [
-		sxe_cv_have_anon_structs="yes"
+		sxe_cv_have_anon_structs_init="yes"
 	], [
-		sxe_cv_have_anon_structs="no"
+		sxe_cv_have_anon_structs_init="no"
 	])
-	AC_MSG_RESULT([${sxe_cv_have_anon_structs}])
+	AC_MSG_RESULT([${sxe_cv_have_anon_structs_init}])
 
 	## restore CFLAGS
 	CFLAGS="${save_CFLAGS}"
 
-	if test "${sxe_cv_have_anon_structs}" = "yes"; then
-		AC_DEFINE([HAVE_ANON_STRUCTS], [1], [
-			Whether c1x anon structs work])
+	if test "${sxe_cv_have_anon_structs_init}" = "yes"; then
+		AC_DEFINE([HAVE_ANON_STRUCTS_INIT], [1], [dnl
+Whether c11 anon struct initialising works])
 		$1
 		:
 	else
@@ -370,7 +375,51 @@ union __test_u {
 		:
 	fi
 	AC_LANG_POP()
-])dnl SXE_CHECK_ANON_STRUCTS
+])dnl SXE_CHECK_ANON_STRUCTS_INIT
+
+AC_DEFUN([SXE_CHECK_ANON_STRUCTS_DECL], [
+	AC_MSG_CHECKING([dnl
+whether C compiler can understand anonymous structs and unions])
+	AC_LANG_PUSH([C])
+
+	## backup our CFLAGS and unset it
+	save_CFLAGS="${CFLAGS}"
+	CFLAGS=""
+
+	AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[
+union __test_u {
+	int i;
+	struct {
+		char c;
+		char padc;
+		short int pads;
+	};
+};
+	]], [[
+	/* nothing to do really*/
+	union __test_u foo;
+	foo.c = 0;
+	]])], [
+		sxe_cv_have_anon_structs_decl="yes"
+	], [
+		sxe_cv_have_anon_structs_decl="no"
+	])
+	AC_MSG_RESULT([${sxe_cv_have_anon_structs_decl}])
+
+	## restore CFLAGS
+	CFLAGS="${save_CFLAGS}"
+
+	if test "${sxe_cv_have_anon_structs_decl}" = "yes"; then
+		AC_DEFINE([HAVE_ANON_STRUCTS_DECL], [1], [dnl
+Whether c11 anon structs declaring works])
+		$1
+		:
+	else
+		$2
+		:
+	fi
+	AC_LANG_POP()
+])dnl SXE_CHECK_ANON_STRUCTS_DECL
 
 
 dnl sxe-compiler.m4 ends here

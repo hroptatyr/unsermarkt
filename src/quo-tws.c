@@ -141,6 +141,9 @@ struct quo_sub_s {
 
 	/* actual quotes, this is bid, bsz, ask, asz  */
 	q30_pack_t *quos;
+
+	/* array of last dissemination time stamps */
+	uint32_t *last_dsm;
 };
 
 
@@ -199,8 +202,11 @@ static utectx_t uu = NULL;
 # define UTE_CMD	UTE_CMD_LE
 #endif	/* WORDS_BIGENDIAN */
 
+#define BRAG_INTV	(10)
+#define UTE_QMETA	0x7572
+
 static bool
-udpc_seria_q_feasible_p(udpc_seria_t ser, quo_qqq_t UNUSED(q))
+udpc_seria_fits_qqq_p(udpc_seria_t ser, quo_qqq_t UNUSED(q))
 {
 	/* super quick check if we can afford to take it the pkt on
 	 * we need roughly 16 bytes */
@@ -208,6 +214,12 @@ udpc_seria_q_feasible_p(udpc_seria_t ser, quo_qqq_t UNUSED(q))
 		return false;
 	}
 	return true;
+}
+
+static bool
+udpc_seria_fits_dsm_p(udpc_seria_t ser, const char *UNUSED(sym), size_t len)
+{
+	return udpc_seria_msglen(ser) + len + 2 + 4 <= UDPC_PLLEN;
 }
 
 static inline void
@@ -233,15 +245,20 @@ flush_queue(my_tws_t UNUSED(tws))
 {
 	static size_t pno = 0;
 	char buf[UDPC_PKTLEN];
-	struct udpc_seria_s ser[1];
+	char dsm[UDPC_PKTLEN];
+	struct udpc_seria_s ser[2];
 	struct sl1t_s l1t[1];
 	struct timeval now[1];
 
 #define PKT(x)		((ud_packet_t){sizeof(x), x})
+#define MAKE_DSM_PKT							\
+	udpc_make_pkt(PKT(dsm), 0, pno++, UDPC_PKT_RPL(UTE_QMETA));	\
+	udpc_seria_init(ser, UDPC_PAYLOAD(dsm), UDPC_PAYLLEN(sizeof(dsm)))
 #define MAKE_PKT							\
+	MAKE_DSM_PKT;							\
 	udpc_make_pkt(PKT(buf), 0, pno++, UTE_CMD);			\
 	udpc_set_data_pkt(PKT(buf));					\
-	udpc_seria_init(ser, UDPC_PAYLOAD(buf), UDPC_PAYLLEN(sizeof(buf)))
+	udpc_seria_init(ser + 1, UDPC_PAYLOAD(buf), UDPC_PAYLLEN(sizeof(buf)))
 
 	/* time */
 	gettimeofday(now, NULL);
@@ -258,8 +275,9 @@ flush_queue(my_tws_t UNUSED(tws))
 		uint16_t tblidx;
 		unsigned int ttf;
 
-		if (!udpc_seria_q_feasible_p(ser, q)) {
+		if (UNLIKELY(!udpc_seria_fits_qqq_p(ser + 1, q))) {
 			ud_chan_send_ser_all(ser);
+			ud_chan_send_ser_all(ser + 1);
 			MAKE_PKT;
 		}
 
@@ -276,9 +294,25 @@ flush_queue(my_tws_t UNUSED(tws))
 		l1t->pri = subs.quos[tblidx - 1][q30_typ(q->q)].u;
 		l1t->qty = subs.quos[tblidx - 1][q30_typ(q->q) + 1].u;
 
-		udpc_seria_add_scom(ser, AS_SCOM(l1t), sizeof(*l1t));
+		udpc_seria_add_scom(ser + 1, AS_SCOM(l1t), sizeof(*l1t));
+
+		/* i think it's worth checking when we last disseminated this */
+		if (now->tv_sec - subs.last_dsm[tblidx - 1] >= BRAG_INTV) {
+			const char *sym = ute_idx2sym(uu, tblidx);
+			size_t len = len = strlen(sym);
+
+			if (UNLIKELY(!udpc_seria_fits_dsm_p(ser, sym, len))) {
+				ud_chan_send_ser_all(ser);
+				MAKE_DSM_PKT;
+			}
+			/* add this guy */
+			udpc_seria_add_ui16(ser, tblidx);
+			udpc_seria_add_str(ser, sym, len);
+			subs.last_dsm[tblidx - 1] = now->tv_sec;
+		}
 	}
 	ud_chan_send_ser_all(ser);
+	ud_chan_send_ser_all(ser + 1);
 	return;
 }
 
@@ -468,6 +502,11 @@ redo_subs(my_tws_t tws)
 		memcpy(new, subs.quos, subs.nsubs * sizeof(*subs.quos));
 		subs.quos = new;
 
+		new_sz = mmap_size(iidx, sizeof(*subs.last_dsm));
+		new = mmap(subs.last_dsm, new_sz, PROT_MEM, MAP_MEM, -1, 0);
+		memcpy(new, subs.last_dsm, subs.nsubs * sizeof(*subs.last_dsm));
+		subs.last_dsm = new;
+
 		/* the largest guy determines the number of subs now */
 		subs.nsubs = mmap_size(iidx, sizeof(*subs.quos)) /
 			sizeof(*subs.quos) - 1;
@@ -514,6 +553,10 @@ undo_subs(my_tws_t UNUSED(tws))
 		alloc_sz = mmap_size(subs.nsubs, sizeof(*subs.quos));
 		munmap(subs.quos, alloc_sz);
 		subs.quos = NULL;
+
+		alloc_sz = mmap_size(subs.nsubs, sizeof(*subs.last_dsm));
+		munmap(subs.last_dsm, alloc_sz);
+		subs.last_dsm = NULL;
 
 		subs.nsubs = 0;
 	}

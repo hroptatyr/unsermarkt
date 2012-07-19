@@ -123,9 +123,6 @@ struct quo_qqq_s {
 
 
 /* the quotes array */
-static m30_t *quos = NULL;
-static size_t nquos = 0;
-
 static inline q30_t
 make_q30(uint16_t iidx, quo_typ_t t)
 {
@@ -164,6 +161,10 @@ q30_sl1t_typ(q30_t q)
 /* our beef channels */
 static size_t nbeef = 0;
 static ev_io beef[1];
+
+/* them top-level snapper */
+static m30_t *quos = NULL;
+static size_t nquos = 0;
 
 /* the sender buffer queue */
 static struct quo_qq_s qq = {0};

@@ -127,7 +127,7 @@ static inline q30_t
 make_q30(uint16_t iidx, quo_typ_t t)
 {
 	if (LIKELY(t >= QUO_TYP_BID && t <= QUO_TYP_ASZ)) {
-		return iidx * 4 + (t & ~1);
+		return iidx * 4 + (t - 1);
 	}
 	return 0;
 }

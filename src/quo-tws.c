@@ -161,7 +161,6 @@ q30_sl1t_typ(q30_t q)
 #include "gq.c"
 
 /* our beef channels */
-static size_t nbeef = 0;
 static ev_io beef[1];
 
 /* them top-level snapper */
@@ -712,7 +711,6 @@ main(int argc, char *argv[])
 		beef->data = x.p;
 		ev_io_init(beef, beef_cb, s, EV_READ);
 		ev_io_start(EV_A_ beef);
-		nbeef = 1;
 	}
 
 	if (init_tws(tws) < 0) {

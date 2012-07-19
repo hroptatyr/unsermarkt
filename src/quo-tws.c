@@ -121,10 +121,22 @@ struct quo_qqq_s {
 	q30_t q;
 };
 
-static size_t pgsz = 0;
+/* AoV-based subscriptions class */
+struct quo_sub_s {
+	size_t nsubs;
+	tws_instr_t *inss;
+	m30_t *quos;
+	size_t nquos;
+};
 
 
 /* the quotes array */
+static inline size_t
+q30_size(size_t nsubs)
+{
+	return 4 * nsubs;
+}
+
 static inline q30_t
 make_q30(uint16_t iidx, quo_typ_t t)
 {
@@ -164,8 +176,7 @@ q30_sl1t_typ(q30_t q)
 static ev_io beef[1];
 
 /* them top-level snapper */
-static m30_t *quos = NULL;
-static size_t nquos = 0;
+static struct quo_sub_s subs = {0};
 
 /* the sender buffer queue */
 static struct quo_qq_s qq = {0};
@@ -247,15 +258,15 @@ flush_queue(my_tws_t UNUSED(tws))
 		if ((tblidx = q30_idx(q->q)) == 0 ||
 		    (ttf = q30_sl1t_typ(q->q)) == SCOM_TTF_UNK) {
 			continue;
-		} else if (quos[q->q].u == 0) {
+		} else if (subs.quos[q->q].u == 0) {
 			continue;
 		}
 		/* the typ was designed to coincide with ute's sl1t types */
 		sl1t_set_ttf(l1t, ttf);
 		sl1t_set_tblidx(l1t, tblidx);
 
-		l1t->pri = quos[q->q].u;
-		l1t->qty = quos[q->q + 1].u;
+		l1t->pri = subs.quos[q->q].u;
+		l1t->qty = subs.quos[q->q + 1].u;
 
 		udpc_seria_add_scom(ser, AS_SCOM(l1t), sizeof(*l1t));
 	}
@@ -318,27 +329,15 @@ fix_quot(quo_qq_t UNUSED(qq_unused), struct quo_s q)
 		return;
 	} else if ((tgt = make_q30(q.idx, q.typ)) == 0) {
 		return;
+	} else if (tgt >= subs.nquos) {
+		/* that's actually so fatal I wanna vomit
+		 * that means IB sent us ticker ids we've never requested */
+		return;
 	}
 
-	/* only when the coffee is roasted to perfection */
-	if (tgt >= nquos) {
-		/* resize, yay */
-		size_t new_sz;
-		void *new;
-
-		if (UNLIKELY(!pgsz)) {
-			pgsz = sysconf(_SC_PAGESIZE);
-		}
-		/* we should at least accomodate 4 * iidx slots innit? */
-		new_sz = ((tgt * sizeof(*quos)) / pgsz + 1) * pgsz;
-
-		new = mmap(quos, new_sz, PROT_MEM, MAP_MEM, -1, 0);
-		memcpy(new, quos, nquos * sizeof(*quos));
-		quos = new;
-		nquos = new_sz / sizeof(*quos);
-	}
-	/* update the slot TGT ... */
-	quos[tgt] = ffff_m30_get_d(q.val);
+	/* only when the coffee is roasted to perfection:
+	 * update the slot TGT ... */
+	subs.quos[tgt] = ffff_m30_get_d(q.val);
 	/* ... and push a reminder on the queue */
 	{
 		quo_qqq_t qi = pop_q();
@@ -413,9 +412,6 @@ del_cake:
 	return;
 }
 
-static tws_instr_t *subs = NULL;
-static size_t nsubs = 0;
-
 static void
 redo_subs(my_tws_t tws)
 {
@@ -435,32 +431,43 @@ redo_subs(my_tws_t tws)
 		goto del_req;
 	}
 
-	if (iidx >= nsubs) {
-		/* singleton */
+	if (iidx >= subs.nsubs) {
+		/* singleton/resizer */
+		static size_t pgsz = 0;
 		size_t new_sz;
+		size_t tmp;
 		void *new;
 
 		if (UNLIKELY(!pgsz)) {
 			pgsz = sysconf(_SC_PAGESIZE);
 		}
-		/* we should at least accomodate 4 * iidx slots innit? */
-		new_sz = ((iidx * sizeof(*subs)) / pgsz + 1) * pgsz;
 
-		new = mmap(subs, new_sz, PROT_MEM, MAP_MEM, -1, 0);
-		memcpy(new, subs, nsubs * sizeof(*subs));
-		subs = new;
-		nsubs = new_sz / sizeof(*subs);
+		/* sort the subs array out first */
+		new_sz = ((iidx * sizeof(*subs.inss)) / pgsz + 1) * pgsz;
+		new = mmap(subs.inss, new_sz, PROT_MEM, MAP_MEM, -1, 0);
+		memcpy(new, subs.inss, subs.nsubs * sizeof(*subs.inss));
+		subs.inss = new;
+		subs.nsubs = new_sz / sizeof(*subs.inss);
+
+		/* while we're at it, resize the quos array */
+		/* we should at least accomodate 4 * iidx slots innit? */
+		tmp = q30_size(iidx);
+		new_sz = ((tmp * sizeof(*subs.quos)) / pgsz + 1) * pgsz;
+		new = mmap(subs.quos, new_sz, PROT_MEM, MAP_MEM, -1, 0);
+		memcpy(new, subs.quos, subs.nquos * sizeof(*subs.quos));
+		subs.quos = new;
+		subs.nquos = new_sz / sizeof(*subs.quos);
 	}
 
 	/* construct a contract */
-	if (UNLIKELY(subs[iidx] == NULL &&
-		     (subs[iidx] = tws_assemble_instr(test)) == NULL)) {
+	if (UNLIKELY(subs.inss[iidx] == NULL &&
+		     (subs.inss[iidx] = tws_assemble_instr(test)) == NULL)) {
 		/* nightmare innit */
 		goto del_req;
 	}
 
 	/* and finally call the a/c requester */
-	if (tws_req_quo(tws, iidx, subs[iidx]) < 0) {
+	if (tws_req_quo(tws, iidx, subs.inss[iidx]) < 0) {
 		/* hattrick, how can it go wrong at the last minute, fuck
 		 * on the other hand, we just leave the assembled instrument
 		 * where it is, maybe the (l)user is gonna retry later */

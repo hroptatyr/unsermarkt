@@ -523,6 +523,9 @@ reco_cb(EV_P_ ev_timer *w, int UNUSED(revents))
 
 	/* pass on the socket we've got */
 	p->tws_sock = s;
+	/* reset tws structure */
+	p->tws->next_oid = 0;
+	p->tws->time = 0;
 
 	/* stop ourselves */
 	ev_timer_stop(EV_A_ w);

@@ -327,16 +327,16 @@ fix_quot(quo_qq_t UNUSED(qq_unused), struct quo_s q)
 		size_t new_sz;
 		void *new;
 
-		if (!pgsz) {
+		if (UNLIKELY(!pgsz)) {
 			pgsz = sysconf(_SC_PAGESIZE);
 		}
 		/* we should at least accomodate 4 * iidx slots innit? */
-		new_sz = (tgt / pgsz + 1) * pgsz;
+		new_sz = ((tgt * sizeof(*quos)) / pgsz + 1) * pgsz;
 
 		new = mmap(quos, new_sz, PROT_MEM, MAP_MEM, -1, 0);
-		memcpy(new, quos, nquos);
+		memcpy(new, quos, nquos * sizeof(*quos));
 		quos = new;
-		nquos = new_sz;
+		nquos = new_sz / sizeof(*quos);
 	}
 	/* update the slot TGT ... */
 	quos[tgt] = ffff_m30_get_d(q.val);

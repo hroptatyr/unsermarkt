@@ -1,4 +1,4 @@
-/*** ox-tws-contract-glue.cpp -- ctor'ing and dtor'ing ib contracts
+/*** quo-tws-private.h -- private data flow guts
  *
  * Copyright (C) 2012 Sebastian Freundt
  *
@@ -34,72 +34,40 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  ***/
-#if defined HAVE_CONFIG_H
-# include "config.h"
-#endif	// HAVE_CONFIG_H
-#include <stdio.h>
-#include <netinet/in.h>
-#include <stdarg.h>
-#include <string.h>
+#if !defined INCLUDED_quo_tws_private_h_
+#define INCLUDED_quo_tws_private_h_
 
-/* the tws api */
-#include <twsapi/Contract.h>
-#include "ox-tws-wrapper.h"
-#include "iso4217.h"
-#include "wrp-debug.h"
+#if defined __cplusplus
+extern "C" {
+#endif	/* __cplusplus */
 
-#if defined DEBUG_FLAG
-# include <assert.h>
-#else  /* !DEBUG_FLAG */
-# define glu_debug(args...)
-# define wrp_debug(args...)
-# define assert(x)
-#endif	/* DEBUG_FLAG */
+typedef void *quo_qq_t;
+typedef struct quo_s *quo_t;
 
-tws_instr_t
-tws_assemble_instr(const char *sym)
-{
-	IB::Contract *res;
-	const_iso_4217_t bas;
-	const_iso_4217_t trm;
+typedef enum {
+	QUO_TYP_UNK,
+	QUO_TYP_BID,
+	QUO_TYP_BSZ,
+	QUO_TYP_ASK,
+	QUO_TYP_ASZ,
+	QUO_TYP_TRA,
+	QUO_TYP_TSZ,
+	QUO_TYP_VWP,
+	QUO_TYP_VOL,
+	QUO_TYP_CLO,
+	QUO_TYP_CSZ,
+} quo_typ_t;
 
-	if ((bas = find_iso_4217_by_name(sym)) == NULL) {
-		return NULL;
-	}
-	switch (*(sym += 3)) {
-	case '.':
-	case '/':
-		// stuff like EUR/USD or EUR.USD
-		sym++;
-		break;
-	default:
-		break;
-	}
-	if ((trm = find_iso_4217_by_name(sym)) == NULL) {
-		return NULL;
-	}
+struct quo_s {
+	uint16_t idx;
+	quo_typ_t typ;
+	double val;
+};
 
-	// otherwise we're pretty well off with a ccy pair
-	res = new IB::Contract();
+extern void fix_quot(quo_qq_t, struct quo_s);
 
-	res->symbol = std::string(bas->sym);
-	res->currency = std::string(trm->sym);
-	res->secType = std::string("CASH");
-	res->exchange = std::string("IDEALPRO");
-	glu_debug((void*)res, "created");
-	return (tws_instr_t)res;
+#if defined __cplusplus
 }
+#endif	/* __cplusplus */
 
-void
-tws_disassemble_instr(tws_instr_t ins)
-{
-	IB::Contract *ibi = (IB::Contract*)ins;
-
-	if (ibi) {
-		glu_debug((void*)ibi, "deleting");
-		delete ibi;
-	}
-	return;
-}
-
-/* ox-tws-contract-glue.cpp ends here */
+#endif	/* INCLUDED_quo_tws_private_h_ */

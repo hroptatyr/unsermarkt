@@ -1,4 +1,4 @@
-/*** ox-tws-contract-glue.cpp -- ctor'ing and dtor'ing ib contracts
+/*** quo-tws-wrapper.h -- quotes and trades from tws
  *
  * Copyright (C) 2012 Sebastian Freundt
  *
@@ -34,72 +34,47 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  ***/
-#if defined HAVE_CONFIG_H
-# include "config.h"
-#endif	// HAVE_CONFIG_H
-#include <stdio.h>
-#include <netinet/in.h>
-#include <stdarg.h>
-#include <string.h>
+#if !defined INCLUDED_quo_tws_wrapper_h_
+#define INCLUDED_quo_tws_wrapper_h_
 
-/* the tws api */
-#include <twsapi/Contract.h>
-#include "ox-tws-wrapper.h"
-#include "iso4217.h"
-#include "wrp-debug.h"
+#if defined __cplusplus
+extern "C" {
+#endif	/* __cplusplus */
 
-#if defined DEBUG_FLAG
-# include <assert.h>
-#else  /* !DEBUG_FLAG */
-# define glu_debug(args...)
-# define wrp_debug(args...)
-# define assert(x)
-#endif	/* DEBUG_FLAG */
+typedef struct my_tws_s *my_tws_t;
+/* abstract type for ib contracts */
+typedef void *tws_instr_t;
 
-tws_instr_t
-tws_assemble_instr(const char *sym)
-{
-	IB::Contract *res;
-	const_iso_4217_t bas;
-	const_iso_4217_t trm;
+typedef unsigned int tws_oid_t;
 
-	if ((bas = find_iso_4217_by_name(sym)) == NULL) {
-		return NULL;
-	}
-	switch (*(sym += 3)) {
-	case '.':
-	case '/':
-		// stuff like EUR/USD or EUR.USD
-		sym++;
-		break;
-	default:
-		break;
-	}
-	if ((trm = find_iso_4217_by_name(sym)) == NULL) {
-		return NULL;
-	}
+struct my_tws_s {
+	tws_oid_t next_oid;
+	unsigned int time;
+	void *wrp;
+	void *cli;
+	void *qq;
+};
 
-	// otherwise we're pretty well off with a ccy pair
-	res = new IB::Contract();
+
+extern void *logerr;
 
-	res->symbol = std::string(bas->sym);
-	res->currency = std::string(trm->sym);
-	res->secType = std::string("CASH");
-	res->exchange = std::string("IDEALPRO");
-	glu_debug((void*)res, "created");
-	return (tws_instr_t)res;
+extern int init_tws(my_tws_t);
+extern int fini_tws(my_tws_t);
+
+extern int tws_connect(my_tws_t, const char *host, uint16_t port, int client);
+extern int tws_disconnect(my_tws_t);
+
+extern int tws_recv(my_tws_t);
+extern int tws_send(my_tws_t);
+
+extern int tws_req_quo(my_tws_t, unsigned int idx, tws_instr_t);
+
+/* builder and dismantler for ib contracts */
+extern tws_instr_t tws_assemble_instr(const char *sym);
+extern void tws_disassemble_instr(tws_instr_t);
+
+#if defined __cplusplus
 }
+#endif	/* __cplusplus */
 
-void
-tws_disassemble_instr(tws_instr_t ins)
-{
-	IB::Contract *ibi = (IB::Contract*)ins;
-
-	if (ibi) {
-		glu_debug((void*)ibi, "deleting");
-		delete ibi;
-	}
-	return;
-}
-
-/* ox-tws-contract-glue.cpp ends here */
+#endif	/* INCLUDED_quo_tws_wrapper_h_ */

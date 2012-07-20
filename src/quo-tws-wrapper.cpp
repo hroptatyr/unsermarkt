@@ -1,4 +1,4 @@
-/*** pf-tws-wrapper.cpp -- portfolio management through tws
+/*** quo-tws-wrapper.cpp -- quotes and trades from tws
  *
  * Copyright (C) 2012 Sebastian Freundt
  *
@@ -50,8 +50,8 @@
 #include <twsapi/Order.h>
 #include <twsapi/Contract.h>
 
-#include "pf-tws-wrapper.h"
-#include "pf-tws-private.h"
+#include "quo-tws-wrapper.h"
+#include "quo-tws-private.h"
 #include "wrp-debug.h"
 
 #if defined DEBUG_FLAG
@@ -158,14 +158,72 @@ public:
 #endif
 
 void 
-__wrapper::tickPrice(IB::TickerId id, IB::TickType fld, double pri, int autop)
+__wrapper::tickPrice(IB::TickerId id, IB::TickType fld, double pri, int)
 {
+	my_tws_t tws = this->ctx;
+	struct quo_s q;
+	uint16_t real_idx = id - tws->next_oid;
+
+	WRP_DEBUG("prc %ld (%hu) %u %.6f", id, real_idx, fld, pri);
+
+	// IB goes bsz bid ask asz tra tsz
+	// we go   bid bsz ask asz tra tsz
+	// so we need to swap the type if it's bid or bsz
+	switch (fld) {
+	case IB::BID:
+	case IB::CLOSE:
+		q.typ = (quo_typ_t)(unsigned int)fld;
+		break;
+	case IB::ASK:
+	case IB::LAST:
+		q.typ = (quo_typ_t)((unsigned int)fld + 1);
+		break;
+	default:
+		q.typ = QUO_TYP_UNK;
+		return;
+	}
+
+	// populate the rest
+	q.idx = real_idx;
+	q.val = pri;
+
+	fix_quot(tws->qq, q);
 	return;
 }
 
 void
-__wrapper::tickSize(IB::TickerId, IB::TickType, int size)
+__wrapper::tickSize(IB::TickerId id, IB::TickType fld, int size)
 {
+	my_tws_t tws = this->ctx;
+	struct quo_s q;
+	uint16_t real_idx = id - tws->next_oid;
+
+	WRP_DEBUG("qty %ld (%hu) %u %d", id, real_idx, fld, size);
+
+	// IB goes bsz bid ask asz tra tsz
+	// we go   bid bsz ask asz tra tsz
+	// so we need to swap the type if it's bid or bsz
+	switch (fld) {
+	case IB::BID_SIZE:
+		q.typ = QUO_TYP_BSZ;
+		break;
+	case IB::ASK_SIZE:
+	case IB::LAST_SIZE:
+		q.typ = (quo_typ_t)((unsigned int)fld + 1);
+		break;
+	case IB::VOLUME:
+		q.typ = (quo_typ_t)(unsigned int)fld;
+		break;
+	default:
+		q.typ = QUO_TYP_UNK;
+		return;
+	}
+
+	// populate the rest
+	q.idx = real_idx;
+	q.val = (double)size;
+
+	fix_quot(tws->qq, q);
 	return;
 }
 
@@ -245,23 +303,12 @@ __wrapper::updateAccountValue(
 	const IB::IBString &key, const IB::IBString &val,
 	const IB::IBString &ccy, const IB::IBString &acct_name)
 {
-	my_tws_t tws = this->ctx;
+	const char *ca = acct_name.c_str();
 	const char *ck = key.c_str();
+	const char *cv = val.c_str();
+	const char *cc = ccy.c_str();
 
-	if (strcmp(ck, "CashBalance") == 0) {
-		const char *ac = acct_name.c_str();
-		const char *cc = ccy.c_str();
-		const char *cv = val.c_str();
-		double pos = strtod(cv, NULL);
-		struct pf_pos_s p = {
-			cc,
-			pos > 0 ? pos : 0.0,
-			pos < 0 ? -pos : 0.0,
-		};
-
-		WRP_DEBUG("acct %s: portfolio %s -> %s", ac, cc, cv);
-		fix_pos_rpt(tws->pq, ac, p);
-	}
+	WRP_DEBUG("acct %s: %s <- %s %s", ca, ck, cv, cc);
 	return;
 }
 
@@ -272,16 +319,6 @@ __wrapper::updatePortfolio(
 	double upnl, double rpnl,
 	const IB::IBString &acct_name)
 {
-	my_tws_t tws = this->ctx;
-	const char *ac = acct_name.c_str();
-	struct pf_pos_s p = {
-		c.localSymbol.c_str(),
-		pos > 0 ? pos : 0.0,
-		pos < 0 ? -pos : 0.0,
-	};
-
-	WRP_DEBUG("acct %s: portfolio %s -> %d", ac, p.sym, pos);
-	fix_pos_rpt(tws->pq, ac, p);
 	return;
 }
 
@@ -326,14 +363,12 @@ __wrapper::contractDetailsEnd(int req_id)
 void
 __wrapper::execDetails(int req_id, const IB::Contract&, const IB::Execution&)
 {
-	WRP_DEBUG("exec dtl %i", req_id);
 	return;
 }
 
 void
 __wrapper::execDetailsEnd(int req_id)
 {
-	WRP_DEBUG("exec dtl %i end", req_id);
 	return;
 }
 
@@ -538,13 +573,20 @@ tws_send(my_tws_t foo)
 }
 
 int
-tws_req_ac(my_tws_t foo, const char *name)
+tws_req_quo(my_tws_t foo, unsigned int idx, tws_instr_t i)
 {
 	IB::EPosixClientSocket *cli = (IB::EPosixClientSocket*)foo->cli;
-	IB::IBString ac = std::string(name ?: "");
+	long int real_idx;
 
-	cli->reqAccountUpdates(true, ac);
+	if (foo->next_oid == 0) {
+		wrp_debug(foo, "subscription req'd no ticker ids available");
+		return -1;
+	}
+	// we request idx + next_oid
+	real_idx = foo->next_oid + idx;
+	// we just have to assume it works
+	cli->reqMktData(real_idx, *(IB::Contract*)i, std::string(""), false);
 	return cli->isSocketOK() ? 0 : -1;
 }
 
-/* pf-tws-wrapper.cpp ends here */
+/* quo-tws-wrapper.cpp ends here */

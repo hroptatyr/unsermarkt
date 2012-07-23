@@ -69,6 +69,7 @@
 /* the tws api */
 #include "quo-tws-wrapper.h"
 #include "quo-tws-private.h"
+#include "tws-xml.h"
 #include "nifty.h"
 #include "strops.h"
 #include "gq.h"

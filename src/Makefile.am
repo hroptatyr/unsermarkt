@@ -269,12 +269,14 @@ annul_pf_LDADD += -lm
 
 noinst_PROGRAMS += tws-xml
 tws_xml_SOURCES = tws-xml.c tws-xml.h
-tws_xml_SOURCES += tws-cont.h
+tws_xml_SOURCES += tws-cont.cpp tws-cont.h
 tws_xml_SOURCES += prchunk.c prchunk.h
 tws_xml_CPPFLAGS = $(AM_CPPFLAGS) -DSTANDALONE
 tws_xml_CPPFLAGS += $(expat_CFLAGS)
+tws_xml_CPPFLAGS += $(twsapi_CFLAGS)
 tws_xml_LDFLAGS = $(AM_LDFLAGS)
 tws_xml_LDFLAGS += $(expat_LIBS)
+tws_xml_LDFLAGS += $(twsapi_LIBS)
 
 
 ## our rule for gengetopt

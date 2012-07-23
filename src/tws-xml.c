@@ -64,11 +64,16 @@ parse_req_typ(const char *typ)
 	return TWS_XML_REQ_TYP_UNK;
 }
 
-static void
+static tws_cont_t
 el_req_con(void *clo, const char **attr)
 {
 /* this is actually glue code between tws-cont and tws-xml */
-	return;
+	tws_cont_t x = make_cont();
+
+	for (const char **p = attr; p && *p; p += 2) {
+		tws_cont_build(x, p[0], p[1]);
+	}
+	return x;
 }
 
 static void
@@ -106,7 +111,8 @@ el_sta(void *clo, const char *elem, const char **attr)
 			/* yay */
 			if (!strcmp(elem, "reqContract")) {
 				/* even yay'er */
-				el_req_con(clo, attr);
+				this->req->qry.mkt_data.ins =
+					el_req_con(clo, attr);
 			}
 			break;
 		case TWS_XML_REQ_TYP_PLC_ORDER:
@@ -208,7 +214,7 @@ me_req(tws_xml_req_t req, void *clo)
 	fprintf(stderr, "request type %u\n", req->typ);
 	switch (req->typ) {
 	case TWS_XML_REQ_TYP_MKT_DATA:
-		fprintf(stderr, "aaah mkt data\n");
+		fprintf(stderr, "aaah mkt data %p\n", req->qry.mkt_data.ins);
 		break;
 	default:
 		break;

@@ -1,4 +1,4 @@
-/*** tws-cont.h -- glue between C and tws contracts
+/*** tws-cont.cpp -- glue between C and tws contracts
  *
  * Copyright (C) 2012 Sebastian Freundt
  *
@@ -35,22 +35,49 @@
  *
  ***/
 
-#if !defined INCLUDED_tws_cont_h_
-#define INCLUDED_tws_cont_h_
+#if defined HAVE_CONFIG_H
+# include "config.h"
+#endif	// HAVE_CONFIG_H
+#include <stdio.h>
+#include <netinet/in.h>
+#include <stdarg.h>
+#include <string.h>
+#include <string>
 
-typedef void *tws_cont_t;
+/* the tws api */
+#include <twsapi/Contract.h>
+#include "tws-cont.h"
 
-#if defined __cplusplus
-extern "C" {
-#endif	/* __cplusplus */
+tws_cont_t
+make_cont(void)
+{
+	IB::Contract *res = new IB::Contract();
+	return res;
+}
 
-extern tws_cont_t make_cont(void);
-extern void free_cont(tws_cont_t);
+void
+free_cont(tws_cont_t c)
+{
+	IB::Contract *tmp = (IB::Contract*)c;
+	delete tmp;
+	return;
+}
 
-extern void tws_cont_build(tws_cont_t, const char *slot, const char *val);
+void
+tws_cont_build(tws_cont_t tgt, const char *slot, const char *val)
+{
+	IB::Contract *c = (IB::Contract*)tgt;
 
-#if defined __cplusplus
-};
-#endif	/* __cplusplus */
+	if (!strcmp(slot, "symbol")) {
+		c->symbol = std::string(val);
+	} else if (!strcmp(slot, "currency")) {
+		c->currency = std::string(val);
+	} else if (!strcmp(slot, "secType")) {
+		c->secType = std::string(val);
+	} else if (!strcmp(slot, "exchange")) {
+		c->exchange = std::string(val);
+	}
+	return;
+}
 
-#endif	/* INCLUDED_tws_cont_h_ */
+/* tws-cont.cpp ends here */

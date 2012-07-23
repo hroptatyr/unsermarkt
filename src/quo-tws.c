@@ -151,10 +151,20 @@ struct quo_sub_s {
 static inline q30_t
 make_q30(uint16_t iidx, quo_typ_t t)
 {
+#if defined HAVE_ANON_STRUCTS_INIT
 	if (LIKELY(t >= QUO_TYP_BID && t <= QUO_TYP_ASZ)) {
 		return __extension__(q30_t){.typ = t - 1, .idx = iidx};
 	}
 	return __extension__(q30_t){0};
+#else  /* !HAVE_ANON_STRUCTS_INIT */
+	struct q30_s res = {0};
+
+	if (LIKELY(t >= QUO_TYP_BID && t <= QUO_TYP_ASZ)) {
+		res.typ = t - 1;
+		res.idx = iidx;
+	}
+	return res;
+#endif	/* HAVE_ANON_STRUCTS_INIT */
 }
 
 static inline uint16_t

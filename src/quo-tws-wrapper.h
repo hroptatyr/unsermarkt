@@ -60,6 +60,7 @@ extern void *logerr;
 
 extern int init_tws(my_tws_t);
 extern int fini_tws(my_tws_t);
+extern void rset_tws(my_tws_t);
 
 extern int tws_connect(my_tws_t, const char *host, uint16_t port, int client);
 extern int tws_disconnect(my_tws_t);
@@ -72,6 +73,8 @@ extern int tws_req_quo(my_tws_t, unsigned int idx, tws_instr_t);
 /* builder and dismantler for ib contracts */
 extern tws_instr_t tws_assemble_instr(const char *sym);
 extern void tws_disassemble_instr(tws_instr_t);
+
+extern int tws_connd_p(my_tws_t);
 
 #if defined __cplusplus
 }

@@ -573,13 +573,6 @@ undo_subs(my_tws_t UNUSED(tws))
 	return;
 }
 
-static inline bool
-got_oid_p(my_tws_t tws)
-{
-/* inspect TWS and return non-nil if requests to the tws can be made */
-	return tws->next_oid;
-}
-
 static void
 reco_cb(EV_P_ ev_timer *w, int UNUSED(revents))
 {
@@ -595,8 +588,7 @@ reco_cb(EV_P_ ev_timer *w, int UNUSED(revents))
 	/* pass on the socket we've got */
 	p->tws_sock = s;
 	/* reset tws structure */
-	p->tws->next_oid = 0;
-	p->tws->time = 0;
+	rset_tws(p->tws);
 
 	/* stop ourselves */
 	ev_timer_stop(EV_A_ w);
@@ -610,7 +602,7 @@ prep_cb(EV_P_ ev_prepare *w, int UNUSED(revents))
 {
 	static ev_io cake[1] = {{0}};
 	static ev_timer tm_reco[1] = {{0}};
-	static int got_oid = 0;
+	static int conndp = 0;
 	ctx_t ctx = w->data;
 
 	/* check if the tws is there */
@@ -640,12 +632,12 @@ prep_cb(EV_P_ ev_prepare *w, int UNUSED(revents))
 		/* clear tws_sock */
 		ctx->tws_sock = -1;
 		/* and the oid semaphore */
-		got_oid = 0;
+		conndp = 0;
 
-	} else if (!got_oid && got_oid_p(ctx->tws)) {
+	} else if (!conndp && tws_connd_p(ctx->tws)) {
 		/* a DREAM i tell ya, let's do our subscriptions */
 		redo_subs(ctx->tws);
-		got_oid = 1;
+		conndp = 1;
 
 	} else {
 		/* check the queue integrity */

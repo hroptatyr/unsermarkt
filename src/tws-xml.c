@@ -124,19 +124,6 @@ parse_req_typ(const char *typ)
 	return TWS_XML_REQ_TYP_UNK;
 }
 
-static tws_cont_t
-el_req_con(void *clo, const char **attr)
-{
-/* this is actually glue code between tws-cont and tws-xml */
-	tws_cont_t x = make_cont();
-
-	TX_DEBUG("building %p\n", x);
-	for (const char **p = attr; p && *p; p += 2) {
-		tws_cont_build(x, p[0], p[1]);
-	}
-	return x;
-}
-
 static const char*
 tag_massage(const char *tag)
 {
@@ -194,6 +181,25 @@ sax_aid_from_attr(const char *attr)
 	return a ? a->aid : TX_ATTR_UNK;
 }
 
+static tws_xml_tid_t
+get_state_otype(__ctx_t ctx)
+{
+	return ctx->state ? ctx->state->otype : TX_TAG_UNK;
+}
+
+static void* __attribute__((unused))
+get_state_object(__ctx_t ctx)
+{
+	return ctx->state->object;
+}
+
+static void __attribute__((unused))
+set_state_object(__ctx_t ctx, void *z)
+{
+	ctx->state->object = z;
+	return;
+}
+
 static void
 init_ctxcb(__ctx_t ctx)
 {
@@ -225,16 +231,17 @@ push_ctxcb(__ctx_t ctx, ptx_ctxcb_t ctxcb)
 	return;
 }
 
-static void
+static void*
 pop_state(__ctx_t ctx)
 {
 /* restore the previous current state */
 	ptx_ctxcb_t curr = ctx->state;
+	void *obj = get_state_object(ctx);
 
 	ctx->state = curr->old_state;
 	/* queue him in our pool */
 	push_ctxcb(ctx, curr);
-	return;
+	return obj;
 }
 
 static ptx_ctxcb_t
@@ -379,6 +386,16 @@ proc_TWSXML_attr(__ctx_t ctx, const char *attr, const char *value)
 }
 
 static void
+proc_REQCONTRACT_attr(__ctx_t ctx, tws_xml_aid_t aid, const char *value)
+{
+	ptx_ctxcb_t curr = ctx->state;
+	void *obj = curr->object;
+
+	tws_cont_build(obj, aid, value);
+	return;
+}
+
+static void
 sax_bo_TWSXML_elt(__ctx_t ctx, const char *elem, const char **attr)
 {
 	const tws_xml_tid_t tid = sax_tid_from_tag(elem);
@@ -409,13 +426,25 @@ sax_bo_TWSXML_elt(__ctx_t ctx, const char *elem, const char **attr)
 				break;
 			}
 		}
+		push_state(ctx, tid, ctx->req);
+
 	case TX_TAG_QUERY:
 	case TX_TAG_RESPONSE:
-		push_state(ctx, tid, NULL);
+		push_state(ctx, tid, get_state_object(ctx));
 		break;
 
-	case TX_TAG_REQCONTRACT:
+	case TX_TAG_REQCONTRACT: {
+		tws_cont_t x = make_cont();
+
+		push_state(ctx, tid, x);
+		/* get all them contract specs */
+		for (const char **ap = attr; ap && *ap; ap += 2) {
+			const tws_xml_aid_t aid = check_attr(ctx, ap[0]);
+
+			proc_REQCONTRACT_attr(ctx, aid, ap[1]);
+		}
 		break;
+	}
 
 	default:
 		break;
@@ -433,21 +462,40 @@ sax_eo_TWSXML_elt(__ctx_t ctx, const char *elem)
 		/* top-levels */
 	case TX_TAG_TWSXML:
 		break;
-	case TX_TAG_REQUEST:
-		TX_DEBUG("/req %p\n", ctx->req);
+	case TX_TAG_REQUEST: {
+		void *req = pop_state(ctx);
+
+		TX_DEBUG("/req %p\n", req);
 		if (ctx->cb) {
 			/* callback */
-			ctx->cb(ctx->req, ctx->clo);
+			ctx->cb(req, ctx->clo);
 		}
+		break;
+	}
 	case TX_TAG_QUERY:
 	case TX_TAG_RESPONSE:
-		(void)pop_state(ctx);
+		pop_state(ctx);
 		break;
 
 		/* non top-levels without children */
-	case TX_TAG_REQCONTRACT:
-		/* noone dare push this */
+	case TX_TAG_REQCONTRACT: {
+		void *cont = pop_state(ctx);
+		tws_xml_req_t req = get_state_object(ctx);
+
+		if (UNLIKELY(get_state_otype(ctx) != TX_TAG_QUERY)) {
+			/* huh? a reqContract in a response? */
+			TX_DEBUG("weirdness %u\n", get_state_otype(ctx));
+			break;
+		}
+
+		switch (req->typ) {
+		case TWS_XML_REQ_TYP_MKT_DATA:
+			req->qry.mkt_data.ins = cont;
+		default:
+			break;
+		}
 		break;
+	}
 	default:
 		break;
 	}

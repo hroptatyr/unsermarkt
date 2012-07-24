@@ -47,7 +47,7 @@ extern "C" {
 extern tws_cont_t make_cont(void);
 extern void free_cont(tws_cont_t);
 
-extern void tws_cont_build(tws_cont_t, const char *slot, const char *val);
+extern int tws_cont_build(tws_cont_t, const char *slot, const char *val);
 
 #if defined __cplusplus
 };

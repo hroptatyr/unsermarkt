@@ -277,6 +277,13 @@ tws_xml_CPPFLAGS += $(twsapi_CFLAGS)
 tws_xml_LDFLAGS = $(AM_LDFLAGS)
 tws_xml_LDFLAGS += $(expat_LIBS)
 tws_xml_LDFLAGS += $(twsapi_LIBS)
+EXTRA_tws_xml_SOURCES =
+EXTRA_tws_xml_SOURCES += proto-twsxml-tag.gperf
+EXTRA_tws_xml_SOURCES += proto-twsxml-attr.gperf
+EXTRA_tws_xml_SOURCES += proto-twsxml-ns.gperf
+BUILT_SOURCES += proto-twsxml-tag.c
+BUILT_SOURCES += proto-twsxml-attr.c
+BUILT_SOURCES += proto-twsxml-ns.c
 
 
 ## our rule for gengetopt

@@ -63,7 +63,7 @@ free_cont(tws_cont_t c)
 	return;
 }
 
-void
+int
 tws_cont_build(tws_cont_t tgt, const char *slot, const char *val)
 {
 	IB::Contract *c = (IB::Contract*)tgt;
@@ -77,7 +77,7 @@ tws_cont_build(tws_cont_t tgt, const char *slot, const char *val)
 	} else if (!strcmp(slot, "exchange")) {
 		c->exchange = std::string(val);
 	}
-	return;
+	return 0;
 }
 
 /* tws-cont.cpp ends here */

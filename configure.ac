@@ -127,6 +127,9 @@ if test "${have_expat}" = "yes"; then
 fi
 AM_CONDITIONAL([HAVE_EXPAT], [test "${have_expat}" = "yes"])
 
+AC_CHECK_TOOL([GPERF], [gperf])
+AM_CONDITIONAL([HAVE_GPERF], [test -n "${GPERF}"])
+
 ## check for twstools
 PKG_CHECK_MODULES([twstools], [twstools >= 0.4.0],
 	[have_twstools="yes"], [have_twstools="no"])

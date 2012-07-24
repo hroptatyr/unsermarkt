@@ -38,6 +38,8 @@
 #if !defined INCLUDED_tws_cont_h_
 #define INCLUDED_tws_cont_h_
 
+#include "proto-twsxml-attr.h"
+
 typedef void *tws_cont_t;
 
 #if defined __cplusplus
@@ -47,7 +49,8 @@ extern "C" {
 extern tws_cont_t make_cont(void);
 extern void free_cont(tws_cont_t);
 
-extern void tws_cont_build(tws_cont_t, const char *slot, const char *val);
+/* xml glue */
+extern int tws_cont_build(tws_cont_t, tws_xml_aid_t, const char *val);
 
 #if defined __cplusplus
 };

@@ -218,6 +218,7 @@ quo_tws_SOURCES += quo-tws-private.h
 quo_tws_SOURCES += wrp-debug.h
 quo_tws_SOURCES += tws-xml.c tws-xml.h
 quo_tws_SOURCES += prchunk.c prchunk.h
+quo_tws_SOURCES += tws-cont.cpp tws-cont.h
 BUILT_SOURCES += quo-tws-clo.c quo-tws-clo.h
 quo_tws_CPPFLAGS = $(AM_CPPFLAGS)
 quo_tws_CPPFLAGS += $(uterus_CFLAGS)
@@ -277,11 +278,22 @@ tws_xml_CPPFLAGS += $(twsapi_CFLAGS)
 tws_xml_LDFLAGS = $(AM_LDFLAGS)
 tws_xml_LDFLAGS += $(expat_LIBS)
 tws_xml_LDFLAGS += $(twsapi_LIBS)
+EXTRA_tws_xml_SOURCES =
+EXTRA_tws_xml_SOURCES += proto-twsxml-tag.gperf
+EXTRA_tws_xml_SOURCES += proto-twsxml-attr.gperf proto-twsxml-attr.h
+EXTRA_tws_xml_SOURCES += proto-twsxml-ns.gperf
+BUILT_SOURCES += proto-twsxml-tag.c
+BUILT_SOURCES += proto-twsxml-attr.c
+BUILT_SOURCES += proto-twsxml-ns.c
 
 
 ## our rule for gengetopt
 %.c %.h: %.ggo
 	gengetopt -l -i $< -F $*
+
+## our rule for gperf
+%.c: %.gperf
+	$(AM_V_GEN)gperf $< --output-file $@
 
 # 
 # Help the developers get nice post-processed source files

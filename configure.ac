@@ -112,6 +112,24 @@ if test "${have_mxml}" = "yes"; then
 fi
 AM_CONDITIONAL([HAVE_MXML], [test "${have_mxml}" = "yes"])
 
+## check for expat
+PKG_CHECK_MODULES([expat], [expat >= 2.0], [have_expat="yes"], [have_expat="no"])
+if test "${have_expat}" = "yes"; then
+	## check for the header
+	SXE_DUMP_LIBS
+	CPPFLAGS="${CPPFLAGS} ${expat_CFLAGS}"
+	AC_CHECK_HEADERS([expat.h])
+	SXE_RESTORE_LIBS
+
+	if test "${ac_cv_header_expat_h}" != "yes"; then
+		have_expat="no"
+	fi
+fi
+AM_CONDITIONAL([HAVE_EXPAT], [test "${have_expat}" = "yes"])
+
+AC_CHECK_TOOL([GPERF], [gperf])
+AM_CONDITIONAL([HAVE_GPERF], [test -n "${GPERF}"])
+
 ## check for twstools
 PKG_CHECK_MODULES([twstools], [twstools >= 0.4.0],
 	[have_twstools="yes"], [have_twstools="no"])

@@ -1,7 +1,9 @@
 args "--unamed-opts --no-handle-error --long-help -a quo_args_info -f quo_parser"
 package "quo-tws"
-usage "quo-tws [OPTION]..."
-description "subscribe to quote and trade data and populate to beef channel"
+usage "quo-tws [OPTION]... [REQUEST_FILE]..."
+description "Subscribe to quote and trade data and populate to beef channel.
+
+Subscriptions are read from REQUEST_FILE, a valid TWSXML document."
 
 option "daemonise" d
 	"Detach from tty and runs as daemon"

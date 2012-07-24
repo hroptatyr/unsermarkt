@@ -1,0 +1,35 @@
+%{
+typedef struct tws_xml_tag_s *tws_xml_tag_t;
+
+/* all the tags we know about */
+typedef enum {
+	/* must be first */
+	TX_TAG_UNK,
+	/* alphabetic list of tags */
+	TX_TAG_QUERY,
+	TX_TAG_REQCONTRACT,
+	TX_TAG_REQUEST,
+	TX_TAG_RESPONSE,
+	TX_TAG_TWSXML,
+} tws_xml_tid_t;
+%}
+%7bit
+%readonly-tables
+%struct-type
+%define slot-name tag
+%define hash-function-name __tid_hash
+%define lookup-function-name __tiddify
+%null-strings
+%enum
+
+struct tws_xml_tag_s {
+	const char *tag;
+	tws_xml_tid_t tid;
+};
+
+%%
+TWSXML, TX_TAG_TWSXML
+query, TX_TAG_QUERY
+reqContract, TX_TAG_REQCONTRACT
+request, TX_TAG_REQUEST
+response, TX_TAG_RESPONSE

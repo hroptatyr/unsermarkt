@@ -38,6 +38,8 @@
 # include "config.h"
 #endif	/* HAVE_CONFIG_H */
 #include <stdio.h>
+#include <stdarg.h>
+#include <errno.h>
 /* for gmtime_r */
 #include <time.h>
 /* for gettimeofday() */
@@ -69,6 +71,8 @@
 /* the tws api */
 #include "quo-tws-wrapper.h"
 #include "quo-tws-private.h"
+#include "tws-xml.h"
+#include "tws-cont.h"
 #include "nifty.h"
 #include "strops.h"
 #include "gq.h"
@@ -137,7 +141,7 @@ struct quo_qqq_s {
 /* AoV-based subscriptions class */
 struct quo_sub_s {
 	size_t nsubs;
-	tws_instr_t *inss;
+	tws_cont_t *inss;
 
 	/* actual quotes, this is bid, bsz, ask, asz  */
 	q30_pack_t *quos;
@@ -146,15 +150,44 @@ struct quo_sub_s {
 	uint32_t *last_dsm;
 };
 
+/* error() impl */
+static void
+__attribute__((format(printf, 2, 3)))
+error(int eno, const char *fmt, ...)
+{
+	va_list vap;
+	va_start(vap, fmt);
+	fputs("[quo-tws] ", stderr);
+	vfprintf(logerr, fmt, vap);
+	va_end(vap);
+	if (eno || errno) {
+		fputc(':', stderr);
+		fputc(' ', stderr);
+		fputs(strerror(eno ? eno : errno), stderr);
+	}
+	fputc('\n', stderr);
+	return;
+}
+
 
 /* the quotes array */
 static inline q30_t
 make_q30(uint16_t iidx, quo_typ_t t)
 {
+#if defined HAVE_ANON_STRUCTS_INIT
 	if (LIKELY(t >= QUO_TYP_BID && t <= QUO_TYP_ASZ)) {
 		return __extension__(q30_t){.typ = t - 1, .idx = iidx};
 	}
 	return __extension__(q30_t){0};
+#else  /* !HAVE_ANON_STRUCTS_INIT */
+	struct q30_s res = {0};
+
+	if (LIKELY(t >= QUO_TYP_BID && t <= QUO_TYP_ASZ)) {
+		res.typ = t - 1;
+		res.idx = iidx;
+	}
+	return res;
+#endif	/* HAVE_ANON_STRUCTS_INIT */
 }
 
 static inline uint16_t
@@ -466,22 +499,27 @@ mmap_size(size_t nelem, size_t elemsz)
 }
 
 static void
-redo_subs(my_tws_t tws)
+__req_cb(tws_xml_req_t req, void *clo)
 {
-	static const char test[] = "EURSEK";
+	struct {
+		utectx_t u;
+	} *ctx = clo;
 	uint16_t iidx;
+	const char *nick;
+	tws_cont_t c;
 
-	QUO_DEBUG("req\n");
-
-	if (UNLIKELY(tws == NULL)) {
-		/* stop ourselves */
-		goto del_req;
-	}
-
-	/* get ourselves an index */
-	if (UNLIKELY((iidx = ute_sym2idx(uu, test)) == 0)) {
-		/* stop outselves */
-		goto del_req;
+	if (UNLIKELY(req->typ != TWS_XML_REQ_TYP_MKT_DATA)) {
+		error(0, "warning, not a market data request");
+		return;
+	} else if (UNLIKELY((c = req->qry.mkt_data.ins) == NULL)) {
+		error(0, "warning, invalid contract");
+		return;
+	} else if (UNLIKELY((nick = tws_cont_nick(c)) == NULL)) {
+		error(0, "warning, could not find a nick name for %p", c);
+		return;
+	} else if (UNLIKELY((iidx = ute_sym2idx(ctx->u, nick)) == 0)) {
+		error(0, "warning, cannot find suitable index for %s", nick);
+		return;
 	}
 
 	if (iidx > subs.nsubs) {
@@ -512,20 +550,41 @@ redo_subs(my_tws_t tws)
 			sizeof(*subs.quos) - 1;
 	}
 
-	/* construct a contract */
-	if (UNLIKELY(
-		    subs.inss[iidx - 1] == NULL &&
-		    (subs.inss[iidx - 1] = tws_assemble_instr(test)) == NULL)) {
-		/* nightmare innit */
+	subs.inss[iidx - 1] = c;
+	QUO_DEBUG("reg'd %s %hu\n", nick, iidx);
+	return;
+}
+
+static void
+init_subs(const char *file)
+{
+	struct {
+		utectx_t u;
+	} x = {
+		.u = uu,
+	};
+
+	tws_xml_parse(file, __req_cb, &x);
+	return;
+}
+
+static void
+redo_subs(my_tws_t tws)
+{
+	if (UNLIKELY(tws == NULL)) {
+		/* stop ourselves */
 		goto del_req;
 	}
 
 	/* and finally call the a/c requester */
-	if (tws_req_quo(tws, iidx, subs.inss[iidx - 1]) < 0) {
-		/* hattrick, how can it go wrong at the last minute, fuck
-		 * on the other hand, we just leave the assembled instrument
-		 * where it is, maybe the (l)user is gonna retry later */
-		goto del_req;
+	for (unsigned int i = 1; i <= subs.nsubs; i++) {
+		if (subs.inss[i - 1] == NULL) {
+			;
+		} else if (tws_req_quo(tws, i, subs.inss[i - 1]) < 0) {
+			error(0, "cannot (re)subscribe to ins %u\n", i);
+		} else {
+			QUO_DEBUG("sub'd %s\n", ute_idx2sym(uu, i));
+		}
 	}
 	return;
 del_req:
@@ -563,13 +622,6 @@ undo_subs(my_tws_t UNUSED(tws))
 	return;
 }
 
-static inline bool
-got_oid_p(my_tws_t tws)
-{
-/* inspect TWS and return non-nil if requests to the tws can be made */
-	return tws->next_oid;
-}
-
 static void
 reco_cb(EV_P_ ev_timer *w, int UNUSED(revents))
 {
@@ -585,8 +637,7 @@ reco_cb(EV_P_ ev_timer *w, int UNUSED(revents))
 	/* pass on the socket we've got */
 	p->tws_sock = s;
 	/* reset tws structure */
-	p->tws->next_oid = 0;
-	p->tws->time = 0;
+	rset_tws(p->tws);
 
 	/* stop ourselves */
 	ev_timer_stop(EV_A_ w);
@@ -600,7 +651,7 @@ prep_cb(EV_P_ ev_prepare *w, int UNUSED(revents))
 {
 	static ev_io cake[1] = {{0}};
 	static ev_timer tm_reco[1] = {{0}};
-	static int got_oid = 0;
+	static int conndp = 0;
 	ctx_t ctx = w->data;
 
 	/* check if the tws is there */
@@ -630,12 +681,12 @@ prep_cb(EV_P_ ev_prepare *w, int UNUSED(revents))
 		/* clear tws_sock */
 		ctx->tws_sock = -1;
 		/* and the oid semaphore */
-		got_oid = 0;
+		conndp = 0;
 
-	} else if (!got_oid && got_oid_p(ctx->tws)) {
+	} else if (!conndp && tws_connd_p(ctx->tws)) {
 		/* a DREAM i tell ya, let's do our subscriptions */
 		redo_subs(ctx->tws);
-		got_oid = 1;
+		conndp = 1;
 
 	} else {
 		/* check the queue integrity */
@@ -691,7 +742,7 @@ detach(void)
 		break;
 	default:
 		/* i am the parent */
-		QUO_DEBUG("daemonisation successful %d\n", pid);
+		fprintf(stdout, "daemonisation successful %d\n", pid);
 		exit(0);
 	}
 
@@ -740,10 +791,6 @@ main(int argc, char *argv[])
 
 	/* parse the command line */
 	if (quo_parser(argc, argv, argi)) {
-		res = 1;
-		goto out;
-	} else if (argi->daemonise_given && detach() < 0) {
-		perror("daemonisation failed");
 		res = 1;
 		goto out;
 	}
@@ -821,6 +868,17 @@ main(int argc, char *argv[])
 	prp->data = ctx;
 	ev_prepare_init(prp, prep_cb);
 	ev_prepare_start(EV_A_ prp);
+
+	for (unsigned int i = 0; i < argi->inputs_num; i++) {
+		init_subs(argi->inputs[i]);
+	}
+
+	/* and just before we're entering that REPL check for daemonisation */
+	if (argi->daemonise_given && detach() < 0) {
+		perror("daemonisation failed");
+		res = 1;
+		goto out;
+	}
 
 	/* now wait for events to arrive */
 	ev_loop(EV_A_ 0);

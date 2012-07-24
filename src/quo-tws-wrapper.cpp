@@ -483,6 +483,14 @@ __wrapper::tickSnapshotEnd(int reqId)
 }
 
 
+void
+rset_tws(my_tws_t foo)
+{
+	foo->time = 0;
+	foo->next_oid = 0;
+	return;
+}
+
 int
 init_tws(my_tws_t foo)
 {
@@ -490,8 +498,7 @@ init_tws(my_tws_t foo)
 
 	foo->cli = new IB::EPosixClientSocket(wrp);
 	foo->wrp = wrp;
-	foo->time = 0;
-	foo->next_oid = 0;
+	rset_tws(foo);
 
 	/* just so we know who we are */
 	wrp->ctx = foo;
@@ -518,6 +525,7 @@ fini_tws(my_tws_t foo)
 
 	foo->cli = NULL;
 	foo->wrp = NULL;
+	rset_tws(foo);
 	return 0;
 }
 
@@ -587,6 +595,13 @@ tws_req_quo(my_tws_t foo, unsigned int idx, tws_instr_t i)
 	// we just have to assume it works
 	cli->reqMktData(real_idx, *(IB::Contract*)i, std::string(""), false);
 	return cli->isSocketOK() ? 0 : -1;
+}
+
+int
+tws_connd_p(my_tws_t foo)
+{
+/* inspect TWS and return non-nil if requests to the tws can be made */
+	return foo->next_oid;
 }
 
 /* quo-tws-wrapper.cpp ends here */

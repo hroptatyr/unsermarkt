@@ -207,6 +207,7 @@ pf_tws_LDFLAGS += $(twsapi_LIBS)
 pf_tws_LDFLAGS += $(libev_LIBS)
 
 if HAVE_EXPAT
+if HAVE_GPERF
 noinst_PROGRAMS += quo-tws
 EXTRA_quo_tws_SOURCES =
 quo_tws_SOURCES = quo-tws.c quo-tws-clo.ggo

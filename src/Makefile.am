@@ -283,6 +283,10 @@ tws_xml_LDFLAGS += $(twsapi_LIBS)
 %.c %.h: %.ggo
 	gengetopt -l -i $< -F $*
 
+## our rule for gperf
+%.c: %.gperf
+	$(AM_V_GEN)gperf $< --output-file $@
+
 # 
 # Help the developers get nice post-processed source files
 

@@ -54,11 +54,11 @@
 #include "proto-twsxml-attr.c"
 #include "proto-twsxml-ns.c"
 
-#if !defined NDEBUG
+#if defined DEBUG_FLAG
 # define TX_DEBUG(args...)	fprintf(stderr, args)
-#else  /* NDEBUG */
+#else  /* !DEBUG_FLAG */
 # define TX_DEBUG(args...)
-#endif	/* !NDEBUG */
+#endif	/* DEBUG_FLAG */
 
 #if !defined UNLIKELY
 # define UNLIKELY(x)		__builtin_expect(!!(x), 0)

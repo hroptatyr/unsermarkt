@@ -52,6 +52,10 @@ extern void free_cont(tws_cont_t);
 /* xml glue */
 extern int tws_cont_build(tws_cont_t, tws_xml_aid_t, const char *val);
 
+/**
+ * Return an easy-on-the-eye string for the specified contract. */
+extern const char *tws_cont_nick(tws_cont_t);
+
 #if defined __cplusplus
 };
 #endif	/* __cplusplus */

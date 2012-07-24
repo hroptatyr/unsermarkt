@@ -88,4 +88,21 @@ tws_cont_build(tws_cont_t tgt, tws_xml_aid_t aid, const char *val)
 	return 0;
 }
 
+const char*
+tws_cont_nick(tws_cont_t cont)
+{
+	static char nick[64];
+	IB::Contract *c = (IB::Contract*)cont;
+
+	if (c->localSymbol.length() > 0) {
+		return c->localSymbol.c_str();
+	} else if (c->secType == std::string("CASH")) {
+		const char *bas = c->symbol.c_str();
+		const char *trm = c->currency.c_str();
+		snprintf(nick, sizeof(nick), "%s.%s", bas, trm);
+		return nick;
+	}
+	return NULL;
+}
+
 /* tws-cont.cpp ends here */

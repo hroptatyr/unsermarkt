@@ -46,6 +46,7 @@
 
 /* the tws api */
 #include <twsapi/Contract.h>
+#include "proto-twsxml-attr.h"
 #include "tws-cont.h"
 
 tws_cont_t
@@ -64,18 +65,25 @@ free_cont(tws_cont_t c)
 }
 
 int
-tws_cont_build(tws_cont_t tgt, const char *slot, const char *val)
+tws_cont_build(tws_cont_t tgt, tws_xml_aid_t aid, const char *val)
 {
 	IB::Contract *c = (IB::Contract*)tgt;
 
-	if (!strcmp(slot, "symbol")) {
+	switch (aid) {
+	case TX_ATTR_SYMBOL:
 		c->symbol = std::string(val);
-	} else if (!strcmp(slot, "currency")) {
+		break;
+	case TX_ATTR_CURRENCY:
 		c->currency = std::string(val);
-	} else if (!strcmp(slot, "secType")) {
+		break;
+	case TX_ATTR_SECTYPE:
 		c->secType = std::string(val);
-	} else if (!strcmp(slot, "exchange")) {
+		break;
+	case TX_ATTR_EXCHANGE:
 		c->exchange = std::string(val);
+		break;
+	default:
+		break;
 	}
 	return 0;
 }

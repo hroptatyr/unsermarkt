@@ -1,10 +1,10 @@
-/*** quo-tws-wrapper.h -- quotes and trades from tws
+/*** prchunk.h -- guessing line oriented data formats
  *
- * Copyright (C) 2012 Sebastian Freundt
+ * Copyright (C) 2010-2012 Sebastian Freundt
  *
  * Author:  Sebastian Freundt <freundt@ga-group.nl>
  *
- * This file is part of unsermarkt.
+ * This file is part of uterus.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -34,50 +34,35 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  ***/
-#if !defined INCLUDED_quo_tws_wrapper_h_
-#define INCLUDED_quo_tws_wrapper_h_
 
-#if defined __cplusplus
-extern "C" {
-#endif	/* __cplusplus */
+#if !defined INCLUDED_prchunk_h_
+#define INCLUDED_prchunk_h_
 
-typedef struct my_tws_s *my_tws_t;
-/* abstract type for ib contracts */
-typedef void *tws_instr_t;
+#if !defined STATIC_GUTS
+# define FDECL		extern
+# define FDEFU
+#else  /* STATIC_GUTS */
+# define FDECL		static
+# define FDEFU		static
+#endif	/* !STATIC_GUTS */
 
-typedef unsigned int tws_oid_t;
+typedef struct prch_ctx_s *prch_ctx_t;
 
-struct my_tws_s {
-	tws_oid_t next_oid;
-	unsigned int time;
-	void *wrp;
-	void *cli;
-	void *qq;
-};
+/* non-reentrant! */
+FDECL prch_ctx_t init_prchunk(int fd);
+FDECL void free_prchunk(prch_ctx_t);
 
-
-extern void *logerr;
+FDECL int prchunk_fill(prch_ctx_t ctx);
 
-extern int init_tws(my_tws_t);
-extern int fini_tws(my_tws_t);
-extern void rset_tws(my_tws_t);
+FDECL size_t prchunk_get_nlines(prch_ctx_t);
+FDECL size_t prchunk_get_ncols(prch_ctx_t);
 
-extern int tws_connect(my_tws_t, const char *host, uint16_t port, int client);
-extern int tws_disconnect(my_tws_t);
+FDECL size_t prchunk_getlineno(prch_ctx_t ctx, char **p, int lno);
+FDECL size_t prchunk_getline(prch_ctx_t ctx, char **p);
+FDECL void prchunk_reset(prch_ctx_t ctx);
+FDECL int prchunk_haslinep(prch_ctx_t ctx);
 
-extern int tws_recv(my_tws_t);
-extern int tws_send(my_tws_t);
+FDECL void prchunk_rechunk(prch_ctx_t ctx, char delim, int ncols);
+FDECL size_t prchunk_getcolno(prch_ctx_t ctx, char **p, int lno, int cno);
 
-extern int tws_req_quo(my_tws_t, unsigned int idx, tws_instr_t);
-
-/* builder and dismantler for ib contracts */
-extern tws_instr_t tws_assemble_instr(const char *sym);
-extern void tws_disassemble_instr(tws_instr_t);
-
-extern int tws_connd_p(my_tws_t);
-
-#if defined __cplusplus
-}
-#endif	/* __cplusplus */
-
-#endif	/* INCLUDED_quo_tws_wrapper_h_ */
+#endif	/* INCLUDED_prchunk_h_ */

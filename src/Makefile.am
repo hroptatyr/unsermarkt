@@ -206,6 +206,7 @@ pf_tws_LDFLAGS += $(unserding_LIBS)
 pf_tws_LDFLAGS += $(twsapi_LIBS)
 pf_tws_LDFLAGS += $(libev_LIBS)
 
+if HAVE_EXPAT
 noinst_PROGRAMS += quo-tws
 EXTRA_quo_tws_SOURCES =
 quo_tws_SOURCES = quo-tws.c quo-tws-clo.ggo
@@ -215,17 +216,23 @@ quo_tws_SOURCES += iso4217.c iso4217.h
 quo_tws_SOURCES += strops.h
 quo_tws_SOURCES += quo-tws-private.h
 quo_tws_SOURCES += wrp-debug.h
+quo_tws_SOURCES += tws-xml.c tws-xml.h
+quo_tws_SOURCES += prchunk.c prchunk.h
+quo_tws_SOURCES += tws-cont.cpp tws-cont.h
 BUILT_SOURCES += quo-tws-clo.c quo-tws-clo.h
 quo_tws_CPPFLAGS = $(AM_CPPFLAGS)
 quo_tws_CPPFLAGS += $(uterus_CFLAGS)
 quo_tws_CPPFLAGS += $(unserding_CFLAGS)
 quo_tws_CPPFLAGS += $(twsapi_CFLAGS)
 quo_tws_CPPFLAGS += $(libev_CFLAGS)
+quo_tws_CPPFLAGS += $(expat_CFLAGS)
 quo_tws_LDFLAGS = $(AM_LDFLAGS)
 quo_tws_LDFLAGS += $(uterus_LIBS)
 quo_tws_LDFLAGS += $(unserding_LIBS)
 quo_tws_LDFLAGS += $(twsapi_LIBS)
 quo_tws_LDFLAGS += $(libev_LIBS)
+quo_tws_LDFLAGS += $(expat_LIBS)
+endif  ## HAVE_EXPAT
 endif  ## HAVE_LIBEV
 endif  ## HAVE_TWSAPI
 
@@ -260,9 +267,33 @@ annul_pf_LDFLAGS += $(unserding_LIBS)
 annul_pf_LDADD =
 annul_pf_LDADD += -lm
 
+
+noinst_PROGRAMS += tws-xml
+tws_xml_SOURCES = tws-xml.c tws-xml.h
+tws_xml_SOURCES += tws-cont.cpp tws-cont.h
+tws_xml_SOURCES += prchunk.c prchunk.h
+tws_xml_CPPFLAGS = $(AM_CPPFLAGS) -DSTANDALONE
+tws_xml_CPPFLAGS += $(expat_CFLAGS)
+tws_xml_CPPFLAGS += $(twsapi_CFLAGS)
+tws_xml_LDFLAGS = $(AM_LDFLAGS)
+tws_xml_LDFLAGS += $(expat_LIBS)
+tws_xml_LDFLAGS += $(twsapi_LIBS)
+EXTRA_tws_xml_SOURCES =
+EXTRA_tws_xml_SOURCES += proto-twsxml-tag.gperf
+EXTRA_tws_xml_SOURCES += proto-twsxml-attr.gperf proto-twsxml-attr.h
+EXTRA_tws_xml_SOURCES += proto-twsxml-ns.gperf
+BUILT_SOURCES += proto-twsxml-tag.c
+BUILT_SOURCES += proto-twsxml-attr.c
+BUILT_SOURCES += proto-twsxml-ns.c
+
+
 ## our rule for gengetopt
 %.c %.h: %.ggo
 	gengetopt -l -i $< -F $*
+
+## our rule for gperf
+%.c: %.gperf
+	$(AM_V_GEN)gperf $< --output-file $@
 
 # 
 # Help the developers get nice post-processed source files

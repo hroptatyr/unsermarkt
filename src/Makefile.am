@@ -218,6 +218,7 @@ quo_tws_SOURCES += quo-tws-private.h
 quo_tws_SOURCES += wrp-debug.h
 quo_tws_SOURCES += tws-xml.c tws-xml.h
 quo_tws_SOURCES += prchunk.c prchunk.h
+quo_tws_SOURCES += tws-cont.cpp tws-cont.h
 BUILT_SOURCES += quo-tws-clo.c quo-tws-clo.h
 quo_tws_CPPFLAGS = $(AM_CPPFLAGS)
 quo_tws_CPPFLAGS += $(uterus_CFLAGS)

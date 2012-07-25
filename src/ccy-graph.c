@@ -237,6 +237,7 @@ make_graph(void)
 
 	res->alloc_sz = tmp;
 	res->alloc_pairs = INITIAL_PAIRS - 1;
+	E(res, 0).x = INITIAL_EDGES;
 	return res;
 }
 
@@ -294,9 +295,71 @@ populate(graph_t g)
 }
 
 /* path finder */
+typedef uint64_t bitset_t;
+#define BITSET_SET(bs, x)	(bs |= 1 << (x))
+#define BITSET_GET(bs, x)	((bs >> x) & 1)
+
+struct path_finder_clo_s {
+	bitset_t seen;
+	struct pair_s p;
+};
+
+static int
+path_finder_gpair(graph_t g, gpair_t x, struct path_finder_clo_s *clo)
+{
+	bitset_t res;
+	bitset_t unsn;
+
+	BITSET_SET(clo->seen, x);
+	res = clo->seen;
+	for (gedge_t i = P(g, x).off; i < P(g, x).off + P(g, x).len; i++) {
+		gpair_t y = E(g, i).x;
+
+		if (P(g, y).p.bas == clo->p.trm ||
+		    P(g, y).p.trm == clo->p.trm) {
+			CCY_DEBUG("  ... finally %zu %s%s\n", y,
+				  P(g, y).p.bas->sym, P(g, y).p.trm->sym);
+			return 1;
+		} else if (P(g, y).p.bas == clo->p.bas ||
+			   P(g, y).p.trm == clo->p.bas) {
+			BITSET_SET(res, y);
+		}
+	}
+
+	/* inspect all unseen pairs now */
+	unsn = res ^ clo->seen;
+	clo->seen = res;
+	for (gpair_t i = 1; (unsn >>= 1); i++) {
+		if (unsn & 1) {
+			CCY_DEBUG("  ... %zu %s%s\n", i,
+				  P(g, i).p.bas->sym, P(g, i).p.trm->sym);
+			if (path_finder_gpair(g, i, clo)) {
+				return 1;
+			}
+		}
+	}
+	return 0;
+}
+
 static void
 path_finder(graph_t g, struct pair_s x)
 {
+	struct path_finder_clo_s clo = {0};
+
+	CCY_DEBUG("XCH %s FOR %s\n", x.bas->sym, x.trm->sym);
+	clo.p.trm = x.trm;
+	for (gpair_t i = 1; i <= g->npairs; i++) {
+		if (P(g, i).p.bas == x.bas) {
+			clo.p.bas = P(g, i).p.trm;
+		} else if (P(g, i).p.trm == x.bas) {
+			clo.p.bas = P(g, i).p.bas;
+		} else {
+			continue;
+		}
+		CCY_DEBUG("inspecting %zu %s%s\n", i,
+			  P(g, i).p.bas->sym, P(g, i).p.trm->sym);
+		path_finder_gpair(g, i, &clo);
+	}
 	return;
 }
 
@@ -352,6 +415,8 @@ main(int argc, char *argv[])
 
 	/* find me all paths from NZD to JPY */
 	path_finder(g, (struct pair_s){ISO_4217_NZD, ISO_4217_JPY});
+
+	path_finder(g, (struct pair_s){ISO_4217_AUD, ISO_4217_EUR});
 
 	free_graph(g);
 	return 0;

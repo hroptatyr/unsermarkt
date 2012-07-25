@@ -305,39 +305,32 @@ struct path_finder_clo_s {
 };
 
 static int
-path_finder_gpair(graph_t g, gpair_t x, struct path_finder_clo_s *clo)
+edge_finder(graph_t g, gpair_t x, struct path_finder_clo_s *clo)
 {
 	bitset_t res;
 	bitset_t unsn;
 
+	if (clo->p.bas == clo->p.trm) {
+		CCY_DEBUG("  ... trivial %zu %s%s\n", x,
+			  P(g, x).p.bas->sym, P(g, x).p.trm->sym);
+		return 2;
+	}
+
+#define seen(x)		(BITSET_GET(clo->seen, x))
 	BITSET_SET(clo->seen, x);
-	res = clo->seen;
 	for (gedge_t i = P(g, x).off; i < P(g, x).off + P(g, x).len; i++) {
 		gpair_t y = E(g, i).x;
 
-		if (P(g, y).p.bas == clo->p.trm ||
-		    P(g, y).p.trm == clo->p.trm) {
+		if ((P(g, y).p.bas == clo->p.bas &&
+		     P(g, y).p.trm == clo->p.trm) ||
+		    (P(g, y).p.bas == clo->p.trm &&
+		     P(g, y).p.trm == clo->p.bas)) {
 			CCY_DEBUG("  ... finally %zu %s%s\n", y,
 				  P(g, y).p.bas->sym, P(g, y).p.trm->sym);
 			return 1;
-		} else if (P(g, y).p.bas == clo->p.bas ||
-			   P(g, y).p.trm == clo->p.bas) {
-			BITSET_SET(res, y);
 		}
 	}
-
-	/* inspect all unseen pairs now */
-	unsn = res ^ clo->seen;
-	clo->seen = res;
-	for (gpair_t i = 1; (unsn >>= 1); i++) {
-		if (unsn & 1) {
-			CCY_DEBUG("  ... %zu %s%s\n", i,
-				  P(g, i).p.bas->sym, P(g, i).p.trm->sym);
-			if (path_finder_gpair(g, i, clo)) {
-				return 1;
-			}
-		}
-	}
+#undef seen
 	return 0;
 }
 
@@ -347,6 +340,11 @@ path_finder(graph_t g, struct pair_s x)
 	struct path_finder_clo_s clo = {0};
 
 	CCY_DEBUG("XCH %s FOR %s\n", x.bas->sym, x.trm->sym);
+
+	if (x.bas == x.trm) {
+		/* trivial */
+		return;
+	}
 	clo.p.trm = x.trm;
 	for (gpair_t i = 1; i <= g->npairs; i++) {
 		if (P(g, i).p.bas == x.bas) {
@@ -356,9 +354,10 @@ path_finder(graph_t g, struct pair_s x)
 		} else {
 			continue;
 		}
-		CCY_DEBUG("inspecting %zu %s%s\n", i,
-			  P(g, i).p.bas->sym, P(g, i).p.trm->sym);
-		path_finder_gpair(g, i, &clo);
+		if (edge_finder(g, i, &clo) == 1) {
+			CCY_DEBUG("      ... via %zu %s%s\n", i,
+				  P(g, i).p.bas->sym, P(g, i).p.trm->sym);
+		}
 	}
 	return;
 }
@@ -395,6 +394,11 @@ static struct pair_s AUDUSD = {
 	ISO_4217_USD,
 };
 
+static struct pair_s EURAUD = {
+	ISO_4217_EUR,
+	ISO_4217_AUD,
+};
+
 int
 main(int argc, char *argv[])
 {
@@ -409,6 +413,7 @@ main(int argc, char *argv[])
 	add_pair(g, USDJPY);
 	add_pair(g, AUDNZD);
 	add_pair(g, AUDUSD);
+	add_pair(g, EURAUD);
 
 	/* population */
 	populate(g);

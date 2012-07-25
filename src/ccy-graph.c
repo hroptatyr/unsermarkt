@@ -66,7 +66,7 @@
 typedef size_t gpair_t;
 typedef size_t gnode_t;
 typedef size_t gedge_t;
-typedef struct graph_s *graph_t;
+typedef union graph_u *graph_t;
 
 struct pair_s {
 	const_iso_4217_t bas;
@@ -80,39 +80,45 @@ struct gpair_s {
 	gnode_t off;
 	uint32_t len_aux;
 	uint32_t len;
+
+	struct sl1t_s b;
+	struct sl1t_s a;
 };
 
 struct gnode_s {
 	gpair_t x;
 };
 
-struct graph_s {
-	union {
-		struct gpair_s first;
-		struct {
-			size_t npairs;
-			size_t nedges;
-		};
+union graph_u {
+	struct {
+		size_t npairs;
+		size_t nedges;
+		
+		size_t alloc_pairs;
+		size_t alloc_sz;
+
+		/* one page for this */
+		struct gnode_s *e;
 	};
 
-	/* one page for this */
-	struct gpair_s p[4096 / sizeof(struct gpair_s) - 1];
-	/* various pages for the edges */
-	struct gnode_s e[];
+	/* gpairs first */
+	struct gpair_s p[];
 };
 
-#define NULL_PAIR	((gpair_t)-1)
-#define NULL_EDGE	((gedge_t)-1)
+#define NULL_PAIR	((gpair_t)0)
+#define NULL_EDGE	((gedge_t)0)
 #define P(g, x)		(g->p[x])
 #define E(g, x)		(g->e[x])
 
 
+static size_t pgsz = 0;
+
 static gpair_t
 make_gpair(graph_t g)
 {
-	gpair_t r = g->npairs++;
+	gpair_t r = ++g->npairs;
 
-	if (UNLIKELY(r > countof(g->p))) {
+	if (UNLIKELY(r >= g->alloc_pairs)) {
 		return NULL_PAIR;
 	}
 	return r;
@@ -128,7 +134,11 @@ free_gpair(graph_t g, gpair_t o)
 static gedge_t
 make_gedge(graph_t g)
 {
-	gedge_t r = g->nedges++;
+	gedge_t r = ++g->nedges;
+
+	if (UNLIKELY(r >= E(g, 0).x)) {
+		return NULL_EDGE;
+	}
 	return r;
 }
 
@@ -142,8 +152,8 @@ free_gedge(graph_t g, gedge_t o)
 static gpair_t
 find_pair(graph_t g, struct pair_s p)
 {
-	for (gpair_t i = 0; i < g->npairs; i++) {
-		if (g->p[i].p.bas == p.bas && g->p[i].p.trm == p.trm) {
+	for (gpair_t i = 1; i <= g->npairs; i++) {
+		if (P(g, i).p.bas == p.bas && P(g, i).p.trm == p.trm) {
 			return i;
 		}
 	}
@@ -195,13 +205,57 @@ add_edge(graph_t g, gpair_t from, gpair_t to)
 	return;
 }
 
+#define INITIAL_PAIRS	(64)
+#define INITIAL_EDGES	(512)
+
+static graph_t
+make_graph(void)
+{
+#define PROT_MEM	(PROT_READ | PROT_WRITE)
+#define MAP_MEM		(MAP_PRIVATE | MAP_ANON)
+	graph_t res;
+	size_t tmp = sizeof(*res);
+
+	if (pgsz == 0) {
+		pgsz = sysconf(_SC_PAGESIZE);
+	}
+
+	/* leave room for 63 gpairs */
+	tmp += (INITIAL_PAIRS - 1) * sizeof(*res->p);
+	tmp += INITIAL_EDGES * sizeof(*res->e);
+	/* round up to pgsz */
+	if (tmp % pgsz) {
+		tmp -= tmp % pgsz;
+		tmp += pgsz;
+	}
+
+	CCY_DEBUG("make graph of size %zu\n", tmp);
+	res = mmap(NULL, tmp, PROT_MEM, MAP_MEM, -1, 0);
+
+	/* polish the result, res->p is the only pointer in shape */
+	res->e = (void*)(res->p + INITIAL_PAIRS);
+
+	res->alloc_sz = tmp;
+	res->alloc_pairs = INITIAL_PAIRS - 1;
+	return res;
+}
+
+static void
+free_graph(graph_t g)
+{
+	size_t sz = g->alloc_sz;
+
+	munmap(g, sz);
+	return;
+}
+
 static void
 populate(graph_t g)
 {
 	/* reset the edge count */
 	g->nedges = 0;
 
-	for (gpair_t i = 0; i < g->npairs; i++) {
+	for (gpair_t i = 1; i <= g->npairs; i++) {
 		const_iso_4217_t bas = P(g, i).p.bas;
 		const_iso_4217_t trm = P(g, i).p.trm;
 
@@ -210,7 +264,7 @@ populate(graph_t g)
 		P(g, i).len_aux = P(g, i).len = 0;
 
 		/* foreign bas/trm == bas */
-		for (gpair_t j = 0; j < g->npairs; j++) {
+		for (gpair_t j = 1; j <= g->npairs; j++) {
 			if (UNLIKELY(i == j)) {
 				/* don't want no steenkin loops */
 				continue;
@@ -225,7 +279,7 @@ populate(graph_t g)
 		P(g, i).len_aux = P(g, i).len;
 
 		/* outgoing, aka foreign bas/trm == trm */
-		for (gpair_t j = 0; j < g->npairs; j++) {
+		for (gpair_t j = 1; j <= g->npairs; j++) {
 			if (UNLIKELY(i == j)) {
 				/* don't want no steenkin loops */
 				continue;
@@ -236,6 +290,13 @@ populate(graph_t g)
 			}
 		}
 	}
+	return;
+}
+
+/* path finder */
+static void
+path_finder(graph_t g, struct pair_s x)
+{
 	return;
 }
 
@@ -266,18 +327,17 @@ static struct pair_s AUDNZD = {
 	ISO_4217_NZD,
 };
 
+static struct pair_s AUDUSD = {
+	ISO_4217_AUD,
+	ISO_4217_USD,
+};
+
 int
 main(int argc, char *argv[])
 {
-#define PROT_MEM	(PROT_READ | PROT_WRITE)
-#define MAP_MEM		(MAP_PRIVATE | MAP_ANON)
-	static size_t pgsz = 0;
-	graph_t g;
+	static graph_t g;
 
-	if (pgsz == 0) {
-		pgsz = sysconf(_SC_PAGESIZE);
-	}
-	g = mmap(NULL, 2 * pgsz, PROT_MEM, MAP_MEM, -1, 0);
+	g = make_graph();
 
 	/* pair adding */
 	add_pair(g, EURUSD);
@@ -285,11 +345,15 @@ main(int argc, char *argv[])
 	add_pair(g, EURGBP);
 	add_pair(g, USDJPY);
 	add_pair(g, AUDNZD);
+	add_pair(g, AUDUSD);
 
 	/* population */
 	populate(g);
 
-	munmap(g, 2 * pgsz);
+	/* find me all paths from NZD to JPY */
+	path_finder(g, (struct pair_s){ISO_4217_NZD, ISO_4217_JPY});
+
+	free_graph(g);
 	return 0;
 }
 #endif	/* STANDALONE */

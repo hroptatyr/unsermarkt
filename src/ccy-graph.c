@@ -43,6 +43,7 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/mman.h>
 
 #if defined HAVE_UTERUS_UTERUS_H
 # include <uterus/uterus.h>
@@ -54,7 +55,6 @@
 
 #include "iso4217.h"
 #include "nifty.h"
-#include "gq.h"
 
 
 #if defined DEBUG_FLAG
@@ -63,170 +63,167 @@
 # define CCY_DEBUG(args...)
 #endif	/* DEBUG_FLAG */
 
-
+typedef size_t gpair_t;
+typedef size_t gnode_t;
+typedef size_t gedge_t;
 typedef struct graph_s *graph_t;
-typedef struct gpair_s *gpair_t;
-typedef struct gccy_s *gccy_t;
-
-struct graph_s {
-	struct gq_s pool[1];
-	struct gq_ll_s pairs[1];
-	struct gq_ll_s bass[1];
-	struct gq_ll_s trms[1];
-};
 
 struct pair_s {
 	const_iso_4217_t bas;
 	const_iso_4217_t trm;
 };
 
-struct gccy_s {
-	struct gq_item_s i;
-
-	const_iso_4217_t ccy;
-};
-
 struct gpair_s {
-	struct gq_item_s i;
+	struct pair_s p;
 
-	union {
-		struct {
-			/* the fx pair we're talking */
-			struct pair_s p;
-
-			struct sl1t_s b;
-			struct sl1t_s a;
-		};
-
-		struct {
-			const_iso_4217_t ccy;
-			struct gccy_s x;
-		} counter;
-
-		struct {
-			const_iso_4217_t bas;
-			struct gccy_s trm;
-		} bas;
-
-		struct {
-			const_iso_4217_t trm;
-			struct gccy_s bas;
-		} trm;
-	};
+	/* offsets into the edges array */
+	gnode_t off;
+	size_t len;
 };
 
-
-#include "gq.c"
+struct gnode_s {
+	gpair_t x;
+};
+
+struct graph_s {
+	union {
+		struct gpair_s first;
+		struct {
+			size_t npairs;
+			size_t nedges;
+		};
+	};
+
+	/* one page for this */
+	struct gpair_s p[4096 / sizeof(struct pair_s) - 1];
+	/* various pages for the edges */
+	struct gnode_s e[];
+};
+
+#define NULL_PAIR	((gpair_t)-1)
+#define NULL_EDGE	((gedge_t)-1)
+#define P(g, x)		(g->p[x])
+#define E(g, x)		(g->e[x])
 
 
 static gpair_t
 make_gpair(graph_t g)
 {
-	gpair_t res;
+	gpair_t r = g->npairs++;
 
-	if (g->pool->free->i1st == NULL) {
-		size_t nitems = g->pool->nitems / sizeof(*res);
-		ptrdiff_t df;
-
-		CCY_DEBUG("G RESIZE -> %zu\n", nitems + 64);
-		df = init_gq(g->pool, sizeof(*res), nitems + 64);
-		gq_rbld_ll(g->pairs, df);
-		gq_rbld_ll(g->bass, df);
-		gq_rbld_ll(g->trms, df);
+	if (UNLIKELY(r > countof(g->p))) {
+		return NULL_PAIR;
 	}
-	/* get us a new client and populate the object */
-	res = (void*)gq_pop_head(g->pool->free);
-	memset(res, 0, sizeof(*res));
-	return res;
+	return r;
 }
 
 static void
 free_gpair(graph_t g, gpair_t o)
 {
-	gq_push_tail(g->pool->free, (gq_item_t)o);
+	memset(g->p + o, 0, sizeof(*g->p));
+	return;
+}
+
+static gedge_t
+make_gedge(graph_t g)
+{
+	gedge_t r = g->nedges++;
+	return r;
+}
+
+static void
+free_gedge(graph_t g, gedge_t o)
+{
+	E(g, o).x = 0;
 	return;
 }
 
 static gpair_t
 find_pair(graph_t g, struct pair_s p)
 {
-	for (gq_item_t i = g->pairs->i1st; i; i = i->next) {
-		gpair_t gp = (void*)i;
-		if (gp->p.bas == p.bas && gp->p.trm == p.trm) {
-			return gp;
+	for (gpair_t i = 0; i < g->npairs; i++) {
+		if (g->p[i].p.bas == p.bas && g->p[i].p.trm == p.trm) {
+			return i;
 		}
 	}
-	return NULL;
-}
-
-static gpair_t
-find_bas(graph_t g, const_iso_4217_t bas)
-{
-	for (gq_item_t i = g->bass->i1st; i; i = i->next) {
-		gpair_t gp = (void*)i;
-		if (gp->bas.bas == bas) {
-			return gp;
-		}
-	}
-	return NULL;
-}
-
-static gpair_t
-find_trm(graph_t g, const_iso_4217_t trm)
-{
-	for (gq_item_t i = g->trms->i1st; i; i = i->next) {
-		gpair_t gp = (void*)i;
-		if (gp->trm.trm == trm) {
-			return gp;
-		}
-	}
-	return NULL;
-}
-
-static gpair_t
-find_counter(gpair_t g, const_iso_4217_t ccy)
-{
-	return NULL;
+	return NULL_PAIR;
 }
 
 static void
 add_pair(graph_t g, struct pair_s p)
 {
 	gpair_t tmp;
-	gpair_t counter;
 
-	if ((tmp = find_pair(g, p)) == NULL) {
+	if ((tmp = find_pair(g, p)) == NULL_PAIR) {
 		/* create a new pair */
 		CCY_DEBUG("ctor'ing %s%s\n", p.bas->sym, p.trm->sym);
 		tmp = make_gpair(g);
-		tmp->p = p;
-		gq_push_tail(g->pairs, (gq_item_t)tmp);
+		P(g, tmp).p = p;
 	}
+	return;
+}
 
-	/* add a pointer to the bas list */
-	if ((tmp = find_bas(g, p.bas)) == NULL) {
-		CCY_DEBUG("ctor'ing bas %s\n", p.bas->sym);
-		tmp = make_gpair(g);
-		tmp->bas.bas = p.bas;
-		gq_push_tail(g->bass, (gq_item_t)tmp);
+static gedge_t
+find_edge(graph_t g, gpair_t from, gpair_t to)
+{
+	for (gedge_t i = P(g, from).off;
+	     i < P(g, from).off + P(g, from).len; i++) {
+		if (E(g, i).x == to) {
+			return i;
+		}
 	}
-	/* leave a not about the trm */
-	if ((counter = find_counter(tmp, p.trm)) == NULL) {
-		CCY_DEBUG("ctor'ing counter-bas %s\n", p.trm->sym);
-		counter = make_gpair(g);
-	}
+	return NULL_EDGE;
+}
 
-	/* add a pointer to the trm list */
-	if ((tmp = find_trm(g, p.trm)) == NULL) {
-		CCY_DEBUG("ctor'ing trm %s\n", p.trm->sym);
-		tmp = make_gpair(g);
-		tmp->trm.trm = p.trm;
-		gq_push_tail(g->trms, (gq_item_t)tmp);
+static void
+add_edge(graph_t g, gpair_t from, gpair_t to)
+{
+	gedge_t tmp;
+
+	if ((tmp = find_edge(g, from, to)) == NULL_EDGE) {
+		/* create a new edge */
+		CCY_DEBUG("ctor'ing %s%s (%zu) -> %s%s (%zu)\n",
+			  P(g, from).p.bas->sym, P(g, from).p.trm->sym, from,
+			  P(g, to).p.bas->sym, P(g, to).p.trm->sym, to);
+		tmp = make_gedge(g);
+		E(g, tmp).x = to;
+		if (P(g, from).len++ == 0) {
+			P(g, from).off = tmp;
+		}
 	}
-	/* and counter struct again */
-	if ((counter = find_counter(tmp, p.bas)) == NULL) {
-		CCY_DEBUG("ctor'ing counter-trm %s\n", p.bas->sym);
-		counter = make_gpair(g);
+	return;
+}
+
+static void
+populate(graph_t g)
+{
+	for (gpair_t i = 0; i < g->npairs; i++) {
+		const_iso_4217_t bas = P(g, i).p.bas;
+		const_iso_4217_t trm = P(g, i).p.trm;
+
+		/* foreign bas/trm == bas */
+		for (gpair_t j = 0; j < g->npairs; j++) {
+			if (UNLIKELY(i == j)) {
+				/* don't want no steenkin loops */
+				continue;
+			}
+			if (P(g, j).p.bas == bas || P(g, j).p.trm == bas) {
+				/* yay */
+				add_edge(g, i, j);
+			}
+		}
+
+		/* outgoing, aka foreign bas/trm == trm */
+		for (gpair_t j = 0; j < g->npairs; j++) {
+			if (UNLIKELY(i == j)) {
+				/* don't want no steenkin loops */
+				continue;
+			}
+			if (P(g, j).p.bas == trm || P(g, j).p.trm == trm) {
+				/* yay */
+				add_edge(g, i, j);
+			}
+		}
 	}
 	return;
 }
@@ -248,22 +245,40 @@ static struct pair_s EURGBP = {
 	ISO_4217_GBP,
 };
 
+static struct pair_s USDJPY = {
+	ISO_4217_USD,
+	ISO_4217_JPY,
+};
+
+static struct pair_s AUDNZD = {
+	ISO_4217_AUD,
+	ISO_4217_NZD,
+};
+
 int
 main(int argc, char *argv[])
 {
-	struct graph_s g[1] = {{0}};
+#define PROT_MEM	(PROT_READ | PROT_WRITE)
+#define MAP_MEM		(MAP_PRIVATE | MAP_ANON)
+	static size_t pgsz = 0;
+	graph_t g;
 
+	if (pgsz == 0) {
+		pgsz = sysconf(_SC_PAGESIZE);
+	}
+	g = mmap(NULL, 2 * pgsz, PROT_MEM, MAP_MEM, -1, 0);
+
+	/* pair adding */
 	add_pair(g, EURUSD);
 	add_pair(g, GBPUSD);
 	add_pair(g, EURGBP);
+	add_pair(g, USDJPY);
+	add_pair(g, AUDNZD);
 
-	/* free resources */
-	for (gq_item_t i; (i = gq_pop_head(g->pairs));) {
-		gpair_t gp = (void*)i;
-		free_gpair(g, gp);
-	}
+	/* population */
+	populate(g);
 
-	fini_gq(g->pool);
+	munmap(g, 2 * pgsz);
 	return 0;
 }
 #endif	/* STANDALONE */

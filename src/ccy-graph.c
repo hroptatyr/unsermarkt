@@ -439,6 +439,8 @@ main(int argc, char *argv[])
 
 	path_finder(g, (struct pair_s){ISO_4217_AUD, ISO_4217_EUR});
 
+	path_finder(g, (struct pair_s){ISO_4217_EUR, ISO_4217_GBP});
+
 	free_graph(g);
 	return 0;
 }

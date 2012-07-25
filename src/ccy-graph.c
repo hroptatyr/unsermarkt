@@ -198,9 +198,16 @@ add_edge(graph_t g, gpair_t from, gpair_t to)
 static void
 populate(graph_t g)
 {
+	/* reset the edge count */
+	g->nedges = 0;
+
 	for (gpair_t i = 0; i < g->npairs; i++) {
 		const_iso_4217_t bas = P(g, i).p.bas;
 		const_iso_4217_t trm = P(g, i).p.trm;
+
+		/* reset the nodes */
+		P(g, i).off = 0;
+		P(g, i).len_aux = P(g, i).len = 0;
 
 		/* foreign bas/trm == bas */
 		for (gpair_t j = 0; j < g->npairs; j++) {

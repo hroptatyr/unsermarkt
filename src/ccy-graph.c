@@ -96,7 +96,7 @@ struct graph_s {
 	};
 
 	/* one page for this */
-	struct gpair_s p[4096 / sizeof(struct pair_s) - 1];
+	struct gpair_s p[4096 / sizeof(struct gpair_s) - 1];
 	/* various pages for the edges */
 	struct gnode_s e[];
 };

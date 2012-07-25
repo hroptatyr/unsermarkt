@@ -295,49 +295,66 @@ populate(graph_t g)
 }
 
 /* path finder */
-typedef uint64_t bitset_t;
-#define BITSET_SET(bs, x)	(bs |= 1 << (x))
-#define BITSET_GET(bs, x)	((bs >> x) & 1)
-
-struct path_finder_clo_s {
-	bitset_t seen;
-	struct pair_s p;
-};
-
 static int
-edge_finder(graph_t g, gpair_t x, struct path_finder_clo_s *clo)
+edge_finder(graph_t g, gpair_t x, struct pair_s p)
 {
-	bitset_t res;
-	bitset_t unsn;
-
-	if (clo->p.bas == clo->p.trm) {
-		CCY_DEBUG("  ... trivial %zu %s%s\n", x,
+	if (p.bas == p.trm) {
+		CCY_DEBUG("  ... trivial %s%s\n",
 			  P(g, x).p.bas->sym, P(g, x).p.trm->sym);
 		return 2;
 	}
 
-#define seen(x)		(BITSET_GET(clo->seen, x))
-	BITSET_SET(clo->seen, x);
 	for (gedge_t i = P(g, x).off; i < P(g, x).off + P(g, x).len; i++) {
 		gpair_t y = E(g, i).x;
+		struct pair_s cp;
 
-		if ((P(g, y).p.bas == clo->p.bas &&
-		     P(g, y).p.trm == clo->p.trm) ||
-		    (P(g, y).p.bas == clo->p.trm &&
-		     P(g, y).p.trm == clo->p.bas)) {
-			CCY_DEBUG("  ... finally %zu %s%s\n", y,
+		if ((P(g, y).p.bas == p.bas &&
+		     P(g, y).p.trm == p.trm) ||
+		    (P(g, y).p.bas == p.trm &&
+		     P(g, y).p.trm == p.bas)) {
+			CCY_DEBUG("  ... finally %s%s\n",
 				  P(g, y).p.bas->sym, P(g, y).p.trm->sym);
 			return 1;
+
+		} else if (P(g, y).p.bas == p.bas) {
+			cp.bas = P(g, y).p.trm;
+			cp.trm = p.trm;
+		} else if (P(g, y).p.trm == p.bas) {
+			cp.bas = P(g, y).p.bas;
+			cp.trm = p.trm;
+		} else {
+			continue;
 		}
+
+		/* 2nd indirection, unrolled */
+		for (gedge_t j = P(g, y).off;
+		     j < P(g, y).off + P(g, y).len; j++) {
+			gpair_t z = E(g, j).x;
+
+			if ((P(g, z).p.bas == cp.bas &&
+			     P(g, z).p.trm == cp.trm) ||
+			    (P(g, z).p.bas == cp.trm &&
+			     P(g, z).p.trm == cp.bas)) {
+				CCY_DEBUG("  ... finally %s%s\n",
+					  P(g, z).p.bas->sym, P(g, z).p.trm->sym);
+				goto via;
+			}
+		}
+		continue;
+
+	via:
+		CCY_DEBUG("      ... via %s%s\n",
+			  P(g, y).p.bas->sym, P(g, y).p.trm->sym);
+		CCY_DEBUG("      ... via %s%s\n",
+			  P(g, x).p.bas->sym, P(g, x).p.trm->sym);
 	}
-#undef seen
 	return 0;
 }
 
 static void
 path_finder(graph_t g, struct pair_s x)
 {
-	struct path_finder_clo_s clo = {0};
+	struct pair_s p = x;
 
 	CCY_DEBUG("XCH %s FOR %s\n", x.bas->sym, x.trm->sym);
 
@@ -345,17 +362,16 @@ path_finder(graph_t g, struct pair_s x)
 		/* trivial */
 		return;
 	}
-	clo.p.trm = x.trm;
 	for (gpair_t i = 1; i <= g->npairs; i++) {
 		if (P(g, i).p.bas == x.bas) {
-			clo.p.bas = P(g, i).p.trm;
+			p.bas = P(g, i).p.trm;
 		} else if (P(g, i).p.trm == x.bas) {
-			clo.p.bas = P(g, i).p.bas;
+			p.bas = P(g, i).p.bas;
 		} else {
 			continue;
 		}
-		if (edge_finder(g, i, &clo) == 1) {
-			CCY_DEBUG("      ... via %zu %s%s\n", i,
+		if (edge_finder(g, i, p) == 1) {
+			CCY_DEBUG("      ... via %s%s\n",
 				  P(g, i).p.bas->sym, P(g, i).p.trm->sym);
 		}
 	}

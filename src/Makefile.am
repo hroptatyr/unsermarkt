@@ -305,6 +305,11 @@ BUILT_SOURCES += proto-twsxml-ns.c
 endif  HAVE_GPERF
 endif  HAVE_EXPAT
 
+noinst_PROGRAMS += ccy-graph
+ccy_graph_SOURCES = ccy-graph.c
+ccy_graph_SOURCES += iso4217.c iso4217.h
+ccy_graph_CPPFLAGS = $(AM_CPPFLAGS) -DSTANDALONE
+
 
 ## our rule for gengetopt
 %.c %.h: %.ggo

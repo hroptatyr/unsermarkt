@@ -78,7 +78,8 @@ struct gpair_s {
 
 	/* offsets into the edges array */
 	gnode_t off;
-	size_t len;
+	uint32_t len_aux;
+	uint32_t len;
 };
 
 struct gnode_s {
@@ -212,6 +213,9 @@ populate(graph_t g)
 				add_edge(g, i, j);
 			}
 		}
+
+		/* store the helper length the number of incomings */
+		P(g, i).len_aux = P(g, i).len;
 
 		/* outgoing, aka foreign bas/trm == trm */
 		for (gpair_t j = 0; j < g->npairs; j++) {

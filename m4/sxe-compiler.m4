@@ -214,14 +214,16 @@ AC_DEFUN([SXE_OPTIFLAGS], [dnl
 ])dnl SXE_OPTIFLAGS
 
 AC_DEFUN([SXE_FEATFLAGS], [dnl
+	## we use libtool, so ...
 	XFLAG=
+	XCCFLAG="-XCClinker"
 	## default flags for needed features
 	SXE_CHECK_COMPILER_FLAGS([-static-intel], [
-		cflags="${cflags} ${XFLAG} -static-intel"])
+		cflags="${cflags} ${XFLAG} -static-intel"
+		ldflags="${ldflags} ${XCCFLAG} -static-intel"])
 	SXE_CHECK_COMPILER_FLAGS([-static-libgcc], [
-		cflags="${cflags} ${XFLAG} -static-libgcc"])
-	CXXLD="${CC} ${XFLAG} -lstdc++ ${cflags}"
-	AC_SUBST([CXXLD])
+		cflags="${cflags} ${XFLAG} -static-libgcc"
+		ldflags="${ldflags} ${XCCFLAG} -static-libgcc"])
 ])dnl SXE_FEATFLAGS
 
 

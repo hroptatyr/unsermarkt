@@ -395,6 +395,11 @@ edge_finder(graph_t g, gpair_t x, struct pair_s p)
 		continue;
 
 	via:
+		/* here's the chance that we produce multiple path defs
+		 * as the outer loop will be cont'd, however we only
+		 * return the last path_def number (as stored in res)
+		 * nothing breaks really but we can't assign a name to
+		 * the pair in that case */
 		CCY_DEBUG("      ... via %s%s\n",
 			  P(g, y).p.bas->sym, P(g, y).p.trm->sym);
 		add_path_hop(g, res, y);
@@ -419,6 +424,7 @@ add_paths(graph_t g, struct pair_s x)
 	}
 	for (gpair_t i = 1; i <= g->npairs; i++) {
 		gpath_def_t f;
+
 		if (P(g, i).p.bas == x.bas) {
 			p.bas = P(g, i).p.trm;
 		} else if (P(g, i).p.trm == x.bas) {
@@ -434,6 +440,8 @@ add_paths(graph_t g, struct pair_s x)
 			CCY_DEBUG("      ... via %s%s  added to %zu\n",
 				  P(g, i).p.bas->sym, P(g, i).p.trm->sym, f);
 			add_path_hop(g, f, i);
+			/* store the name of this beauty */
+			P(g, f).p = x;
 		}
 	}
 	return;

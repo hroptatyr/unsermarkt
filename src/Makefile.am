@@ -284,6 +284,7 @@ annul_pf_LDADD += -lm
 
 if HAVE_EXPAT
 if HAVE_GPERF
+if HAVE_TWSAPI
 noinst_PROGRAMS += tws-xml
 tws_xml_SOURCES = tws-xml.c tws-xml.h
 tws_xml_SOURCES += tws-cont.cpp tws-cont.h
@@ -302,6 +303,7 @@ EXTRA_tws_xml_SOURCES += proto-twsxml-ns.gperf
 BUILT_SOURCES += proto-twsxml-tag.c
 BUILT_SOURCES += proto-twsxml-attr.c
 BUILT_SOURCES += proto-twsxml-ns.c
+endif  HAVE_TWSAPI
 endif  HAVE_GPERF
 endif  HAVE_EXPAT
 

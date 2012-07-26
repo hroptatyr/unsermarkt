@@ -110,6 +110,10 @@ union graph_u {
 		struct gedge_s *e;
 		/* path hops */
 		struct gnode_s *f;
+		/* affected path defs edges, just bitsets again */
+		struct gedge_s *aff;
+
+		/* got 8 more bytes now */
 	};
 
 	/* gpairs first */
@@ -123,6 +127,7 @@ union graph_u {
 #define P(g, x)		(g->p[x])
 #define E(g, x)		(g->e[x])
 #define F(g, x)		(g->f[x])
+#define AFF(g, x)	(g->aff[x])
 
 
 static size_t pgsz = 0;
@@ -145,7 +150,8 @@ make_graph(void)
 	/* leave room for 63 gpairs, 64 gedges and 512 gpaths */
 	tmp += (INITIAL_PAIRS - 1) * sizeof(*res->p);
 	tmp += INITIAL_PAIRS * sizeof(*res->e);
-	tmp += (INITIAL_PATHS - INITIAL_PAIRS) * sizeof(*res->f);
+	tmp += (INITIAL_PATHS - 2 * INITIAL_PAIRS) * sizeof(*res->f);
+	tmp += INITIAL_PAIRS * sizeof(*res->aff);
 	/* round up to pgsz */
 	if (tmp % pgsz) {
 		tmp -= tmp % pgsz;
@@ -157,12 +163,14 @@ make_graph(void)
 
 	/* polish the result, res->p is the only pointer in shape */
 	res->e = (void*)(res->p + INITIAL_PAIRS);
-	res->f = (void*)(res->e + INITIAL_PAIRS);
+	res->aff = (void*)(res->e + INITIAL_PAIRS);
+	res->f = (void*)(res->aff + INITIAL_PAIRS);
 
 	res->alloc_sz = tmp;
 	res->alloc_pairs = INITIAL_PAIRS - 1;
 	E(res, 0).x = INITIAL_PAIRS;
-	F(res, 0).x = INITIAL_PATHS;
+	F(res, 0).x = INITIAL_PATHS - 2 * INITIAL_PAIRS;
+	AFF(res, 0).x = INITIAL_PAIRS;
 	return res;
 }
 
@@ -304,6 +312,33 @@ add_path_hop(graph_t g, gpath_def_t tgtpath, gpair_t via)
 	return;
 }
 
+static gedge_t
+find_aff(graph_t g, gpair_t affectee, gpair_t affected)
+{
+/* find out if when AFFECTEE is updated it affects AFFECTED */
+	if (AFF(g, affectee).x & (1 << (affected - 1))) {
+		return affectee;
+	}
+	return NULL_EDGE;
+}
+
+static void
+add_aff(graph_t g, gpair_t affectee, gpair_t affected)
+{
+/* record that when AFFECTEE is updated it affects AFFECTED */
+	gedge_t tmp;
+
+	if ((tmp = find_aff(g, affectee, affected)) == NULL_EDGE &&
+	    (tmp = (gedge_t)affectee) != NULL_EDGE) {
+		/* create a new edge */
+		CCY_DEBUG("ctor'ing aff-edge %s%s (%zu) updates affect %zu\n",
+			  P(g, affectee).p.bas->sym,
+			  P(g, affectee).p.trm->sym, affectee, affected);
+		AFF(g, tmp).x |= 1 << (affected - 1);
+	}
+	return;
+}
+
 
 static void
 populate(graph_t g)
@@ -361,6 +396,7 @@ edge_finder(graph_t g, gpair_t x, struct pair_s p)
 				  P(g, y).p.bas->sym, P(g, y).p.trm->sym);
 			res = make_gpath_def(g);
 			add_path_hop(g, res, y);
+			add_aff(g, y, res);
 			break;
 
 		} else if (P(g, y).p.bas == p.bas) {
@@ -389,6 +425,7 @@ edge_finder(graph_t g, gpair_t x, struct pair_s p)
 					  P(g, z).p.trm->sym);
 				res = make_gpath_def(g);
 				add_path_hop(g, res, z);
+				add_aff(g, z, res);
 				goto via;
 			}
 		}
@@ -403,9 +440,11 @@ edge_finder(graph_t g, gpair_t x, struct pair_s p)
 		CCY_DEBUG("      ... via %s%s\n",
 			  P(g, y).p.bas->sym, P(g, y).p.trm->sym);
 		add_path_hop(g, res, y);
+		add_aff(g, y, res);
 		CCY_DEBUG("      ... via %s%s\n",
 			  P(g, x).p.bas->sym, P(g, x).p.trm->sym);
 		add_path_hop(g, res, x);
+		add_aff(g, x, res);
 	}
 	return res;
 }
@@ -440,6 +479,7 @@ add_paths(graph_t g, struct pair_s x)
 			CCY_DEBUG("      ... via %s%s  added to %zu\n",
 				  P(g, i).p.bas->sym, P(g, i).p.trm->sym, f);
 			add_path_hop(g, f, i);
+			add_aff(g, i, f);
 			/* store the name of this beauty */
 			P(g, f).p = x;
 		}
@@ -509,8 +549,18 @@ main(int argc, char *argv[])
 	add_paths(g, (struct pair_s){ISO_4217_EUR, ISO_4217_GBP});
 
 	for (gpair_t i = 1; i <= g->npairs; i++) {
-		CCY_DEBUG("p %zu  paths @[%zu] 4(%zu)\n",
-			  i, P(g, i).off, P(g, i).len);
+		CCY_DEBUG("p %zu  %s%s  paths @[%zu] 4(%zu)\n",
+			  i,
+			  P(g, i).p.bas->sym, P(g, i).p.trm->sym,
+			  P(g, i).off, P(g, i).len);
+		CCY_DEBUG("  updates affect:\n");
+		for (uint64_t aff = AFF(g, i).x, j = 1; aff; aff >>= 1, j++) {
+			if (!(aff & 1)) {
+				continue;
+			}
+			CCY_DEBUG("  + %s%s (%zu)\n",
+				  P(g, j).p.bas->sym, P(g, j).p.trm->sym, j);
+		}
 	}
 
 	free_graph(g);

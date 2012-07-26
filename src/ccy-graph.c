@@ -66,6 +66,7 @@
 typedef size_t gpair_t;
 typedef size_t gnode_t;
 typedef size_t gedge_t;
+typedef size_t gpath_t;
 typedef union graph_u *graph_t;
 
 struct pair_s {
@@ -76,13 +77,16 @@ struct pair_s {
 struct gpair_s {
 	struct pair_s p;
 
-	/* offsets into the edges array */
+	/* offsets into the paths array */
 	gnode_t off;
-	uint32_t len_aux;
-	uint32_t len;
+	size_t len;
 
 	struct sl1t_s b;
 	struct sl1t_s a;
+};
+
+struct gedge_s {
+	uint64_t x;
 };
 
 struct gnode_s {
@@ -92,13 +96,13 @@ struct gnode_s {
 union graph_u {
 	struct {
 		size_t npairs;
-		size_t nedges;
+		size_t npaths;
 		
 		size_t alloc_pairs;
 		size_t alloc_sz;
 
-		/* one page for this */
-		struct gnode_s *e;
+		struct gnode_s *f;
+		struct gedge_s *e;
 	};
 
 	/* gpairs first */
@@ -107,11 +111,61 @@ union graph_u {
 
 #define NULL_PAIR	((gpair_t)0)
 #define NULL_EDGE	((gedge_t)0)
+#define NULL_PATH	((gpath_t)0)
 #define P(g, x)		(g->p[x])
 #define E(g, x)		(g->e[x])
+#define F(g, x)		(g->f[x])
 
 
 static size_t pgsz = 0;
+
+#define INITIAL_PAIRS	(64)
+#define INITIAL_PATHS	(512)
+
+static graph_t
+make_graph(void)
+{
+#define PROT_MEM	(PROT_READ | PROT_WRITE)
+#define MAP_MEM		(MAP_PRIVATE | MAP_ANON)
+	graph_t res;
+	size_t tmp = sizeof(*res);
+
+	if (pgsz == 0) {
+		pgsz = sysconf(_SC_PAGESIZE);
+	}
+
+	/* leave room for 63 gpairs, 64 gedges and 512 gpaths */
+	tmp += (INITIAL_PAIRS - 1) * sizeof(*res->p);
+	tmp += INITIAL_PAIRS * sizeof(*res->e);
+	tmp += (INITIAL_PATHS - INITIAL_PAIRS) * sizeof(*res->f);
+	/* round up to pgsz */
+	if (tmp % pgsz) {
+		tmp -= tmp % pgsz;
+		tmp += pgsz;
+	}
+
+	CCY_DEBUG("make graph of size %zu\n", tmp);
+	res = mmap(NULL, tmp, PROT_MEM, MAP_MEM, -1, 0);
+
+	/* polish the result, res->p is the only pointer in shape */
+	res->e = (void*)(res->p + INITIAL_PAIRS);
+	res->f = (void*)(res->e + INITIAL_PAIRS);
+
+	res->alloc_sz = tmp;
+	res->alloc_pairs = INITIAL_PAIRS - 1;
+	E(res, 0).x = INITIAL_PAIRS;
+	F(res, 0).x = INITIAL_PATHS;
+	return res;
+}
+
+static void
+free_graph(graph_t g)
+{
+	size_t sz = g->alloc_sz;
+
+	munmap(g, sz);
+	return;
+}
 
 static gpair_t
 make_gpair(graph_t g)
@@ -124,28 +178,28 @@ make_gpair(graph_t g)
 	return r;
 }
 
-static void
+static __attribute__((unused)) void
 free_gpair(graph_t g, gpair_t o)
 {
 	memset(g->p + o, 0, sizeof(*g->p));
 	return;
 }
 
-static gedge_t
-make_gedge(graph_t g)
+static gpath_t
+make_gpath(graph_t g)
 {
-	gedge_t r = ++g->nedges;
+	gpath_t r = ++g->npaths;
 
-	if (UNLIKELY(r >= E(g, 0).x)) {
+	if (UNLIKELY(r >= F(g, 0).x)) {
 		return NULL_EDGE;
 	}
 	return r;
 }
 
-static void
-free_gedge(graph_t g, gedge_t o)
+static __attribute__((unused)) void
+free_gpath(graph_t g, gpath_t o)
 {
-	E(g, o).x = 0;
+	F(g, o).x = 0;
 	return;
 }
 
@@ -165,10 +219,10 @@ add_pair(graph_t g, struct pair_s p)
 {
 	gpair_t tmp;
 
-	if ((tmp = find_pair(g, p)) == NULL_PAIR) {
+	if ((tmp = find_pair(g, p)) == NULL_PAIR &&
+	    (tmp = make_gpair(g)) != NULL_PAIR) {
 		/* create a new pair */
 		CCY_DEBUG("ctor'ing %s%s\n", p.bas->sym, p.trm->sym);
-		tmp = make_gpair(g);
 		P(g, tmp).p = p;
 	}
 	return;
@@ -176,6 +230,31 @@ add_pair(graph_t g, struct pair_s p)
 
 static gedge_t
 find_edge(graph_t g, gpair_t from, gpair_t to)
+{
+	if (E(g, from).x & (1 << (to - 1))) {
+		return from;
+	}
+	return NULL_EDGE;
+}
+
+static void
+add_edge(graph_t g, gpair_t from, gpair_t to)
+{
+	gedge_t tmp;
+
+	if ((tmp = find_edge(g, from, to)) == NULL_EDGE &&
+	    (tmp = (gedge_t)from) != NULL_EDGE) {
+		/* create a new edge */
+		CCY_DEBUG("ctor'ing %s%s (%zu) -> %s%s (%zu)\n",
+			  P(g, from).p.bas->sym, P(g, from).p.trm->sym, from,
+			  P(g, to).p.bas->sym, P(g, to).p.trm->sym, to);
+		E(g, tmp).x |= 1 << (to - 1);
+	}
+	return;
+}
+
+static gpath_t
+find_path(graph_t g, gpair_t from, gpair_t to)
 {
 	for (gedge_t i = P(g, from).off;
 	     i < P(g, from).off + P(g, from).len; i++) {
@@ -187,17 +266,17 @@ find_edge(graph_t g, gpair_t from, gpair_t to)
 }
 
 static void
-add_edge(graph_t g, gpair_t from, gpair_t to)
+add_path(graph_t g, gpair_t from, gpair_t to)
 {
 	gedge_t tmp;
 
-	if ((tmp = find_edge(g, from, to)) == NULL_EDGE) {
+	if ((tmp = find_path(g, from, to)) == NULL_PATH &&
+	    (tmp = make_gpath(g)) != NULL_PATH) {
 		/* create a new edge */
 		CCY_DEBUG("ctor'ing %s%s (%zu) -> %s%s (%zu)\n",
 			  P(g, from).p.bas->sym, P(g, from).p.trm->sym, from,
 			  P(g, to).p.bas->sym, P(g, to).p.trm->sym, to);
-		tmp = make_gedge(g);
-		E(g, tmp).x = to;
+		F(g, tmp).x = to;
 		if (P(g, from).len++ == 0) {
 			P(g, from).off = tmp;
 		}
@@ -205,64 +284,13 @@ add_edge(graph_t g, gpair_t from, gpair_t to)
 	return;
 }
 
-#define INITIAL_PAIRS	(64)
-#define INITIAL_EDGES	(512)
-
-static graph_t
-make_graph(void)
-{
-#define PROT_MEM	(PROT_READ | PROT_WRITE)
-#define MAP_MEM		(MAP_PRIVATE | MAP_ANON)
-	graph_t res;
-	size_t tmp = sizeof(*res);
-
-	if (pgsz == 0) {
-		pgsz = sysconf(_SC_PAGESIZE);
-	}
-
-	/* leave room for 63 gpairs */
-	tmp += (INITIAL_PAIRS - 1) * sizeof(*res->p);
-	tmp += INITIAL_EDGES * sizeof(*res->e);
-	/* round up to pgsz */
-	if (tmp % pgsz) {
-		tmp -= tmp % pgsz;
-		tmp += pgsz;
-	}
-
-	CCY_DEBUG("make graph of size %zu\n", tmp);
-	res = mmap(NULL, tmp, PROT_MEM, MAP_MEM, -1, 0);
-
-	/* polish the result, res->p is the only pointer in shape */
-	res->e = (void*)(res->p + INITIAL_PAIRS);
-
-	res->alloc_sz = tmp;
-	res->alloc_pairs = INITIAL_PAIRS - 1;
-	E(res, 0).x = INITIAL_EDGES;
-	return res;
-}
-
-static void
-free_graph(graph_t g)
-{
-	size_t sz = g->alloc_sz;
-
-	munmap(g, sz);
-	return;
-}
 
 static void
 populate(graph_t g)
 {
-	/* reset the edge count */
-	g->nedges = 0;
-
 	for (gpair_t i = 1; i <= g->npairs; i++) {
 		const_iso_4217_t bas = P(g, i).p.bas;
 		const_iso_4217_t trm = P(g, i).p.trm;
-
-		/* reset the nodes */
-		P(g, i).off = 0;
-		P(g, i).len_aux = P(g, i).len = 0;
 
 		/* foreign bas/trm == bas */
 		for (gpair_t j = 1; j <= g->npairs; j++) {
@@ -275,9 +303,6 @@ populate(graph_t g)
 				add_edge(g, i, j);
 			}
 		}
-
-		/* store the helper length the number of incomings */
-		P(g, i).len_aux = P(g, i).len;
 
 		/* outgoing, aka foreign bas/trm == trm */
 		for (gpair_t j = 1; j <= g->npairs; j++) {
@@ -294,6 +319,7 @@ populate(graph_t g)
 	return;
 }
 
+
 /* path finder */
 static int
 edge_finder(graph_t g, gpair_t x, struct pair_s p)
@@ -304,14 +330,16 @@ edge_finder(graph_t g, gpair_t x, struct pair_s p)
 		return 2;
 	}
 
-	for (gedge_t i = P(g, x).off; i < P(g, x).off + P(g, x).len; i++) {
-		gpair_t y = E(g, i).x;
+	for (uint64_t ex = E(g, x).x, i = 1; ex; ex >>= 1, i++) {
+		gpair_t y = (gpair_t)i;
 		struct pair_s cp;
 
-		if ((P(g, y).p.bas == p.bas &&
-		     P(g, y).p.trm == p.trm) ||
-		    (P(g, y).p.bas == p.trm &&
-		     P(g, y).p.trm == p.bas)) {
+		if (!(ex & 1)) {
+			continue;
+		} else if ((P(g, y).p.bas == p.bas &&
+			    P(g, y).p.trm == p.trm) ||
+			   (P(g, y).p.bas == p.trm &&
+			    P(g, y).p.trm == p.bas)) {
 			CCY_DEBUG("  ... finally %s%s\n",
 				  P(g, y).p.bas->sym, P(g, y).p.trm->sym);
 			return 1;
@@ -327,16 +355,17 @@ edge_finder(graph_t g, gpair_t x, struct pair_s p)
 		}
 
 		/* 2nd indirection, unrolled */
-		for (gedge_t j = P(g, y).off;
-		     j < P(g, y).off + P(g, y).len; j++) {
-			gpair_t z = E(g, j).x;
+		for (uint64_t ey = E(g, y).x, j = 1; ey; ey >>= 1, j++) {
+			gpair_t z = (gpair_t)j;
 
-			if ((P(g, z).p.bas == cp.bas &&
-			     P(g, z).p.trm == cp.trm) ||
-			    (P(g, z).p.bas == cp.trm &&
-			     P(g, z).p.trm == cp.bas)) {
+			if (!(ey & 1)) {
+			} else if ((P(g, z).p.bas == cp.bas &&
+				    P(g, z).p.trm == cp.trm) ||
+				   (P(g, z).p.bas == cp.trm &&
+				    P(g, z).p.trm == cp.bas)) {
 				CCY_DEBUG("  ... finally %s%s\n",
-					  P(g, z).p.bas->sym, P(g, z).p.trm->sym);
+					  P(g, z).p.bas->sym,
+					  P(g, z).p.trm->sym);
 				goto via;
 			}
 		}

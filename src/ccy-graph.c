@@ -66,7 +66,8 @@
 typedef size_t gpair_t;
 typedef size_t gnode_t;
 typedef size_t gedge_t;
-typedef size_t gpath_t;
+typedef size_t gpath_def_t;
+typedef size_t gpath_hop_t;
 typedef union graph_u *graph_t;
 
 struct pair_s {
@@ -75,13 +76,17 @@ struct pair_s {
 };
 
 struct gpair_s {
+	/* 16b */
 	struct pair_s p;
 
+	/* 16b */
 	/* offsets into the paths array */
-	gnode_t off;
+	size_t off;
 	size_t len;
 
+	/* 16b */
 	struct sl1t_s b;
+	/* 16b */
 	struct sl1t_s a;
 };
 
@@ -96,13 +101,15 @@ struct gnode_s {
 union graph_u {
 	struct {
 		size_t npairs;
-		size_t npaths;
+		size_t nphops;
 		
 		size_t alloc_pairs;
 		size_t alloc_sz;
 
-		struct gnode_s *f;
+		/* edges, they're just bitsets really */
 		struct gedge_s *e;
+		/* path hops */
+		struct gnode_s *f;
 	};
 
 	/* gpairs first */
@@ -111,7 +118,8 @@ union graph_u {
 
 #define NULL_PAIR	((gpair_t)0)
 #define NULL_EDGE	((gedge_t)0)
-#define NULL_PATH	((gpath_t)0)
+#define NULL_PATH_DEF	((gpath_def_t)0)
+#define NULL_PATH_HOP	((gpath_def_t)0)
 #define P(g, x)		(g->p[x])
 #define E(g, x)		(g->e[x])
 #define F(g, x)		(g->f[x])
@@ -185,19 +193,32 @@ free_gpair(graph_t g, gpair_t o)
 	return;
 }
 
-static gpath_t
-make_gpath(graph_t g)
+static gpath_def_t
+make_gpath_def(graph_t g)
 {
-	gpath_t r = ++g->npaths;
+	return (gpath_def_t)make_gpair(g);
+}
+
+static __attribute__((unused)) void
+free_gpath_def(graph_t g, gpath_def_t o)
+{
+	free_gpair(g, (gpair_t)o);
+	return;
+}
+
+static gpath_hop_t
+make_gpath_hop(graph_t g)
+{
+	gpath_hop_t r = ++g->nphops;
 
 	if (UNLIKELY(r >= F(g, 0).x)) {
-		return NULL_EDGE;
+		return NULL_PATH_HOP;
 	}
 	return r;
 }
 
 static __attribute__((unused)) void
-free_gpath(graph_t g, gpath_t o)
+free_gpath_hop(graph_t g, gpath_hop_t o)
 {
 	F(g, o).x = 0;
 	return;
@@ -253,32 +274,31 @@ add_edge(graph_t g, gpair_t from, gpair_t to)
 	return;
 }
 
-static gpath_t
-find_path(graph_t g, gpair_t from, gpair_t to)
+static gpath_hop_t
+find_path_hop(graph_t g, gpath_def_t p, gpair_t x)
 {
-	for (gedge_t i = P(g, from).off;
-	     i < P(g, from).off + P(g, from).len; i++) {
-		if (E(g, i).x == to) {
+	for (gpath_hop_t i = P(g, p).off; i < P(g, p).off + P(g, p).len; i++) {
+		if (F(g, i).x == x) {
 			return i;
 		}
 	}
-	return NULL_PATH;
+	return NULL_PATH_HOP;
 }
 
 static void
-add_path(graph_t g, gpath_t tgtpath, gpair_t via)
+add_path_hop(graph_t g, gpath_def_t tgtpath, gpair_t via)
 {
-	gedge_t tmp;
+	gpath_hop_t tmp;
 
-	if ((tmp = find_path(g, from, to)) == NULL_PATH &&
-	    (tmp = make_gpath(g)) != NULL_PATH) {
-		/* create a new edge */
-		CCY_DEBUG("ctor'ing %s%s (%zu) -> %s%s (%zu)\n",
-			  P(g, from).p.bas->sym, P(g, from).p.trm->sym, from,
-			  P(g, to).p.bas->sym, P(g, to).p.trm->sym, to);
-		F(g, tmp).x = to;
-		if (P(g, from).len++ == 0) {
-			P(g, from).off = tmp;
+	if ((tmp = find_path_hop(g, tgtpath, via)) == NULL_PATH_HOP &&
+	    (tmp = make_gpath_hop(g)) != NULL_PATH_HOP) {
+		/* create a new hop */
+		CCY_DEBUG("ctor'ing path %zu -+-> %s%s (%zu)\n",
+			  tgtpath,
+			  P(g, via).p.bas->sym, P(g, via).p.trm->sym, via);
+		F(g, tmp).x = via;
+		if (P(g, tgtpath).len++ == 0) {
+			P(g, tgtpath).off = tmp;
 		}
 	}
 	return;
@@ -321,96 +341,10 @@ populate(graph_t g)
 
 
 /* path finder */
-static __attribute__((unused)) int
-path_edge_finder(graph_t g, gpair_t x, struct pair_s p)
-{
-	if (p.bas == p.trm) {
-		CCY_DEBUG("  ... trivial %s%s\n",
-			  P(g, x).p.bas->sym, P(g, x).p.trm->sym);
-		return 2;
-	}
-
-	for (uint64_t ex = E(g, x).x, i = 1; ex; ex >>= 1, i++) {
-		gpair_t y = (gpair_t)i;
-		struct pair_s cp;
-
-		if (!(ex & 1)) {
-			continue;
-		} else if ((P(g, y).p.bas == p.bas &&
-			    P(g, y).p.trm == p.trm) ||
-			   (P(g, y).p.bas == p.trm &&
-			    P(g, y).p.trm == p.bas)) {
-			CCY_DEBUG("  ... finally %s%s\n",
-				  P(g, y).p.bas->sym, P(g, y).p.trm->sym);
-			return 1;
-
-		} else if (P(g, y).p.bas == p.bas) {
-			cp.bas = P(g, y).p.trm;
-			cp.trm = p.trm;
-		} else if (P(g, y).p.trm == p.bas) {
-			cp.bas = P(g, y).p.bas;
-			cp.trm = p.trm;
-		} else {
-			continue;
-		}
-
-		/* 2nd indirection, unrolled */
-		for (uint64_t ey = E(g, y).x, j = 1; ey; ey >>= 1, j++) {
-			gpair_t z = (gpair_t)j;
-
-			if (!(ey & 1)) {
-			} else if ((P(g, z).p.bas == cp.bas &&
-				    P(g, z).p.trm == cp.trm) ||
-				   (P(g, z).p.bas == cp.trm &&
-				    P(g, z).p.trm == cp.bas)) {
-				CCY_DEBUG("  ... finally %s%s\n",
-					  P(g, z).p.bas->sym,
-					  P(g, z).p.trm->sym);
-				goto via;
-			}
-		}
-		continue;
-
-	via:
-		CCY_DEBUG("      ... via %s%s\n",
-			  P(g, y).p.bas->sym, P(g, y).p.trm->sym);
-		CCY_DEBUG("      ... via %s%s\n",
-			  P(g, x).p.bas->sym, P(g, x).p.trm->sym);
-	}
-	return 0;
-}
-
-static __attribute__((unused)) void
-path_finder(graph_t g, struct pair_s x)
-{
-	struct pair_s p = x;
-
-	CCY_DEBUG("XCH %s FOR %s\n", x.bas->sym, x.trm->sym);
-
-	if (x.bas == x.trm) {
-		/* trivial */
-		return;
-	}
-	for (gpair_t i = 1; i <= g->npairs; i++) {
-		if (P(g, i).p.bas == x.bas) {
-			p.bas = P(g, i).p.trm;
-		} else if (P(g, i).p.trm == x.bas) {
-			p.bas = P(g, i).p.bas;
-		} else {
-			continue;
-		}
-		if (path_edge_finder(g, i, p) == 1) {
-			CCY_DEBUG("      ... via %s%s\n",
-				  P(g, i).p.bas->sym, P(g, i).p.trm->sym);
-		}
-	}
-	return;
-}
-
-static gpath_t
+static gpath_def_t
 edge_finder(graph_t g, gpair_t x, struct pair_s p)
 {
-	gpath_t res = NULL_PATH;
+	gpath_def_t res = NULL_PATH_DEF;
 
 	for (uint64_t ex = E(g, x).x, i = 1; ex; ex >>= 1, i++) {
 		gpair_t y = (gpair_t)i;
@@ -422,11 +356,11 @@ edge_finder(graph_t g, gpair_t x, struct pair_s p)
 			    P(g, y).p.trm == p.trm) ||
 			   (P(g, y).p.bas == p.trm &&
 			    P(g, y).p.trm == p.bas)) {
-			/* all starts off here */
-			res = make_gpath(g);
-			add_path(g, res, y);
+			/* glad we had no dramas finding this one */
 			CCY_DEBUG("  ... finally %s%s\n",
 				  P(g, y).p.bas->sym, P(g, y).p.trm->sym);
+			res = make_gpath_def(g);
+			add_path_hop(g, res, y);
 			break;
 
 		} else if (P(g, y).p.bas == p.bas) {
@@ -444,13 +378,17 @@ edge_finder(graph_t g, gpair_t x, struct pair_s p)
 			gpair_t z = (gpair_t)j;
 
 			if (!(ey & 1)) {
+				;
 			} else if ((P(g, z).p.bas == cp.bas &&
 				    P(g, z).p.trm == cp.trm) ||
 				   (P(g, z).p.bas == cp.trm &&
 				    P(g, z).p.trm == cp.bas)) {
+				/* yep, a very good catch indeed */
 				CCY_DEBUG("  ... finally %s%s\n",
 					  P(g, z).p.bas->sym,
 					  P(g, z).p.trm->sym);
+				res = make_gpath_def(g);
+				add_path_hop(g, res, z);
 				goto via;
 			}
 		}
@@ -459,8 +397,10 @@ edge_finder(graph_t g, gpair_t x, struct pair_s p)
 	via:
 		CCY_DEBUG("      ... via %s%s\n",
 			  P(g, y).p.bas->sym, P(g, y).p.trm->sym);
+		add_path_hop(g, res, y);
 		CCY_DEBUG("      ... via %s%s\n",
 			  P(g, x).p.bas->sym, P(g, x).p.trm->sym);
+		add_path_hop(g, res, x);
 	}
 	return res;
 }
@@ -478,7 +418,7 @@ add_paths(graph_t g, struct pair_s x)
 		return;
 	}
 	for (gpair_t i = 1; i <= g->npairs; i++) {
-		gpath_t f;
+		gpath_def_t f;
 		if (P(g, i).p.bas == x.bas) {
 			p.bas = P(g, i).p.trm;
 		} else if (P(g, i).p.trm == x.bas) {
@@ -490,9 +430,10 @@ add_paths(graph_t g, struct pair_s x)
 			CCY_DEBUG("  ... trivial %s%s\n",
 				  P(g, i).p.bas->sym, P(g, i).p.trm->sym);
 			;
-		} else if ((f = edge_finder(g, i, p)) != NULL_PATH) {
+		} else if ((f = edge_finder(g, i, p)) != NULL_PATH_DEF) {
 			CCY_DEBUG("      ... via %s%s  added to %zu\n",
 				  P(g, i).p.bas->sym, P(g, i).p.trm->sym, f);
+			add_path_hop(g, f, i);
 		}
 	}
 	return;
@@ -556,10 +497,13 @@ main(int argc, char *argv[])
 
 	/* find me all paths from NZD to JPY */
 	add_paths(g, (struct pair_s){ISO_4217_NZD, ISO_4217_JPY});
-
 	add_paths(g, (struct pair_s){ISO_4217_AUD, ISO_4217_EUR});
-
 	add_paths(g, (struct pair_s){ISO_4217_EUR, ISO_4217_GBP});
+
+	for (gpair_t i = 1; i <= g->npairs; i++) {
+		CCY_DEBUG("p %zu  paths @[%zu] 4(%zu)\n",
+			  i, P(g, i).off, P(g, i).len);
+	}
 
 	free_graph(g);
 	return 0;

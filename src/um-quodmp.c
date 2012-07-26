@@ -294,7 +294,7 @@ prune_clis(void)
 	gettimeofday(tv, NULL);
 
 	/* prune clis */
-	for (cli_t i = 1, ei = ncli; i <= ei; i++) {
+	for (cli_t i = 1; i <= ncli; i++) {
 		if (CLI(i)->last_seen + MAX_CLI_AGE < tv->tv_sec) {
 			UMQD_DEBUG("pruning %zu\n", i);
 			prune_cli(i);
@@ -302,23 +302,23 @@ prune_clis(void)
 	}
 
 	/* condense the cli array a bit */
-	for (cli_t i = 1, ei = ncli; i <= ei; i++) {
+	for (cli_t i = 1; i <= ncli; i++) {
 		size_t consec;
 
-		for (consec = 0; i <= ei && cli_pruned_p(i); i++) {
+		for (consec = 0; i <= ncli && cli_pruned_p(i); i++) {
 			consec++;
 		}
-		assert(consec <= ei);
+		assert(consec <= ncli);
 		assert(consec <= i);
-		if (consec && i <= ei) {
+		if (consec && i <= ncli) {
 			/* shrink */
 			size_t nmv = CLI(i) - CLI(i - consec);
 
-			UMQD_DEBUG("condensing %zu/%zu clis\n", nmv, ei);
+			UMQD_DEBUG("condensing %zu/%zu clis\n", nmv, ncli);
 			memcpy(CLI(i - consec), CLI(i), nmv * sizeof(*cli));
 			nu_ncli -= nmv;
 		} else if (consec) {
-			UMQD_DEBUG("condensing %zu/%zu clis\n", consec, ei);
+			UMQD_DEBUG("condensing %zu/%zu clis\n", consec, ncli);
 			nu_ncli -= consec;
 		}
 	}

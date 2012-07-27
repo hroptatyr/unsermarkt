@@ -107,7 +107,7 @@ union graph_u {
 	};
 
 	/* gpairs first */
-	struct gpair_s p[];
+	struct gpair_s p[0];
 };
 
 #define NULL_PAIR	((gpair_t)0)
@@ -505,12 +505,12 @@ recomp_path(graph_t g, gpath_def_t p)
 		CCY_DEBUG("  ... %s%s\n",
 			  P(g, h).p.bas->sym, P(g, h).p.trm->sym);
 		if (P(g, h).p.bas == ccy) {
-			b *= ffff_m30_d(P(g, h).b.pri);
-			a *= ffff_m30_d(P(g, h).a.pri);
+			b *= ffff_m30_d(ffff_m30_get_ui32(P(g, h).b.pri));
+			a *= ffff_m30_d(ffff_m30_get_ui32(P(g, h).a.pri));
 			ccy = P(g, h).p.trm;
 		} else if (P(g, h).p.trm == ccy) {
-			b /= ffff_m30_d(P(g, h).a.pri);
-			a /= ffff_m30_d(P(g, h).b.pri);
+			b /= ffff_m30_d(ffff_m30_get_ui32(P(g, h).a.pri));
+			a /= ffff_m30_d(ffff_m30_get_ui32(P(g, h).b.pri));
 			ccy = P(g, h).p.bas;
 		} else {
 			CCY_DEBUG("can't continue\n");

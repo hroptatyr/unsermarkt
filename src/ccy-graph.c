@@ -47,8 +47,10 @@
 
 #if defined HAVE_UTERUS_UTERUS_H
 # include <uterus/uterus.h>
+# include <uterus/m30.h>
 #elif defined HAVE_UTERUS_H
 # include <uterus.h>
+# include <m30.h>
 #else
 # error uterus headers are mandatory
 #endif	/* HAVE_UTERUS_UTERUS_H || HAVE_UTERUS_H */
@@ -57,7 +59,7 @@
 #include "nifty.h"
 
 
-#if defined DEBUG_FLAG
+#if defined DEBUG_FLAG && !defined BENCHMARK
 # define CCY_DEBUG(args...)	fprintf(stderr, args)
 #else
 # define CCY_DEBUG(args...)
@@ -495,6 +497,46 @@ add_paths(graph_t g, struct pair_s x)
 }
 
 
+/* (re)computing rates */
+static void
+recomp_path(graph_t g, gpath_def_t p)
+{
+	double b, a;
+	const_iso_4217_t ccy;
+
+	CCY_DEBUG("recomputing %s%s %zu\n",
+		  P(g, p).p.bas->sym, P(g, p).p.trm->sym, p);
+
+	/* init and go */
+	b = 1.0;
+	a = 1.0;
+	ccy = P(g, p).p.trm;
+	for (gpair_t i = P(g, p).off; i < P(g, p).off + P(g, p).len; i++) {
+		gpath_hop_t h = F(g, i).x;
+
+		CCY_DEBUG("  ... %s%s\n",
+			  P(g, h).p.bas->sym, P(g, h).p.trm->sym);
+		if (P(g, h).p.bas == ccy) {
+			b *= ffff_m30_d(P(g, h).b.pri);
+			a *= ffff_m30_d(P(g, h).a.pri);
+			ccy = P(g, h).p.trm;
+		} else if (P(g, h).p.trm == ccy) {
+			b /= ffff_m30_d(P(g, h).a.pri);
+			a /= ffff_m30_d(P(g, h).b.pri);
+			ccy = P(g, h).p.bas;
+		} else {
+			CCY_DEBUG("can't continue\n");
+			break;
+		}
+	}
+
+	CCY_DEBUG("b %.6f  %.6f a\n", b, a);
+	P(g, p).b.pri = ffff_m30_get_d(b).u;
+	P(g, p).a.pri = ffff_m30_get_d(a).u;
+	return;
+}
+
+
 #if defined STANDALONE
 static struct pair_s EURUSD = {
 	ISO_4217_EUR,
@@ -567,6 +609,37 @@ main(int argc, char *argv[])
 			}
 			CCY_DEBUG("  + %s%s (%zu)\n",
 				  P(g, j).p.bas->sym, P(g, j).p.trm->sym, j);
+		}
+	}
+
+	/* adding some quotes */
+	for (size_t i = 0;
+#if defined BENCHMARK
+	     i < 10000 * 10000;
+#else  /* !BENCHMARK */
+	     i < 1;
+#endif	/* BENCHMARK */
+	     i++) {
+		gpair_t p;
+
+		if ((p = find_pair(g, EURUSD)) != NULL_PAIR) {
+			P(g, p).b.pri = ffff_m30_get_d(1.22305).u + i;
+			P(g, p).b.qty = ffff_m30_get_d(13.0).u + i;
+			P(g, p).a.pri = ffff_m30_get_d(1.22309).u + i;
+			P(g, p).a.qty = ffff_m30_get_d(13.0).u + i;
+		}
+
+		if ((p = find_pair(g, AUDUSD)) != NULL_PAIR) {
+			P(g, p).b.pri = ffff_m30_get_d(1.0250).u + i;
+			P(g, p).b.qty = ffff_m30_get_d(11.0).u + i;
+			P(g, p).a.pri = ffff_m30_get_d(1.02517).u + i;
+			P(g, p).a.qty = ffff_m30_get_d(13.0).u + i;
+		}
+
+		if ((p = find_pair(
+			     g, (struct pair_s){ISO_4217_AUD, ISO_4217_EUR})) !=
+		    NULL_PAIR) {
+			recomp_path(g, (gpath_def_t)p);
 		}
 	}
 

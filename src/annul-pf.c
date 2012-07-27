@@ -79,6 +79,30 @@ static struct __pos_s poss[] = {
 	}, {
 		"USDSEK", 0, 0,
 	},
+	/* just currencies from here */
+	{
+		"AUD", 0, 0,
+	}, {
+		"CAD", 0, 0,
+	}, {
+		"CHF", 0, 0,
+	}, {
+		"DKK", 0, 0,
+	}, {
+		"EUR", 0, 0,
+	}, {
+		"GBP", 0, 0,
+	}, {
+		"JPY", 0, 0,
+	}, {
+		"NOK", 0, 0,
+	}, {
+		"NZD", 0, 0,
+	}, {
+		"SEK", 0, 0,
+	}, {
+		"USD", 0, 0,
+	},
 };
 
 static __pos_t
@@ -86,7 +110,7 @@ find_pos_by_name(const char *sym)
 {
 	for (size_t i = 0; i < countof(poss); i++) {
 		__pos_t p = poss + i;
-		if (memcmp(p->sym, sym, 6) == 0) {
+		if (strcmp(p->sym, sym) == 0) {
 			return p;
 		}
 	}
@@ -132,7 +156,7 @@ shout_syms(const struct xmpl_s *ctx)
 
 	for (size_t i = 0; i < countof(poss); i++) {
 		udpc_seria_add_ui16(ser, i + 1);
-		udpc_seria_add_str(ser, poss[i].sym, 6);
+		udpc_seria_add_str(ser, poss[i].sym, strlen(poss[i].sym));
 	}
 	ud_chan_send_ser(ctx->ud_ox, ser);
 	return;
@@ -229,7 +253,8 @@ find_fix_fld(char **p, char *msg, const char *key)
 	char *cand = msg - 1;
 	char *eocand;
 
-	while ((cand = strstr(cand + 1, key)) && cand != msg && cand[-1] != *SOH);
+	while ((cand = strstr(cand + 1, key)) &&
+	       cand != msg && cand[-1] != *SOH);
 	/* cand should be either NULL or point to the key */
 	if (UNLIKELY(cand == NULL)) {
 		return 0;
@@ -245,6 +270,7 @@ find_fix_fld(char **p, char *msg, const char *key)
 static char*
 find_fix_eofld(char *msg, const char *key)
 {
+#define SOHC	'\001'
 #define SOH	"\001"
 	char *cand;
 	size_t clen;
@@ -305,14 +331,21 @@ pr_pos_rpt(char *buf, size_t bsz)
 
 		if (find_fix_fld(&sym, p, fix_inssym)) {
 			/* go behind the = */
-			char ccy[8];
+			char ccy[8] = {0};
 
 			memcpy(ccy, sym += sizeof(fix_inssym) - 1, 3);
-			if (LIKELY(*(sym += 3) == '.')) {
+			switch (*(sym += 3)) {
+			case '.':
+			case '/':
 				sym++;
+				break;
+			case SOHC:
+				goto f;
+			default:
+				break;
 			}
 			memcpy(ccy + 3, sym, 3);
-			ccy[6] = '\000';
+	f:
 			pos = find_pos_by_name(ccy);
 		}
 		if (UNLIKELY(pos == NULL)) {

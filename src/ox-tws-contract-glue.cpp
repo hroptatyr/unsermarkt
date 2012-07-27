@@ -59,14 +59,40 @@
 tws_instr_t
 tws_assemble_instr(const char *sym)
 {
+	static const char fxvirt[] = "IDEALPRO";
+	static const char fxconv[] = "FXCONV";
 	IB::Contract *res;
 	const_iso_4217_t bas;
 	const_iso_4217_t trm;
+	const char *exch = fxvirt;;
 
 	if ((bas = find_iso_4217_by_name(sym)) == NULL) {
 		return NULL;
 	}
 	switch (*(sym += 3)) {
+	case '\000':
+		/* oooh, just one ccy */
+		exch = fxconv;
+
+		switch (iso_4217_id(bas)) {
+		case ISO_4217_EUR_IDX:
+		case ISO_4217_GBP_IDX:
+		case ISO_4217_AUD_IDX:
+		case ISO_4217_NZD_IDX:
+			trm = ISO_4217_USD;
+			break;
+		case ISO_4217_USD_IDX:
+			// um, USDUSD?  make it EURUSD
+			bas = ISO_4217_EUR;
+			trm = ISO_4217_USD;
+			break;
+		default:
+			// assume USDxxx
+			trm = bas;
+			bas = ISO_4217_USD;
+			break;
+		}
+		goto special;
 	case '.':
 	case '/':
 		// stuff like EUR/USD or EUR.USD
@@ -79,13 +105,14 @@ tws_assemble_instr(const char *sym)
 		return NULL;
 	}
 
+special:
 	// otherwise we're pretty well off with a ccy pair
 	res = new IB::Contract();
 
 	res->symbol = std::string(bas->sym);
 	res->currency = std::string(trm->sym);
 	res->secType = std::string("CASH");
-	res->exchange = std::string("IDEALPRO");
+	res->exchange = std::string(exch);
 	glu_debug((void*)res, "created");
 	return (tws_instr_t)res;
 }

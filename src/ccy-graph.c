@@ -107,7 +107,7 @@ union graph_u {
 	};
 
 	/* gpairs first */
-	struct gpair_s p[];
+	struct gpair_s p[0];
 };
 
 #define NULL_PAIR	((gpair_t)0)

@@ -1,6 +1,5 @@
-/*** tws-xml.h -- conversion between IB/API structs and xml
+/*** ccy-graph.c -- paths through foreign exchange flow graphs
  *
- * Copyright (C) 2011-2012 Ruediger Meier
  * Copyright (C) 2012 Sebastian Freundt
  *
  * Author:  Sebastian Freundt <freundt@ga-group.nl>
@@ -57,6 +56,7 @@
 
 #include "iso4217.h"
 #include "nifty.h"
+#include "ccy-graph.h"
 
 
 #if defined DEBUG_FLAG && !defined BENCHMARK
@@ -64,18 +64,6 @@
 #else
 # define CCY_DEBUG(args...)
 #endif	/* DEBUG_FLAG */
-
-typedef size_t gpair_t;
-typedef size_t gnode_t;
-typedef size_t gedge_t;
-typedef size_t gpath_def_t;
-typedef size_t gpath_hop_t;
-typedef union graph_u *graph_t;
-
-struct pair_s {
-	const_iso_4217_t bas;
-	const_iso_4217_t trm;
-};
 
 struct gpair_s {
 	/* 16b */
@@ -136,7 +124,7 @@ static size_t pgsz = 0;
 #define INITIAL_PAIRS	(64)
 #define INITIAL_PATHS	(512)
 
-static graph_t
+graph_t
 make_graph(void)
 {
 #define PROT_MEM	(PROT_READ | PROT_WRITE)
@@ -175,7 +163,7 @@ make_graph(void)
 	return res;
 }
 
-static void
+void
 free_graph(graph_t g)
 {
 	size_t sz = g->alloc_sz;
@@ -233,8 +221,8 @@ free_gpath_hop(graph_t g, gpath_hop_t o)
 	return;
 }
 
-static gpair_t
-find_pair(graph_t g, struct pair_s p)
+gpair_t
+ccyg_find_pair(graph_t g, struct pair_s p)
 {
 	for (gpair_t i = 1; i <= g->npairs; i++) {
 		if (P(g, i).p.bas == p.bas && P(g, i).p.trm == p.trm) {
@@ -244,18 +232,18 @@ find_pair(graph_t g, struct pair_s p)
 	return NULL_PAIR;
 }
 
-static void
-add_pair(graph_t g, struct pair_s p)
+gpair_t
+ccyg_add_pair(graph_t g, struct pair_s p)
 {
 	gpair_t tmp;
 
-	if ((tmp = find_pair(g, p)) == NULL_PAIR &&
+	if ((tmp = ccyg_find_pair(g, p)) == NULL_PAIR &&
 	    (tmp = make_gpair(g)) != NULL_PAIR) {
 		/* create a new pair */
 		CCY_DEBUG("ctor'ing %s%s\n", p.bas->sym, p.trm->sym);
 		P(g, tmp).p = p;
 	}
-	return;
+	return tmp;
 }
 
 static gedge_t
@@ -341,8 +329,8 @@ add_aff(graph_t g, gpair_t affectee, gpair_t affected)
 }
 
 
-static void
-populate(graph_t g)
+void
+ccyg_populate(graph_t g)
 {
 	for (gpair_t i = 1; i <= g->npairs; i++) {
 		const_iso_4217_t bas = P(g, i).p.bas;
@@ -453,8 +441,8 @@ edge_finder(graph_t g, gpair_t x, struct pair_s p)
 	return res;
 }
 
-static void
-add_paths(graph_t g, struct pair_s x)
+void
+ccyg_add_paths(graph_t g, struct pair_s x)
 {
 /* adds a virtual pair X from paths found */
 	struct pair_s p = x;
@@ -581,21 +569,21 @@ main(int argc, char *argv[])
 	g = make_graph();
 
 	/* pair adding */
-	add_pair(g, EURUSD);
-	add_pair(g, GBPUSD);
-	add_pair(g, EURGBP);
-	add_pair(g, USDJPY);
-	add_pair(g, AUDNZD);
-	add_pair(g, AUDUSD);
-	add_pair(g, EURAUD);
+	ccyg_add_pair(g, EURUSD);
+	ccyg_add_pair(g, GBPUSD);
+	ccyg_add_pair(g, EURGBP);
+	ccyg_add_pair(g, USDJPY);
+	ccyg_add_pair(g, AUDNZD);
+	ccyg_add_pair(g, AUDUSD);
+	ccyg_add_pair(g, EURAUD);
 
 	/* population */
-	populate(g);
+	ccyg_populate(g);
 
 	/* find me all paths from NZD to JPY */
-	add_paths(g, (struct pair_s){ISO_4217_NZD, ISO_4217_JPY});
-	add_paths(g, (struct pair_s){ISO_4217_AUD, ISO_4217_EUR});
-	add_paths(g, (struct pair_s){ISO_4217_EUR, ISO_4217_GBP});
+	ccyg_add_paths(g, (struct pair_s){ISO_4217_NZD, ISO_4217_JPY});
+	ccyg_add_paths(g, (struct pair_s){ISO_4217_AUD, ISO_4217_EUR});
+	ccyg_add_paths(g, (struct pair_s){ISO_4217_EUR, ISO_4217_GBP});
 
 	for (gpair_t i = 1; i <= g->npairs; i++) {
 		CCY_DEBUG("p %zu  %s%s  paths @[%zu] 4(%zu)\n",
@@ -622,21 +610,21 @@ main(int argc, char *argv[])
 	     i++) {
 		gpair_t p;
 
-		if ((p = find_pair(g, EURUSD)) != NULL_PAIR) {
+		if ((p = ccyg_find_pair(g, EURUSD)) != NULL_PAIR) {
 			P(g, p).b.pri = ffff_m30_get_d(1.22305).u + i;
 			P(g, p).b.qty = ffff_m30_get_d(13.0).u + i;
 			P(g, p).a.pri = ffff_m30_get_d(1.22309).u + i;
 			P(g, p).a.qty = ffff_m30_get_d(13.0).u + i;
 		}
 
-		if ((p = find_pair(g, AUDUSD)) != NULL_PAIR) {
+		if ((p = ccyg_find_pair(g, AUDUSD)) != NULL_PAIR) {
 			P(g, p).b.pri = ffff_m30_get_d(1.0250).u + i;
 			P(g, p).b.qty = ffff_m30_get_d(11.0).u + i;
 			P(g, p).a.pri = ffff_m30_get_d(1.02517).u + i;
 			P(g, p).a.qty = ffff_m30_get_d(13.0).u + i;
 		}
 
-		if ((p = find_pair(
+		if ((p = ccyg_find_pair(
 			     g, (struct pair_s){ISO_4217_AUD, ISO_4217_EUR})) !=
 		    NULL_PAIR) {
 			recomp_path(g, (gpath_def_t)p);

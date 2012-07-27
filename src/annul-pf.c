@@ -24,6 +24,8 @@
 #include "match.h"
 #include "nifty.h"
 
+#include "ccy-graph.h"
+
 struct xmpl_s {
 	ud_chan_t ud_ox;
 	ud_chan_t ud_pf;
@@ -373,6 +375,98 @@ pr_pos_rpt(char *buf, size_t bsz)
 	return;
 }
 
+static struct pair_s ccyp[64];
+static struct sl1t_s ccyb[64];
+static struct sl1t_s ccya[64];
+
+static void
+pr_qmeta(char *buf, size_t bsz)
+{
+	struct udpc_seria_s ser[1];
+	uint8_t tag;
+
+	udpc_seria_init(ser, buf, bsz);
+	while (ser->msgoff < bsz && (tag = udpc_seria_tag(ser))) {
+		uint16_t id;
+
+		if (UNLIKELY(tag != UDPC_TYPE_UI16)) {
+			break;
+		}
+		/* otherwise find us the id */
+		id = udpc_seria_des_ui16(ser);
+		/* next up is the symbol */
+		tag = udpc_seria_tag(ser);
+		if (LIKELY(tag == UDPC_TYPE_STR && id < countof(ccyp))) {
+			/* fuck error checking */
+			const char *p;
+
+			(void)udpc_seria_des_str(ser, &p);
+			ccyp[id].bas = find_iso_4217_by_name(p);
+			switch (*(p += 3)) {
+			case '.':
+			case '/':
+				p++;
+			default:
+				break;
+			}
+			ccyp[id].trm = find_iso_4217_by_name(p);
+		}
+	}
+	return;
+}
+
+static void
+pr_quote(char *buf, size_t bsz)
+{
+	for (scom_t sp = (void*)buf, ep = (void*)(buf + bsz);
+	     sp < ep;
+	     sp += scom_tick_size(sp) *
+		     (sizeof(struct sndwch_s) / sizeof(*sp))) {
+		uint16_t ttf = scom_thdr_ttf(sp);
+		uint16_t id = scom_thdr_tblidx(sp);
+		const_sl1t_t l1t;
+
+		l1t = (const void*)sp;
+		switch (ttf) {
+		case SL1T_TTF_BID:
+			ccyb[id] = *l1t;
+			break;
+		case SL1T_TTF_ASK:
+			ccya[id] = *l1t;
+			break;
+		case SL1T_TTF_TRA:
+		case SL1T_TTF_FIX:
+		case SL1T_TTF_STL:
+		case SL1T_TTF_AUC:
+			break;
+		case SL1T_TTF_VOL:
+		case SL1T_TTF_VPR:
+		case SL1T_TTF_OI:
+			break;
+
+			/* snaps */
+		case SSNP_FLAVOUR:
+		case SBAP_FLAVOUR:
+			break;
+
+			/* candles */
+		case SL1T_TTF_BID | SCOM_FLAG_LM:
+		case SL1T_TTF_ASK | SCOM_FLAG_LM:
+		case SL1T_TTF_TRA | SCOM_FLAG_LM:
+		case SL1T_TTF_FIX | SCOM_FLAG_LM:
+		case SL1T_TTF_STL | SCOM_FLAG_LM:
+		case SL1T_TTF_AUC | SCOM_FLAG_LM:
+			break;
+
+		case SCOM_TTF_UNK:
+		default:
+			break;
+		}
+	}
+	return;
+}
+
+
 static void
 muca_cb(const struct xmpl_s *UNUSED(ctx), int s)
 {
@@ -398,6 +492,13 @@ muca_cb(const struct xmpl_s *UNUSED(ctx), int s)
 		}
 		break;
 	}
+	case QMETA_RPL:
+		pr_qmeta(UDPC_PAYLOAD(buf), UDPC_PAYLLEN(nrd));
+		break;
+	case UTE:
+		/* ooooh a quote, how lovely */
+		pr_quote(UDPC_PAYLOAD(buf), UDPC_PAYLLEN(nrd));
+		break;
 	case POS_RPT:
 	case POS_RPT_RPL: {
 		/* great, fix message parsing */
@@ -439,14 +540,17 @@ work(const struct xmpl_s *ctx)
 {
 	while (1) {
 		struct timeval tv[2];
-		struct epoll_event ev[1];
+		struct epoll_event ev[4];
 		udpc_seria_t ser;
 		int slp = 1000;
+		int nwt;
 
 		gettimeofday(tv + 0, NULL);
-		while (epoll_wait(ctx->epfd, ev, 1, slp)) {
-			if (ev->events & EPOLLIN) {
-				muca_cb(ctx, ev->data.fd);
+		while ((nwt = epoll_wait(ctx->epfd, ev, countof(ev), slp))) {
+			for (int i = 0; i < nwt; i++) {
+				if (ev[i].events & EPOLLIN) {
+					muca_cb(ctx, ev[i].data.fd);
+				}
 			}
 			/* compute the new waiting time */
 			gettimeofday(tv + 1, NULL);
@@ -456,6 +560,7 @@ work(const struct xmpl_s *ctx)
 				slp = 0;
 			}
 		}
+
 		/* check all positions */
 		if ((ser = check_poss(ctx))) {
 			/* first off announce ourselves */

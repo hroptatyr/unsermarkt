@@ -273,6 +273,8 @@ tk_example_LDFLAGS += $(unserding_LIBS)
 
 noinst_PROGRAMS += annul-pf
 annul_pf_SOURCES = annul-pf.c
+annul_pf_SOURCES += iso4217.c iso4217.h
+annul_pf_SOURCES += ccy-graph.h
 annul_pf_CPPFLAGS = $(AM_CPPFLAGS)
 annul_pf_CPPFLAGS += $(uterus_CFLAGS)
 annul_pf_CPPFLAGS += $(unserding_CFLAGS)

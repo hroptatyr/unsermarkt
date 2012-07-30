@@ -92,8 +92,6 @@ void *logerr;
 
 typedef struct my_tws_s *my_tws_t;
 
-typedef void *tws_instr_t;
-
 typedef unsigned int tws_oid_t;
 
 typedef struct ctx_s *ctx_t;
@@ -102,6 +100,7 @@ typedef struct quo_s *quo_t;
 typedef struct quo_qqq_s *quo_qqq_t;
 typedef struct q30_s q30_t;
 typedef double q30_pack_t[4];
+typedef double qty_pack_t[2];
 
 typedef void *pf_pq_t;
 typedef struct pf_pos_s *pf_pos_t;
@@ -186,6 +185,12 @@ struct quo_sub_s {
 
 	/* actual quotes, this is bid, bsz, ask, asz  */
 	q30_pack_t *quos;
+
+	/* portfolio quantity of this contract */
+	qty_pack_t *qtys;
+
+	/* bitset with subscriptions */
+	uint64_t *subd;
 };
 
 struct quo_s {
@@ -195,7 +200,7 @@ struct quo_s {
 };
 
 struct pf_pos_s {
-	const char *sym;
+	tws_cont_t cont;
 	double lqty;
 	double sqty;
 };
@@ -208,10 +213,7 @@ struct pf_pq_s {
 struct pf_pqpr_s {
 	struct gq_item_s i;
 
-	/* a/c name */
-	char ac[16];
-	/* symbol not as big, but fits in neatly with the 16b a/c identifier */
-	char sym[48];
+	unsigned int iidx;
 	double lqty;
 	double sqty;
 };
@@ -314,6 +316,11 @@ extern int tws_send(my_tws_t);
 
 extern void fix_quot(quo_qq_t, struct quo_s);
 extern void fix_pos_rpt(pf_pq_t, const char *ac, struct pf_pos_s pos);
+
+
+extern void tws_disassemble_instr(tws_cont_t);
+extern int tws_req_ac(my_tws_t, const char *name);
+extern const char *tws_cont_nick(tws_cont_t);
 
 static void
 __attribute__((format(printf, 2, 3)))
@@ -480,6 +487,33 @@ __wrapper::connectionClosed(void)
 	return;
 }
 
+static void
+__asm_cash_ins(IB::Contract *cont, const char *sym)
+{
+	const char *bas = sym;
+	const char *trm;
+
+	if (!strcmp(bas, "EUR") ||
+	    !strcmp(bas, "GBP") ||
+	    !strcmp(bas, "AUD") ||
+	    !strcmp(bas, "NZD")) {
+		trm = "USD";
+	} else if (!strcmp(bas, "USD")) {
+		trm = bas;
+		bas = "EUR";
+	} else {
+		trm = bas;
+		bas = "USD";
+	}
+
+	cont->symbol = std::string(bas);
+	cont->currency = std::string(trm);
+	cont->secType = std::string("CASH");
+	cont->exchange = std::string("FXCONV");
+	cont->primaryExchange = std::string("IDEALPRO");
+	return;
+}
+
 void
 __wrapper::updateAccountValue(
 	const IB::IBString &key, const IB::IBString &val,
@@ -493,11 +527,16 @@ __wrapper::updateAccountValue(
 		const char *cc = ccy.c_str();
 		const char *cv = val.c_str();
 		double pos = strtod(cv, NULL);
-		struct pf_pos_s p = {
-			cc,
-			pos > 0 ? pos : 0.0,
-			pos < 0 ? -pos : 0.0,
-		};
+		struct pf_pos_s p;
+		IB::Contract cont;
+
+		if (!strcmp(cc, "BASE")) {
+			return;
+		}
+		__asm_cash_ins(&cont, cc);
+		p.cont = (void*)&cont;
+		p.lqty = pos > 0 ? pos : 0.0;
+		p.sqty = pos < 0 ? pos : 0.0;
 
 		WRP_DEBUG("acct %s: portfolio %s -> %s", ac, cc, cv);
 		fix_pos_rpt(tws->pq, ac, p);
@@ -514,13 +553,14 @@ __wrapper::updatePortfolio(
 {
 	my_tws_t tws = this->ctx;
 	const char *ac = acct_name.c_str();
-	struct pf_pos_s p = {
-		c.localSymbol.c_str(),
-		pos > 0 ? pos : 0.0,
-		pos < 0 ? -pos : 0.0,
-	};
+	const char *sym = tws_cont_nick((tws_cont_t)&c);
+	struct pf_pos_s p;
 
-	WRP_DEBUG("acct %s: portfolio %s -> %d", ac, p.sym, pos);
+	p.cont = (void*)&c;
+	p.lqty = pos > 0 ? pos : 0.0;
+	p.sqty = pos < 0 ? -pos : 0.0;
+
+	WRP_DEBUG("acct %s: portfolio %s -> %d", ac, sym, pos);
 	fix_pos_rpt(tws->pq, ac, p);
 	return;
 }
@@ -789,7 +829,7 @@ tws_send(my_tws_t foo)
 }
 
 int
-tws_req_quo(my_tws_t foo, unsigned int idx, tws_instr_t i)
+tws_req_quo(my_tws_t foo, unsigned int idx, tws_cont_t ins)
 {
 	IB::EPosixClientSocket *cli = (IB::EPosixClientSocket*)foo->cli;
 	long int real_idx;
@@ -801,7 +841,7 @@ tws_req_quo(my_tws_t foo, unsigned int idx, tws_instr_t i)
 	// we request idx + next_oid
 	real_idx = foo->next_oid + idx;
 	// we just have to assume it works
-	cli->reqMktData(real_idx, *(IB::Contract*)i, std::string(""), false);
+	cli->reqMktData(real_idx, *(IB::Contract*)ins, std::string(""), false);
 	return cli->isSocketOK() ? 0 : -1;
 }
 
@@ -835,9 +875,31 @@ tws_req_ac(my_tws_t foo, const char *name)
 	return cli->isSocketOK() ? 0 : -1;
 }
 
+const char*
+tws_cont_nick(tws_cont_t cont)
+{
+	static char nick[64];
+	IB::Contract *c = (IB::Contract*)cont;
+
+	if (c->localSymbol.length() > 0) {
+		return c->localSymbol.c_str();
+	} else if (c->secType == std::string("CASH")) {
+		const char *bas = c->symbol.c_str();
+		const char *trm = c->currency.c_str();
+
+		if (c->exchange == std::string("FXCONV")) {
+			snprintf(nick, sizeof(nick), "%s", bas);
+		} else {
+			snprintf(nick, sizeof(nick), "%s.%s", bas, trm);
+		}
+		return nick;
+	}
+	return NULL;
+}
+
 
 /* quote subscriptions */
-static struct quo_sub_s subs = {0, 0, 0};
+static struct quo_sub_s subs = {0, 0, 0, 0, 0};
 static utectx_t uu = NULL;
 
 static inline size_t
@@ -898,6 +960,104 @@ undo_subs(my_tws_t)
 
 		subs.nsubs = 0;
 	}
+	return;
+}
+
+static __attribute__((noinline)) void
+resz_subs(unsigned int iidx)
+{
+#if !defined MAP_ANON && defined MAP_ANONYMOUS
+# define MAP_ANON	(MAP_ANONYMOUS)
+#endif	/* !MAP_ANON && MAP_ANONYMOUS */
+#define PROT_MEM	(PROT_READ | PROT_WRITE)
+#define MAP_MEM		(MAP_PRIVATE | MAP_ANON)
+	/* singleton/resizer */
+	size_t new_sz;
+	void *new_;
+
+	/* sort the subs array out first */
+	new_sz = mmap_size(iidx, sizeof(*subs.inss));
+	new_ = mmap(subs.inss, new_sz, PROT_MEM, MAP_MEM, -1, 0);
+	memcpy(new_, subs.inss, subs.nsubs * sizeof(*subs.inss));
+	subs.inss = (typeof(subs.inss))new_;
+
+	/* while we're at it, resize the quos array */
+	/* we should at least accomodate 4 * iidx slots innit? */
+	new_sz = mmap_size(iidx, sizeof(*subs.quos));
+	new_ = mmap(subs.quos, new_sz, PROT_MEM, MAP_MEM, -1, 0);
+	memcpy(new_, subs.quos, subs.nsubs * sizeof(*subs.quos));
+	subs.quos = (typeof(subs.quos))new_;
+
+	new_sz = mmap_size(iidx, sizeof(*subs.qtys));
+	new_ = mmap(subs.qtys, new_sz, PROT_MEM, MAP_MEM, -1, 0);
+	memcpy(new_, subs.qtys, subs.nsubs * sizeof(*subs.qtys));
+	subs.qtys = (typeof(subs.qtys))new_;
+
+	new_sz = mmap_size(iidx, 1);
+	new_ = mmap(subs.subd, new_sz, PROT_MEM, MAP_MEM, -1, 0);
+	memcpy(new_, subs.subd,
+	       (subs.nsubs / 64 + subs.nsubs > 0) * sizeof(*subs.subd));
+	subs.subd = (typeof(subs.subd))new_;
+
+	/* the largest guy determines the number of subs now */
+	subs.nsubs = mmap_size(iidx, sizeof(*subs.quos)) /
+		sizeof(*subs.quos) - 1;
+	return;
+}
+
+static void
+ass_sub_ins(unsigned int iidx, tws_cont_t ins)
+{
+	if (iidx > subs.nsubs) {
+		resz_subs(iidx);
+	}
+	subs.inss[iidx - 1] = ins;
+	ANN_DEBUG("reg'd %s %hu\n", ute_idx2sym(uu, iidx), iidx);
+	return;
+}
+
+static void
+ass_sub_qty(unsigned int iidx, double lqty, double sqty)
+{
+	if (iidx > subs.nsubs) {
+		resz_subs(iidx);
+	}
+	subs.qtys[iidx - 1][0] = lqty;
+	subs.qtys[iidx - 1][1] = sqty;
+	return;
+}
+
+static void
+ass_sub_sub(unsigned int iidx)
+{
+	size_t off = iidx / 64;
+	size_t bit = iidx % 64;
+
+	if (iidx > subs.nsubs) {
+		resz_subs(iidx);
+	}
+	subs.subd[off] |= (1ULL << bit);
+	return;
+}
+
+static int
+sub_sub_p(unsigned int iidx)
+{
+	size_t off = iidx / 64;
+	size_t bit = iidx % 64;
+
+	if (iidx > subs.nsubs) {
+		return 0;
+	}
+	return (subs.subd[off] >> bit) & 1;
+}
+
+static void
+sub_rset_subs(void)
+{
+	size_t off = subs.nsubs / 64;
+
+	memset(subs.subd, 0, (off + subs.nsubs > 0) * sizeof(*subs.subd));
 	return;
 }
 
@@ -971,9 +1131,10 @@ flush_queue(my_tws_t tws)
 
 		for (gq_item_t ip; (ip = gq_pop_head(pq.sbuf));) {
 			pf_pqpr_t pr = (pf_pqpr_t)ip;
+			const char *sym = ute_idx2sym(uu, pr->iidx);
 
-			fprintf(LOGERR, "%s\t%s\t%.4f\t%.4f\n",
-				pr->ac, pr->sym, pr->lqty, pr->sqty);
+			fprintf(LOGERR, "PF\t%s\t%.4f\t%.4f\n",
+				sym, pr->lqty, pr->sqty);
 			tws->pq_cb.cb(tws, pr, tws->pq_cb.clo);
 			gq_push_tail(pq.q->free, ip);
 		}
@@ -1100,26 +1261,66 @@ pop_pr(pf_pq_t the_q)
 }
 
 void
-fix_pos_rpt(pf_pq_t the_q, const char *ac, struct pf_pos_s pos)
+fix_pos_rpt(pf_pq_t the_q, const char*, struct pf_pos_s pos)
 {
 /* shall we rely on c++ code passing us a pointer we handed out earlier? */
-	pf_pqpr_t pr = pop_pr(the_q);
-	struct pf_pq_s *rpq = (struct pf_pq_s*)the_q;
+	const char *sym;
+	unsigned int iidx;
 
-	/* keep a rough note of the account name
-	 * not that it does anything at the mo */
-	strncpy(pr->ac, ac, sizeof(pr->ac));
-	pr->ac[sizeof(pr->ac) - 1] = '\0';
-	/* keep a rough note of the account name
-	 * not that it does anything at the mo */
-	strncpy(pr->sym, pos.sym, sizeof(pr->sym));
-	pr->sym[sizeof(pr->sym) - 1] = '\0';
-	/* and of course our quantities */
-	pr->lqty = pos.lqty;
-	pr->sqty = pos.sqty;
+	/* instrument in question */
+	if ((sym = tws_cont_nick(pos.cont)) == NULL) {
+		;
+	} else if ((iidx = ute_sym2idx(uu, sym)) == 0) {
+		;
+	} else {
+		struct pf_pq_s *rpq = (struct pf_pq_s*)the_q;
+		pf_pqpr_t pr = pop_pr(the_q);
+		
+		pr->iidx = iidx;
+		/* and of course our quantities */
+		pr->lqty = pos.lqty;
+		pr->sqty = pos.sqty;
 
-	gq_push_tail(rpq->sbuf, (gq_item_t)pr);
-	ANN_DEBUG("pushed %p\n", pr);
+		/* quick side-effect */
+		if (iidx > subs.nsubs || subs.inss[iidx - 1] == NULL) {
+			IB::Contract *foo = new IB::Contract;
+
+			ANN_DEBUG("ass_sub_ins %s %u\n", sym, iidx);
+			*foo = *(IB::Contract*)pos.cont;
+			if (foo->exchange == std::string("")) {
+				foo->exchange = foo->primaryExchange;
+			}
+			ass_sub_ins(iidx, foo);
+		}
+
+		gq_push_tail(rpq->sbuf, (gq_item_t)pr);
+		ANN_DEBUG("pushed %p\n", pr);
+	}
+	return;
+}
+
+
+/* custom callbacks */
+static void
+pf_cb(my_tws_t tws, void *pqi, void*)
+{
+	struct pf_pqpr_s *rpqi;
+	unsigned int idx;
+
+	if ((rpqi = (struct pf_pqpr_s*)pqi) == NULL) {
+		;
+	} else if ((idx = rpqi->iidx) == 0) {
+		;
+	} else {
+		ANN_DEBUG("up'ing slot %u\n", idx);
+		ass_sub_qty(idx, rpqi->lqty, rpqi->sqty);
+
+		if (!sub_sub_p(idx)) {
+			ANN_DEBUG("req quotes for %u\n", idx);
+			tws_req_quo(tws, idx, subs.inss[idx - 1]);
+			ass_sub_sub(idx);
+		}
+	}
 	return;
 }
 
@@ -1213,9 +1414,13 @@ prep_cb(EV_P_ ev_prepare *w, int UNUSED(revents))
 
 	} else if (!conndp && tws_connd_p(ctx->tws)) {
 		/* a DREAM i tell ya, let's do our subscriptions */
+		struct my_tws_cb_f ipf = {pf_cb, NULL};
+
 		tws_req_ac(ctx->tws, NULL/*== all_accounts*/);
 		redo_subs(ctx->tws);
 		conndp = 1;
+		ctx->tws->pq_cb = ipf;
+		sub_rset_subs();
 
 	} else {
 		/* check the queue integrity */
@@ -1362,6 +1567,10 @@ main(int argc, char *argv[])
 	if (init_tws(tws) < 0) {
 		res = 1;
 		goto unroll;
+	} else if ((uu = ute_mktemp(0)) == NULL) {
+		/* shall we warn the user about this */
+		res = 1;
+		goto unroll;
 	}
 	/* assign queues and whatnot */
 	tws->pq = &pq;
@@ -1394,8 +1603,11 @@ main(int argc, char *argv[])
 	(void)fini_tws(ctx->tws);
 
 	/* finish the order queue */
+	check_pq();
 	check_qq();
 	fini_gq(qq.q);
+	fini_gq(pq.q);
+	ute_free(uu);
 
 unroll:
 	/* destroy the default evloop */

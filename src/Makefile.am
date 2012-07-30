@@ -283,6 +283,23 @@ annul_pf_LDFLAGS += $(unserding_LIBS)
 annul_pf_LDADD =
 annul_pf_LDADD += -lm
 
+if HAVE_TWSAPI
+noinst_PROGRAMS += annul-virtfx
+annul_virtfx_SOURCES = annul-virtfx.cpp
+annul_virtfx_SOURCES += gq.c gq.h
+annul_virtfx_CPPFLAGS = $(AM_CPPFLAGS)
+annul_virtfx_CPPFLAGS += $(uterus_CFLAGS)
+annul_virtfx_CPPFLAGS += $(twsapi_CFLAGS)
+annul_virtfx_CPPFLAGS += $(libev_CFLAGS)
+annul_virtfx_LDFLAGS = $(AM_LDFLAGS)
+annul_virtfx_LDFLAGS += $(uterus_LIBS)
+annul_virtfx_LDFLAGS += $(twsapi_LIBS) -lstdc++
+annul_virtfx_LDFLAGS += $(libev_LIBS)
+annul_virtfx_LDADD =
+annul_virtfx_LDADD += -lm
+annul_virtfx_LINK = $(LINK) $(annul_virtfx_LDFLAGS)
+endif  HAVE_TWSAPI
+
 
 if HAVE_EXPAT
 if HAVE_GPERF

@@ -1116,7 +1116,7 @@ flush_queue(my_tws_t tws)
 				continue;
 			}
 
-			fprintf(LOGERR, "QQ\t%hu\t%hu\t%.6f\t%.6f\n",
+			ANN_DEBUG("QQ\t%hu\t%hu\t%.6f\t%.6f\n",
 				tblidx, ttf,
 				subs.quos[tblidx - 1][q30_typ(q->q)],
 				subs.quos[tblidx - 1][q30_typ(q->q) + 1]);
@@ -1124,22 +1124,32 @@ flush_queue(my_tws_t tws)
 		}
 		/* one more to denote the ending */
 		tws->qq_cb.cb(tws, NULL, tws->qq_cb.clo);
+	} else if (rqq->sbuf->i1st) {
+		for (gq_item_t ip; (ip = gq_pop_head(rqq->sbuf));
+		     gq_push_tail(qq.q->free, ip)) {
+			ANN_DEBUG("QQ\t%p\n", ip);
+		}
 	}
 
 	if (tws->pq_cb.cb && rpq->sbuf->i1st) {
 		tws->pq_cb.cb(tws, NULL, tws->pq_cb.clo);
 
-		for (gq_item_t ip; (ip = gq_pop_head(pq.sbuf));) {
+		for (gq_item_t ip; (ip = gq_pop_head(pq.sbuf));
+		     gq_push_tail(rpq->q->free, ip)) {
 			pf_pqpr_t pr = (pf_pqpr_t)ip;
 			const char *sym = ute_idx2sym(uu, pr->iidx);
 
 			fprintf(LOGERR, "PF\t%s\t%.4f\t%.4f\n",
 				sym, pr->lqty, pr->sqty);
 			tws->pq_cb.cb(tws, pr, tws->pq_cb.clo);
-			gq_push_tail(pq.q->free, ip);
 		}
 		/* one more to say we're finished */
 		tws->pq_cb.cb(tws, NULL, tws->pq_cb.clo);
+	} else if (rpq->sbuf->i1st) {
+		for (gq_item_t ip; (ip = gq_pop_head(pq.sbuf));
+		     gq_push_tail(rpq->q->free, ip)) {
+			ANN_DEBUG("PF\t%p\n", ip);
+		}
 	}
 	return;
 }

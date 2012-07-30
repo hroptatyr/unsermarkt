@@ -132,6 +132,11 @@ struct ctx_s {
 	int tws_sock;
 };
 
+struct my_tws_cb_f {
+	void(*cb)(my_tws_t, void*, void *clo);
+	void *clo;
+};
+
 struct my_tws_s {
 	tws_oid_t next_oid;
 	unsigned int time;
@@ -139,6 +144,9 @@ struct my_tws_s {
 	void *cli;
 	pf_pq_t pq;
 	quo_qq_t qq;
+
+	struct my_tws_cb_f pq_cb;
+	struct my_tws_cb_f qq_cb;
 };
 
 struct comp_s {
@@ -935,40 +943,48 @@ q30_sl1t_typ(q30_t q)
 }
 
 static void
-flush_queue(my_tws_t UNUSED(tws))
+flush_queue(my_tws_t tws)
 {
-	struct sl1t_s l1t[1];
-	struct timeval now[1];
+	struct quo_qq_s *rqq = (struct quo_qq_s*)tws->qq;
+	struct pf_pq_s *rpq = (struct pf_pq_s*)tws->pq;
 
-	/* time */
-	gettimeofday(now, NULL);
+	if (tws->qq_cb.cb && rqq->sbuf->i1st) {
+		tws->qq_cb.cb(tws, NULL, tws->qq_cb.clo);
 
-	/* populate l1t somewhat */
-	sl1t_set_stmp_sec(l1t, now->tv_sec);
-	sl1t_set_stmp_msec(l1t, now->tv_usec / 1000);
+		for (gq_item_t ip; (ip = gq_pop_head(rqq->sbuf));
+		     gq_push_tail(qq.q->free, ip)) {
+			quo_qqq_t q = (quo_qqq_t)ip;
+			uint16_t tblidx;
+			unsigned int ttf;
 
-	for (gq_item_t ip; (ip = gq_pop_head(qq.sbuf));
-	     gq_push_tail(qq.q->free, ip)) {
-		quo_qqq_t q = (quo_qqq_t)ip;
-		uint16_t tblidx;
-		unsigned int ttf;
+			if ((tblidx = q30_idx(q->q)) == 0 ||
+			    (ttf = q30_sl1t_typ(q->q)) == SCOM_TTF_UNK) {
+				continue;
+			}
 
-		if ((tblidx = q30_idx(q->q)) == 0 ||
-		    (ttf = q30_sl1t_typ(q->q)) == SCOM_TTF_UNK) {
-			continue;
-		} else if (subs.quos[tblidx - 1][q30_typ(q->q)] == 0.0) {
-			continue;
+			fprintf(LOGERR, "QQ\t%hu\t%hu\t%.6f\t%.6f\n",
+				tblidx, ttf,
+				subs.quos[tblidx - 1][q30_typ(q->q)],
+				subs.quos[tblidx - 1][q30_typ(q->q) + 1]);
+			tws->qq_cb.cb(tws, q, tws->qq_cb.clo);
 		}
-		/* the typ was designed to coincide with ute's sl1t types */
-		sl1t_set_ttf(l1t, ttf);
-		sl1t_set_tblidx(l1t, tblidx);
+		/* one more to denote the ending */
+		tws->qq_cb.cb(tws, NULL, tws->qq_cb.clo);
+	}
 
-		l1t->pri = ffff_m30_get_d(
-			subs.quos[tblidx - 1][q30_typ(q->q)]).u;
-		l1t->qty = ffff_m30_get_d(
-			subs.quos[tblidx - 1][q30_typ(q->q) + 1]).u;
+	if (tws->pq_cb.cb && rpq->sbuf->i1st) {
+		tws->pq_cb.cb(tws, NULL, tws->pq_cb.clo);
 
-		fprintf(LOGERR, "%hu  %u  %u\n", ttf, l1t->pri, l1t->qty);
+		for (gq_item_t ip; (ip = gq_pop_head(pq.sbuf));) {
+			pf_pqpr_t pr = (pf_pqpr_t)ip;
+
+			fprintf(LOGERR, "%s\t%s\t%.4f\t%.4f\n",
+				pr->ac, pr->sym, pr->lqty, pr->sqty);
+			tws->pq_cb.cb(tws, pr, tws->pq_cb.clo);
+			gq_push_tail(pq.q->free, ip);
+		}
+		/* one more to say we're finished */
+		tws->pq_cb.cb(tws, NULL, tws->pq_cb.clo);
 	}
 	return;
 }
@@ -1208,6 +1224,7 @@ prep_cb(EV_P_ ev_prepare *w, int UNUSED(revents))
 
 	} else {
 		/* check the queue integrity */
+		check_pq();
 		check_qq();
 
 		/* maybe we've got something up our sleeve */
@@ -1215,9 +1232,12 @@ prep_cb(EV_P_ ev_prepare *w, int UNUSED(revents))
 	}
 
 	/* and check the queue's integrity again */
+	check_pq();
 	check_qq();
 
-	ANN_DEBUG("queue %zu\n", qq.q->nitems / sizeof(struct quo_qqq_s));
+	ANN_DEBUG("prep %zu %zu\n",
+		  qq.q->nitems / sizeof(struct quo_qqq_s),
+		  pq.q->nitems / sizeof(struct pf_pqpr_s));
 	return;
 }
 
@@ -1343,6 +1363,7 @@ main(int argc, char *argv[])
 	ev_signal_init(sighup_watcher, sigall_cb, SIGHUP);
 	ev_signal_start(EV_A_ sighup_watcher);
 
+	memset(tws, 0, sizeof(*tws));
 	if (init_tws(tws) < 0) {
 		res = 1;
 		goto unroll;

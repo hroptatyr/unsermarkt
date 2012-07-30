@@ -103,6 +103,10 @@ typedef struct quo_qqq_s *quo_qqq_t;
 typedef struct q30_s q30_t;
 typedef double q30_pack_t[4];
 
+typedef void *pf_pq_t;
+typedef struct pf_pos_s *pf_pos_t;
+typedef struct pf_pqpr_s *pf_pqpr_t;
+
 typedef enum {
 	QUO_TYP_UNK,
 	QUO_TYP_BID,
@@ -133,7 +137,8 @@ struct my_tws_s {
 	unsigned int time;
 	void *wrp;
 	void *cli;
-	void *qq;
+	pf_pq_t pq;
+	quo_qq_t qq;
 };
 
 struct comp_s {
@@ -179,6 +184,28 @@ struct quo_s {
 	uint16_t idx;
 	quo_typ_t typ;
 	double val;
+};
+
+struct pf_pos_s {
+	const char *sym;
+	double lqty;
+	double sqty;
+};
+
+struct pf_pq_s {
+	struct gq_s q[1];
+	struct gq_ll_s sbuf[1];
+};
+
+struct pf_pqpr_s {
+	struct gq_item_s i;
+
+	/* a/c name */
+	char ac[16];
+	/* symbol not as big, but fits in neatly with the 16b a/c identifier */
+	char sym[48];
+	double lqty;
+	double sqty;
 };
 
 class __wrapper: public IB::EWrapper
@@ -278,6 +305,7 @@ extern int tws_recv(my_tws_t);
 extern int tws_send(my_tws_t);
 
 extern void fix_quot(quo_qq_t, struct quo_s);
+extern void fix_pos_rpt(pf_pq_t, const char *ac, struct pf_pos_s pos);
 
 static void
 __attribute__((format(printf, 2, 3)))
@@ -449,12 +477,23 @@ __wrapper::updateAccountValue(
 	const IB::IBString &key, const IB::IBString &val,
 	const IB::IBString &ccy, const IB::IBString &acct_name)
 {
-	const char *ca = acct_name.c_str();
+	my_tws_t tws = this->ctx;
 	const char *ck = key.c_str();
-	const char *cv = val.c_str();
-	const char *cc = ccy.c_str();
 
-	WRP_DEBUG("acct %s: %s <- %s %s", ca, ck, cv, cc);
+	if (strcmp(ck, "CashBalance") == 0) {
+		const char *ac = acct_name.c_str();
+		const char *cc = ccy.c_str();
+		const char *cv = val.c_str();
+		double pos = strtod(cv, NULL);
+		struct pf_pos_s p = {
+			cc,
+			pos > 0 ? pos : 0.0,
+			pos < 0 ? -pos : 0.0,
+		};
+
+		WRP_DEBUG("acct %s: portfolio %s -> %s", ac, cc, cv);
+		fix_pos_rpt(tws->pq, ac, p);
+	}
 	return;
 }
 
@@ -465,6 +504,16 @@ __wrapper::updatePortfolio(
 	double, double,
 	const IB::IBString &acct_name)
 {
+	my_tws_t tws = this->ctx;
+	const char *ac = acct_name.c_str();
+	struct pf_pos_s p = {
+		c.localSymbol.c_str(),
+		pos > 0 ? pos : 0.0,
+		pos < 0 ? -pos : 0.0,
+	};
+
+	WRP_DEBUG("acct %s: portfolio %s -> %d", ac, p.sym, pos);
+	fix_pos_rpt(tws->pq, ac, p);
 	return;
 }
 
@@ -607,6 +656,7 @@ void
 __wrapper::currentTime(long int time)
 {
 	WRP_DEBUG("current_time <- %ld", time);
+	this->ctx->time = time;
 	return;
 }
 
@@ -751,7 +801,7 @@ int
 tws_connd_p(my_tws_t foo)
 {
 /* inspect TWS and return non-nil if requests to the tws can be made */
-	return foo->next_oid;
+	return foo->next_oid && foo->time;
 }
 
 // contract stuff
@@ -765,6 +815,16 @@ tws_disassemble_instr(tws_cont_t ins)
 		delete ibi;
 	}
 	return;
+}
+
+int
+tws_req_ac(my_tws_t foo, const char *name)
+{
+	IB::EPosixClientSocket *cli = (IB::EPosixClientSocket*)foo->cli;
+	IB::IBString ac = std::string(name ?: "");
+
+	cli->reqAccountUpdates(true, ac);
+	return cli->isSocketOK() ? 0 : -1;
 }
 
 
@@ -784,17 +844,17 @@ mmap_size(size_t nelem, size_t elemsz)
 }
 
 static void
-init_subs(const char*)
-{
-	return;
-}
-
-static void
 redo_subs(my_tws_t tws)
 {
 	if (UNLIKELY(tws == NULL)) {
 		/* stop ourselves */
 		goto del_req;
+	}
+
+	if (subs.nsubs == 0) {
+		ANN_DEBUG("need to find some subs\n");
+		tws_req_ac(tws, NULL/*== all_accounts*/);
+		return;
 	}
 
 	/* and finally call the a/c requester */
@@ -842,6 +902,7 @@ undo_subs(my_tws_t)
 
 /* quoting queue */
 static struct quo_qq_s qq = {0, 0, 0, 0, 0, 0};
+static struct pf_pq_s pq = {0, 0, 0, 0, 0, 0};
 
 static inline q30_t
 make_q30(uint16_t iidx, quo_typ_t t)
@@ -933,31 +994,33 @@ check_qq(void)
 }
 
 static quo_qqq_t
-pop_q(void)
+pop_q(quo_qq_t the_q)
 {
 	quo_qqq_t res;
+	struct quo_qq_s *rqq = (struct quo_qq_s*)the_q;
 
-	if (qq.q->free->i1st == NULL) {
-		size_t nitems = qq.q->nitems / sizeof(*res);
+	if (rqq->q->free->i1st == NULL) {
+		size_t nitems = rqq->q->nitems / sizeof(*res);
 		ptrdiff_t df;
 
-		assert(qq.q->free->ilst == NULL);
+		assert(rqq->q->free->ilst == NULL);
 		ANN_DEBUG("QQ RESIZE -> %zu\n", nitems + 64);
-		df = init_gq(qq.q, sizeof(*res), nitems + 64);
-		gq_rbld_ll(qq.sbuf, df);
+		df = init_gq(rqq->q, sizeof(*res), nitems + 64);
+		gq_rbld_ll(rqq->sbuf, df);
 		check_qq();
 	}
 	/* get us a new client and populate the object */
-	res = (quo_qqq_t)gq_pop_head(qq.q->free);
+	res = (quo_qqq_t)gq_pop_head(rqq->q->free);
 	memset(res, 0, sizeof(*res));
 	return res;
 }
 
 void
-fix_quot(quo_qq_t UNUSED(qq_unused), struct quo_s q)
+fix_quot(quo_qq_t the_q, struct quo_s q)
 {
 /* shall we rely on c++ code passing us a pointer we handed out earlier? */
 	q30_t tgt;
+	struct quo_qq_s *rqq = (struct quo_qq_s*)the_q;
 
 	/* use the dummy ute file to do the sym2idx translation */
 	if (q.idx == 0) {
@@ -975,13 +1038,78 @@ fix_quot(quo_qq_t UNUSED(qq_unused), struct quo_s q)
 	subs.quos[tgt.idx - 1][tgt.typ] = q.val;
 	/* ... and push a reminder on the queue */
 	{
-		quo_qqq_t qi = pop_q();
+		quo_qqq_t qi = pop_q(the_q);
 
 		qi->q = tgt;
 		qi->q.subtyp = 0UL;
-		gq_push_tail(qq.sbuf, (gq_item_t)qi);
+		gq_push_tail(rqq->sbuf, (gq_item_t)qi);
 		ANN_DEBUG("pushed %p\n", qi);
 	}
+	return;
+}
+
+static void
+check_pq(void)
+{
+#if defined DEBUG_FLAG
+	/* count all items */
+	size_t ni = 0;
+
+	for (gq_item_t ip = pq.q->free->i1st; ip; ip = ip->next, ni++);
+	for (gq_item_t ip = pq.sbuf->i1st; ip; ip = ip->next, ni++);
+	assert(ni == pq.q->nitems / sizeof(struct pf_pqpr_s));
+
+	ni = 0;
+	for (gq_item_t ip = pq.q->free->ilst; ip; ip = ip->prev, ni++);
+	for (gq_item_t ip = pq.sbuf->ilst; ip; ip = ip->prev, ni++);
+	assert(ni == pq.q->nitems / sizeof(struct pf_pqpr_s));
+#endif	/* DEBUG_FLAG */
+	return;
+}
+
+static pf_pqpr_t
+pop_pr(pf_pq_t the_q)
+{
+	pf_pqpr_t res;
+	struct pf_pq_s *rpq = (struct pf_pq_s*)the_q;
+
+	if (rpq->q->free->i1st == NULL) {
+		size_t nitems = rpq->q->nitems / sizeof(*res);
+		ptrdiff_t df;
+
+		assert(rpq->q->free->ilst == NULL);
+		ANN_DEBUG("PQ RESIZE -> %zu\n", nitems + 64);
+		df = init_gq(rpq->q, sizeof(*res), nitems + 64);
+		gq_rbld_ll(rpq->sbuf, df);
+		check_pq();
+	}
+	/* get us a new client and populate the object */
+	res = (pf_pqpr_t)gq_pop_head(rpq->q->free);
+	memset(res, 0, sizeof(*res));
+	return res;
+}
+
+void
+fix_pos_rpt(pf_pq_t the_q, const char *ac, struct pf_pos_s pos)
+{
+/* shall we rely on c++ code passing us a pointer we handed out earlier? */
+	pf_pqpr_t pr = pop_pr(the_q);
+	struct pf_pq_s *rpq = (struct pf_pq_s*)the_q;
+
+	/* keep a rough note of the account name
+	 * not that it does anything at the mo */
+	strncpy(pr->ac, ac, sizeof(pr->ac));
+	pr->ac[sizeof(pr->ac) - 1] = '\0';
+	/* keep a rough note of the account name
+	 * not that it does anything at the mo */
+	strncpy(pr->sym, pos.sym, sizeof(pr->sym));
+	pr->sym[sizeof(pr->sym) - 1] = '\0';
+	/* and of course our quantities */
+	pr->lqty = pos.lqty;
+	pr->sqty = pos.sqty;
+
+	gq_push_tail(rpq->sbuf, (gq_item_t)pr);
+	ANN_DEBUG("pushed %p\n", pr);
 	return;
 }
 
@@ -1219,6 +1347,9 @@ main(int argc, char *argv[])
 		res = 1;
 		goto unroll;
 	}
+	/* assign queues and whatnot */
+	tws->pq = &pq;
+	tws->qq = &qq;
 	/* prepare the context */
 	ctx->tws = tws;
 	ctx->tws_sock = -1;
@@ -1226,10 +1357,6 @@ main(int argc, char *argv[])
 	prp->data = ctx;
 	ev_prepare_init(prp, prep_cb);
 	ev_prepare_start(EV_A_ prp);
-
-	for (unsigned int i = 0; i < argi->inputs_num; i++) {
-		init_subs(argi->inputs[i]);
-	}
 
 	/* and just before we're entering that REPL check for daemonisation */
 	if (argi->daemonise_given && detach() < 0) {

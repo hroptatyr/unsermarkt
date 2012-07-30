@@ -91,6 +91,7 @@
 void *logerr;
 
 typedef struct my_tws_s *my_tws_t;
+typedef void *tws_order_t;
 
 typedef unsigned int tws_oid_t;
 
@@ -191,6 +192,8 @@ struct quo_sub_s {
 
 	/* bitset with subscriptions */
 	uint64_t *subd;
+
+	tws_order_t *ords;
 };
 
 struct quo_s {
@@ -316,6 +319,7 @@ extern int tws_send(my_tws_t);
 
 extern void fix_quot(quo_qq_t, struct quo_s);
 extern void fix_pos_rpt(pf_pq_t, const char *ac, struct pf_pos_s pos);
+extern void fix_alloc_rpt(void*, tws_oid_t, unsigned int msg, tws_oid_t);
 
 
 extern void tws_disassemble_instr(tws_cont_t);
@@ -451,11 +455,15 @@ __wrapper::tickEFP(
 
 void
 __wrapper::orderStatus(
-	IB::OrderId, const IB::IBString&,
-	int, int, double, int,
+	IB::OrderId oid, const IB::IBString &status,
+	int, int, double, int perm_id,
 	int, double, int,
 	const IB::IBString&)
 {
+	WRP_DEBUG("order status: %li  %s\n", oid, status.c_str());
+	if (status == std::string("Filled")) {
+		fix_alloc_rpt(NULL, oid, 1/*FILL*/, perm_id);
+	}
 	return;
 }
 
@@ -881,7 +889,9 @@ tws_cont_nick(tws_cont_t cont)
 	static char nick[64];
 	IB::Contract *c = (IB::Contract*)cont;
 
-	if (c->localSymbol.length() > 0) {
+	if (c == NULL) {
+		;
+	} else if (c->localSymbol.length() > 0) {
 		return c->localSymbol.c_str();
 	} else if (c->secType == std::string("CASH")) {
 		const char *bas = c->symbol.c_str();
@@ -897,9 +907,31 @@ tws_cont_nick(tws_cont_t cont)
 	return NULL;
 }
 
+int
+tws_put_order(my_tws_t tws, tws_cont_t c, tws_order_t o)
+{
+	IB::EPosixClientSocket *cli = (IB::EPosixClientSocket*)tws->cli;
+	IB::Contract *__c = (IB::Contract*)c;
+	IB::Order *__o = (IB::Order*)o;
+
+	/* quickly ctor the ib order on the fly */
+	if (__o->orderId == 0) {
+		__o->orderId = tws->next_oid++;
+	}
+
+	if (__o->action == std::string("CANCEL")) {
+		__o->totalQuantity = 0;
+		cli->cancelOrder(__o->orderId);
+	} else {
+		ANN_DEBUG("placing order %li\n", __o->orderId);
+		cli->placeOrder(__o->orderId, *__c, *__o);
+	}
+	return cli->isSocketOK() ? 0 : -1;
+}
+
 
 /* quote subscriptions */
-static struct quo_sub_s subs = {0, 0, 0, 0, 0};
+static struct quo_sub_s subs = {0, 0, 0, 0, 0, 0};
 static utectx_t uu = NULL;
 
 static inline size_t
@@ -980,6 +1012,11 @@ resz_subs(unsigned int iidx)
 	new_ = mmap(subs.inss, new_sz, PROT_MEM, MAP_MEM, -1, 0);
 	memcpy(new_, subs.inss, subs.nsubs * sizeof(*subs.inss));
 	subs.inss = (typeof(subs.inss))new_;
+
+	new_sz = mmap_size(iidx, sizeof(*subs.ords));
+	new_ = mmap(subs.ords, new_sz, PROT_MEM, MAP_MEM, -1, 0);
+	memcpy(new_, subs.ords, subs.nsubs * sizeof(*subs.ords));
+	subs.ords = (typeof(subs.ords))new_;
 
 	/* while we're at it, resize the quos array */
 	/* we should at least accomodate 4 * iidx slots innit? */
@@ -1096,6 +1133,17 @@ q30_sl1t_typ(q30_t q)
 	return q30_typ(q) / 2 + SL1T_TTF_BID;
 }
 
+static double
+calc_qty(double pos)
+{
+#define LOT_SIZE	(100000.0)
+	double res = fmod(pos, LOT_SIZE);
+	if (res < 60000.0) {
+		res += LOT_SIZE;
+	}
+	return res;
+}
+
 static void
 flush_queue(my_tws_t tws)
 {
@@ -1149,6 +1197,43 @@ flush_queue(my_tws_t tws)
 		for (gq_item_t ip; (ip = gq_pop_head(pq.sbuf));
 		     gq_push_tail(rpq->q->free, ip)) {
 			ANN_DEBUG("PF\t%p\n", ip);
+		}
+	}
+
+	/* generate orders */
+	for (size_t i = 1; i <= subs.nsubs; i++) {
+		tws_order_t o;
+
+		if (UNLIKELY((o = subs.ords[i - 1]) == NULL)) {
+			double lqty = subs.qtys[i - 1][0];
+			double sqty = subs.qtys[i - 1][1];
+			tws_cont_t c;
+			const char *nick = tws_cont_nick(subs.inss[i - 1]);
+			IB::Order *x;
+
+			if (lqty >= 10000.0) {
+				lqty = calc_qty(lqty);
+				ANN_DEBUG("SELL %zu %.4f %s\n", i, lqty, nick);
+
+				x = new IB::Order;
+				x->action = std::string("SELL");
+				x->orderType = std::string("MKT");
+				x->totalQuantity = (long int)lqty;
+			} else if (sqty >= 10000.0) {
+				sqty = calc_qty(sqty);
+				ANN_DEBUG("BUY  %zu %.4f %s\n", i, sqty, nick);
+
+				x = new IB::Order;
+				x->action = std::string("BUY");
+				x->orderType = std::string("MKT");
+				x->totalQuantity = (long int)sqty;
+			} else {
+				continue;
+			}
+			/* place order */
+			subs.ords[i - 1] = o = (tws_order_t)x;
+			c = subs.inss[i - 1];
+			tws_put_order(tws, c, o);
 		}
 	}
 	return;
@@ -1305,6 +1390,28 @@ fix_pos_rpt(pf_pq_t the_q, const char*, struct pf_pos_s pos)
 
 		gq_push_tail(rpq->sbuf, (gq_item_t)pr);
 		ANN_DEBUG("pushed %p\n", pr);
+	}
+	return;
+}
+
+void
+fix_alloc_rpt(void*, tws_oid_t oid, unsigned int msg, tws_oid_t perm)
+{
+	if (msg != 1/*FILL*/) {
+		return;
+	}
+	for (size_t i = 1; i <= subs.nsubs; i++) {
+		tws_order_t o;
+
+		if ((o = subs.ords[i - 1]) != NULL) {
+			IB::Order *ro = (IB::Order*)o;
+
+			if (ro->orderId == oid) {
+				delete ro;
+				subs.ords[i - 1] = NULL;
+				break;
+			}
+		}
 	}
 	return;
 }

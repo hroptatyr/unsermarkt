@@ -1147,6 +1147,9 @@ calc_qty(double pos)
 static void
 flush_queue(my_tws_t tws)
 {
+	static time_t last_blast = 0;
+	struct timeval now[1];
+
 	struct quo_qq_s *rqq = (struct quo_qq_s*)tws->qq;
 	struct pf_pq_s *rpq = (struct pf_pq_s*)tws->pq;
 
@@ -1201,13 +1204,20 @@ flush_queue(my_tws_t tws)
 	}
 
 	/* generate orders */
+	gettimeofday(now, NULL);
+
+	if (last_blast + 2 > now->tv_sec) {
+		return;
+	}
 	for (size_t i = 1; i <= subs.nsubs; i++) {
 		tws_order_t o;
+		tws_cont_t c;
 
-		if (UNLIKELY((o = subs.ords[i - 1]) == NULL)) {
+		if (UNLIKELY((c = subs.inss[i - 1]) == NULL)) {
+			continue;
+		} else if (UNLIKELY((o = subs.ords[i - 1]) == NULL)) {
 			double lqty = subs.qtys[i - 1][0];
 			double sqty = subs.qtys[i - 1][1];
-			tws_cont_t c;
 			const char *nick = tws_cont_nick(subs.inss[i - 1]);
 			IB::Order *x;
 
@@ -1232,10 +1242,19 @@ flush_queue(my_tws_t tws)
 			}
 			/* place order */
 			subs.ords[i - 1] = o = (tws_order_t)x;
-			c = subs.inss[i - 1];
 			tws_put_order(tws, c, o);
+		} else {
+			IB::Order *x = (IB::Order*)o;
+
+			x->action = std::string("CANCEL");
+			x->totalQuantity = 0;
+			tws_put_order(tws, c, o);
+
+			delete x;
+			subs.ords[i - 1] = NULL;
 		}
 	}
+	last_blast = now->tv_sec;
 	return;
 }
 

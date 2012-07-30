@@ -859,12 +859,6 @@ redo_subs(my_tws_t tws)
 		goto del_req;
 	}
 
-	if (subs.nsubs == 0) {
-		ANN_DEBUG("need to find some subs\n");
-		tws_req_ac(tws, NULL/*== all_accounts*/);
-		return;
-	}
-
 	/* and finally call the a/c requester */
 	for (unsigned int i = 1; i <= subs.nsubs; i++) {
 		if (subs.inss[i - 1] == NULL) {
@@ -1219,6 +1213,7 @@ prep_cb(EV_P_ ev_prepare *w, int UNUSED(revents))
 
 	} else if (!conndp && tws_connd_p(ctx->tws)) {
 		/* a DREAM i tell ya, let's do our subscriptions */
+		tws_req_ac(ctx->tws, NULL/*== all_accounts*/);
 		redo_subs(ctx->tws);
 		conndp = 1;
 

@@ -536,7 +536,7 @@ __wrapper::updateAccountValue(
 		__asm_cash_ins(&cont, cc);
 		p.cont = (void*)&cont;
 		p.lqty = pos > 0 ? pos : 0.0;
-		p.sqty = pos < 0 ? pos : 0.0;
+		p.sqty = pos < 0 ? -pos : 0.0;
 
 		WRP_DEBUG("acct %s: portfolio %s -> %s", ac, cc, cv);
 		fix_pos_rpt(tws->pq, ac, p);

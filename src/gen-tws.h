@@ -82,7 +82,7 @@ typedef enum {
 	/* INFRAs */
 	TWS_CB_INFRA_ERROR,
 	TWS_CB_INFRA_CONN_CLOSED,
-} tws_cbtyp_t;
+} tws_cb_t;
 
 /* we split the callbacks into 4 big groups, just like fix:
  * pre_trade, trade, post_trade, infra */
@@ -115,10 +115,10 @@ struct tws_infra_clo_s {
 
 struct tws_s {
 	void *priv;
-	void(*pre_cb)(tws_t, tws_cbtyp_t, struct tws_pre_clo_s);
-	void(*trd_cb)(tws_t, tws_cbtyp_t, struct tws_trd_clo_s);
-	void(*post_cb)(tws_t, tws_cbtyp_t, struct tws_post_clo_s);
-	void(*infra_cb)(tws_t, tws_cbtyp_t, struct tws_infra_clo_s);
+	void(*pre_cb)(tws_t, tws_cb_t, struct tws_pre_clo_s);
+	void(*trd_cb)(tws_t, tws_cb_t, struct tws_trd_clo_s);
+	void(*post_cb)(tws_t, tws_cb_t, struct tws_post_clo_s);
+	void(*infra_cb)(tws_t, tws_cb_t, struct tws_infra_clo_s);
 };
 
 

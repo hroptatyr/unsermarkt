@@ -37,6 +37,7 @@
 #if defined HAVE_CONFIG_H
 # include "config.h"
 #endif	/* HAVE_CONFIG_H */
+#include <unistd.h>
 #include <stdio.h>
 #include <stdarg.h>
 #include <errno.h>
@@ -49,6 +50,9 @@
 #include <netdb.h>
 #include <stdarg.h>
 #include <string.h>
+#if defined STANDALONE
+# include <sys/epoll.h>
+#endif	/* STANDALONE */
 
 /* the tws api */
 #include "gen-tws.h"
@@ -59,10 +63,10 @@
 
 #if defined DEBUG_FLAG && !defined BENCHMARK
 # include <assert.h>
-# define QUO_DEBUG(args...)	fprintf(logerr, args)
+# define GEN_DEBUG(args...)	fprintf(logerr, args)
 # define MAYBE_NOINLINE		__attribute__((noinline))
 #else  /* !DEBUG_FLAG */
-# define QUO_DEBUG(args...)
+# define GEN_DEBUG(args...)
 # define assert(x)
 # define MAYBE_NOINLINE
 #endif	/* DEBUG_FLAG */
@@ -92,7 +96,56 @@ error(int eno, const char *fmt, ...)
 int
 main(int argc, char *argv[])
 {
-	return 0;
+	const char host[] = "quant";
+	short unsigned int port = 7474;
+	struct tws_s tws[1] = {{0}};
+	struct epoll_event ev[1];
+	int epfd;
+	int s;
+	int res = 0;
+
+	if (init_tws(tws) < 0) {
+		return 1;
+	}
+
+	if ((s = tws_connect(tws, host, port, 3333)) < 0) {
+		res = 1;
+		goto fini;
+	}
+
+	if ((epfd = epoll_create(1)) < 0) {
+		res = 1;
+		goto disc;
+	}
+	/* add s to epoll descriptor */
+	ev->events = EPOLLIN | EPOLLOUT | EPOLLHUP;
+	epoll_ctl(epfd, EPOLL_CTL_ADD, s, ev);
+
+	while (epoll_wait(epfd, ev, 1, 2000) > 0) {
+		if (ev->events & EPOLLHUP) {
+			break;
+		}
+		if (ev->events & EPOLLIN) {
+			tws_recv(tws);
+		}
+		if (ev->events & EPOLLOUT) {
+			tws_send(tws);
+			ev->events = EPOLLIN | EPOLLHUP;
+			epoll_ctl(epfd, EPOLL_CTL_MOD, s, ev);
+		}
+	}
+
+disc:
+	if (tws_disconnect(tws) < 0) {
+		res = 1;
+		goto fini;
+	}
+
+fini:
+	if (fini_tws(tws) < 0) {
+		res = 1;
+	}
+	return res;
 }
 #endif	/* STANDALONE */
 

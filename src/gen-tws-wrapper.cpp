@@ -144,6 +144,9 @@ public:
 	void fundamentalData(IB::TickerId, const IB::IBString &data);
 	void deltaNeutralValidation(int reqId, const IB::UnderComp&);
 	void tickSnapshotEnd(int reqId);
+#if 1
+	void marketDataType(IB::TickerId reqId, int mkt_data_type);
+#endif	// 1
 
 	/* sort of private */
 	tws_oid_t next_oid;

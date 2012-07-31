@@ -45,9 +45,80 @@ typedef struct tws_s *tws_t;
 
 typedef unsigned int tws_oid_t;
 typedef unsigned int tws_time_t;
+typedef unsigned int tws_tick_type_t;
+
+typedef enum {
+	TWS_CB_UNK,
+
+	/* PREs */
+	/* .val types */
+	TWS_CB_PRE_PRICE,
+	TWS_CB_PRE_SIZE,
+	TWS_CB_PRE_GENERIC,
+	TWS_CB_PRE_SNAP_END,
+	/* .i types */
+	TWS_CB_PRE_MKT_DATA_TYPE,
+	/* .str types */
+	TWS_CB_PRE_STRING,
+	TWS_CB_PRE_FUND_DATA,
+	/* .data types */
+	TWS_CB_PRE_CONT_DTL,
+	TWS_CB_PRE_CONT_DTL_END,
+	TWS_CB_PRE_OPTION,
+	TWS_CB_PRE_EFP,
+	TWS_CB_PRE_UPD_MKT_DEPTH,
+	TWS_CB_PRE_HIST_DATA,
+	TWS_CB_PRE_REALTIME_BAR,
+
+	/* TRDs */
+	TWS_CB_TRD_ORD_STATUS,
+	TWS_CB_TRD_OPEN_ORD,
+	TWS_CB_TRD_OPEN_ORD_END,
+
+	/* POSTs */
+	TWS_CB_POST_EXEC_DTL,
+	TWS_CB_POST_EXEC_DTL_END,
+
+	/* INFRAs */
+	TWS_CB_INFRA_ERROR,
+	TWS_CB_INFRA_CONN_CLOSED,
+} tws_cbtyp_t;
+
+/* we split the callbacks into 4 big groups, just like fix:
+ * pre_trade, trade, post_trade, infra */
+struct tws_pre_clo_s {
+	tws_oid_t oid;
+	tws_tick_type_t tt;
+	union {
+		double val;
+		const char *str;
+		const void *data;
+		int i;
+	};
+};
+
+struct tws_trd_clo_s {
+	tws_oid_t oid;
+	const void *data;
+};
+
+struct tws_post_clo_s {
+	tws_oid_t oid;
+	const void *data;
+};
+
+struct tws_infra_clo_s {
+	tws_oid_t oid;
+	tws_oid_t code;
+	const void *data;
+};
 
 struct tws_s {
 	void *priv;
+	void(*pre_cb)(tws_t, tws_cbtyp_t, struct tws_pre_clo_s);
+	void(*trd_cb)(tws_t, tws_cbtyp_t, struct tws_trd_clo_s);
+	void(*post_cb)(tws_t, tws_cbtyp_t, struct tws_post_clo_s);
+	void(*infra_cb)(tws_t, tws_cbtyp_t, struct tws_infra_clo_s);
 };
 
 

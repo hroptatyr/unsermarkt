@@ -52,7 +52,6 @@
 
 #include "gen-tws.h"
 #include "nifty.h"
-#include "wrp-debug.h"
 
 #if defined DEBUG_FLAG
 # include <assert.h>
@@ -160,6 +159,541 @@ public:
 #define TWS_PRIV_WRP(x)	TWS_WRP(((tws_t)x)->priv)
 #define TWS_PRIV_CLI(x)	TWS_CLI(((tws_t)x)->priv)
 
+#define WRP_TWS(x)	((tws_t)x->tws)
+
+
+/* pres */
+void 
+__wrapper::tickPrice(IB::TickerId id, IB::TickType fld, double pri, int)
+{
+	tws_t tws = WRP_TWS(this);
+
+	if (LIKELY(tws->pre_cb != NULL)) {
+		struct tws_pre_clo_s clo = {
+			.oid = (tws_oid_t)id,
+			.tt = fld,
+			0,
+		};
+		/* c++ can't initialise the union therein */
+		clo.val = pri;
+		tws->pre_cb(tws, TWS_CB_PRE_PRICE, clo);
+	}
+	return;
+}
+
+void
+__wrapper::tickSize(IB::TickerId id, IB::TickType fld, int size)
+{
+	tws_t tws = WRP_TWS(this);
+
+	if (LIKELY(tws->pre_cb != NULL)) {
+		struct tws_pre_clo_s clo = {
+			.oid = (tws_oid_t)id,
+			.tt = fld,
+			0,
+		};
+		/* c++ can't initialise the union therein */
+		clo.val = (double)size;
+		tws->pre_cb(tws, TWS_CB_PRE_SIZE, clo);
+	}
+	return;
+}
+
+void
+__wrapper::tickOptionComputation(
+	IB::TickerId id, IB::TickType fld,
+	double, double,
+	double, double, double, double,
+	double, double)
+{
+	tws_t tws = WRP_TWS(this);
+
+	if (LIKELY(tws->pre_cb != NULL)) {
+		struct tws_pre_clo_s clo = {
+			.oid = (tws_oid_t)id,
+			.tt = fld,
+			0,
+		};
+		/* c++ can't initialise the union therein */
+		clo.data = NULL;
+		tws->pre_cb(tws, TWS_CB_PRE_OPTION, clo);
+	}
+	return;
+}
+
+void
+__wrapper::tickGeneric(IB::TickerId id, IB::TickType fld, double value)
+{
+	tws_t tws = WRP_TWS(this);
+
+	if (LIKELY(tws->pre_cb != NULL)) {
+		struct tws_pre_clo_s clo = {
+			.oid = (tws_oid_t)id,
+			.tt = fld,
+			0,
+		};
+		/* c++ can't initialise the union therein */
+		clo.val = value;
+		tws->pre_cb(tws, TWS_CB_PRE_GENERIC, clo);
+	}
+	return;
+}
+
+void
+__wrapper::tickString(IB::TickerId id, IB::TickType fld, const IB::IBString &s)
+{
+	tws_t tws = WRP_TWS(this);
+
+	if (LIKELY(tws->pre_cb != NULL)) {
+		struct tws_pre_clo_s clo = {
+			.oid = (tws_oid_t)id,
+			.tt = fld,
+			0,
+		};
+		/* c++ can't initialise the union therein */
+		clo.str = s.c_str();
+		tws->pre_cb(tws, TWS_CB_PRE_STRING, clo);
+	}
+	return;
+}
+
+void
+__wrapper::tickEFP(
+	IB::TickerId id, IB::TickType fld,
+	double, const IB::IBString&,
+	double, int,
+	const IB::IBString&, double, double)
+{
+	tws_t tws = WRP_TWS(this);
+
+	if (LIKELY(tws->pre_cb != NULL)) {
+		struct tws_pre_clo_s clo = {
+			.oid = (tws_oid_t)id,
+			.tt = fld,
+			0,
+		};
+		/* c++ can't initialise the union therein */
+		clo.data = NULL;
+		tws->pre_cb(tws, TWS_CB_PRE_EFP, clo);
+	}
+	return;
+}
+
+void
+__wrapper::tickSnapshotEnd(int id)
+{
+	tws_t tws = WRP_TWS(this);
+
+	if (LIKELY(tws->pre_cb != NULL)) {
+		struct tws_pre_clo_s clo = {
+			.oid = (tws_oid_t)id,
+			.tt = 0,
+			0,
+		};
+		tws->pre_cb(tws, TWS_CB_PRE_SNAP_END, clo);
+	}
+	return;
+}
+
+#if 1
+void
+__wrapper::marketDataType(IB::TickerId id, int mkt_data_type)
+{
+	tws_t tws = WRP_TWS(this);
+
+	if (LIKELY(tws->pre_cb != NULL)) {
+		struct tws_pre_clo_s clo = {
+			.oid = (tws_oid_t)id,
+			.tt = 0,
+			0,
+		};
+		/* grrr */
+		clo.i = mkt_data_type;
+		tws->pre_cb(tws, TWS_CB_PRE_MKT_DATA_TYPE, clo);
+	}
+	return;
+}
+#endif	// 1
+
+void
+__wrapper::contractDetails(int req_id, const IB::ContractDetails &cd)
+{
+	tws_t tws = WRP_TWS(this);
+
+	if (LIKELY(tws->pre_cb != NULL)) {
+		struct tws_pre_clo_s clo = {
+			.oid = (tws_oid_t)req_id,
+			.tt = 0,
+			0,
+		};
+		/* grrr */
+		clo.data = &cd;
+		tws->pre_cb(tws, TWS_CB_PRE_CONT_DTL, clo);
+	}
+	return;
+}
+
+void
+__wrapper::bondContractDetails(int req_id, const IB::ContractDetails &cd)
+{
+	tws_t tws = WRP_TWS(this);
+
+	if (LIKELY(tws->pre_cb != NULL)) {
+		struct tws_pre_clo_s clo = {
+			.oid = (tws_oid_t)req_id,
+			.tt = 0,
+			0,
+		};
+		/* grrr */
+		clo.data = &cd;
+		tws->pre_cb(tws, TWS_CB_PRE_CONT_DTL, clo);
+	}
+	return;
+}
+
+void
+__wrapper::contractDetailsEnd(int req_id)
+{
+	tws_t tws = WRP_TWS(this);
+
+	if (LIKELY(tws->pre_cb != NULL)) {
+		struct tws_pre_clo_s clo = {
+			.oid = (tws_oid_t)req_id,
+			.tt = 0,
+			0,
+		};
+		tws->pre_cb(tws, TWS_CB_PRE_CONT_DTL_END, clo);
+	}
+	return;
+}
+
+void
+__wrapper::fundamentalData(IB::TickerId id, const IB::IBString &data)
+{
+	tws_t tws = WRP_TWS(this);
+
+	if (LIKELY(tws->pre_cb != NULL)) {
+		struct tws_pre_clo_s clo = {
+			.oid = (tws_oid_t)id,
+			.tt = 0,
+			0,
+		};
+		/* grrr */
+		clo.str = data.c_str();
+		tws->pre_cb(tws, TWS_CB_PRE_FUND_DATA, clo);
+	}
+	return;
+}
+
+void
+__wrapper::updateMktDepth(
+	IB::TickerId id,
+	int, int, int, double, int)
+{
+	tws_t tws = WRP_TWS(this);
+
+	if (LIKELY(tws->pre_cb != NULL)) {
+		struct tws_pre_clo_s clo = {
+			.oid = (tws_oid_t)id,
+			.tt = 0,
+			0,
+		};
+		clo.data = NULL;
+		tws->pre_cb(tws, TWS_CB_PRE_UPD_MKT_DEPTH, clo);
+	}
+	return;
+}
+
+void
+__wrapper::updateMktDepthL2(
+	IB::TickerId id,
+	int, IB::IBString,
+	int, int, double, int)
+{
+	tws_t tws = WRP_TWS(this);
+
+	if (LIKELY(tws->pre_cb != NULL)) {
+		struct tws_pre_clo_s clo = {
+			.oid = (tws_oid_t)id,
+			.tt = 0,
+			0,
+		};
+		clo.data = NULL;
+		tws->pre_cb(tws, TWS_CB_PRE_UPD_MKT_DEPTH, clo);
+	}
+	return;
+}
+
+void
+__wrapper::historicalData(
+	IB::TickerId id, const IB::IBString&,
+	double, double, double, double, int,
+	int, double, int)
+{
+	tws_t tws = WRP_TWS(this);
+
+	if (LIKELY(tws->pre_cb != NULL)) {
+		struct tws_pre_clo_s clo = {
+			.oid = (tws_oid_t)id,
+			.tt = 0,
+			0,
+		};
+		clo.data = NULL;
+		tws->pre_cb(tws, TWS_CB_PRE_HIST_DATA, clo);
+	}
+	return;
+}
+
+void
+__wrapper::realtimeBar(
+	IB::TickerId id, long,
+	double, double, double, double,
+	long, double, int)
+{
+	tws_t tws = WRP_TWS(this);
+
+	if (LIKELY(tws->pre_cb != NULL)) {
+		struct tws_pre_clo_s clo = {
+			.oid = (tws_oid_t)id,
+			.tt = 0,
+			0,
+		};
+		clo.data = NULL;
+		tws->pre_cb(tws, TWS_CB_PRE_REALTIME_BAR, clo);
+	}
+	return;
+}
+
+
+/* trades */
+void
+__wrapper::orderStatus(
+	IB::OrderId id, const IB::IBString&,
+	int, int, double, int,
+	int, double, int,
+	const IB::IBString&)
+{
+	tws_t tws = WRP_TWS(this);
+
+	if (LIKELY(tws->trd_cb != NULL)) {
+		struct tws_trd_clo_s clo = {
+			.oid = (tws_oid_t)id,
+			NULL
+		};
+		tws->trd_cb(tws, TWS_CB_TRD_ORD_STATUS, clo);
+	}
+	return;
+}
+
+void
+__wrapper::openOrder(
+	IB::OrderId id, const IB::Contract&,
+	const IB::Order&, const IB::OrderState&)
+{
+	tws_t tws = WRP_TWS(this);
+
+	if (LIKELY(tws->trd_cb != NULL)) {
+		struct tws_trd_clo_s clo = {
+			.oid = (tws_oid_t)id,
+			NULL
+		};
+		tws->trd_cb(tws, TWS_CB_TRD_OPEN_ORD, clo);
+	}
+	return;
+}
+
+void
+__wrapper::openOrderEnd(void)
+{
+	tws_t tws = WRP_TWS(this);
+
+	if (LIKELY(tws->trd_cb != NULL)) {
+		struct tws_trd_clo_s clo = {
+			.oid = 0,
+			NULL
+		};
+		tws->trd_cb(tws, TWS_CB_TRD_OPEN_ORD_END, clo);
+	}
+	return;
+}
+
+
+/* post trade */
+void
+__wrapper::execDetails(int req_id, const IB::Contract&, const IB::Execution&)
+{
+	tws_t tws = WRP_TWS(this);
+
+	if (LIKELY(tws->post_cb != NULL)) {
+		struct tws_post_clo_s clo = {
+			.oid = (tws_oid_t)req_id,
+			NULL
+		};
+		tws->post_cb(tws, TWS_CB_POST_EXEC_DTL, clo);
+	}
+	return;
+}
+
+void
+__wrapper::execDetailsEnd(int req_id)
+{
+	tws_t tws = WRP_TWS(this);
+
+	if (LIKELY(tws->post_cb != NULL)) {
+		struct tws_post_clo_s clo = {
+			.oid = (tws_oid_t)req_id,
+			NULL
+		};
+		tws->post_cb(tws, TWS_CB_POST_EXEC_DTL_END, clo);
+	}
+	return;
+}
+
+void
+__wrapper::updateAccountValue(
+	const IB::IBString&, const IB::IBString&,
+	const IB::IBString&, const IB::IBString&)
+{
+	return;
+}
+
+void
+__wrapper::updatePortfolio(
+	const IB::Contract&, int,
+	double, double, double, double, double,
+	const IB::IBString&)
+{
+	return;
+}
+
+void
+__wrapper::updateAccountTime(const IB::IBString&)
+{
+	return;
+}
+
+void
+__wrapper::accountDownloadEnd(const IB::IBString&)
+{
+	return;
+}
+
+
+/* infra */
+void
+__wrapper::error(const int id, const int code, const IB::IBString msg)
+{
+	tws_t tws = WRP_TWS(this);
+
+	if (LIKELY(tws->infra_cb != NULL)) {
+		struct tws_infra_clo_s clo = {
+			.oid = (tws_oid_t)id,
+			.code = (tws_oid_t)code,
+			.data = &msg,
+		};
+		tws->infra_cb(tws, TWS_CB_INFRA_ERROR, clo);
+	}
+	return;
+}
+
+void
+__wrapper::winError(const IB::IBString &str, int code)
+{
+	tws_t tws = WRP_TWS(this);
+
+	if (LIKELY(tws->infra_cb != NULL)) {
+		struct tws_infra_clo_s clo = {
+			.oid = (tws_oid_t)0,
+			.code = (tws_oid_t)code,
+			.data = str.c_str(),
+		};
+		tws->infra_cb(tws, TWS_CB_INFRA_ERROR, clo);
+	}
+	return;
+}
+
+void
+__wrapper::connectionClosed(void)
+{
+	tws_t tws = WRP_TWS(this);
+
+	if (LIKELY(tws->infra_cb != NULL)) {
+		struct tws_infra_clo_s clo = {
+			.oid = (tws_oid_t)0,
+			.code = (tws_oid_t)0,
+			.data = NULL,
+		};
+		tws->infra_cb(tws, TWS_CB_INFRA_CONN_CLOSED, clo);
+	}
+	return;
+}
+
+
+/* stuff that doesn't do calling-back at all */
+void
+__wrapper::currentTime(long int time)
+{
+/* not public */
+	this->time = time;
+	return;
+}
+
+void
+__wrapper::nextValidId(IB::OrderId oid)
+{
+/* not public */
+	this->next_oid = oid;
+	return;
+}
+
+void
+__wrapper::scannerParameters(const IB::IBString&)
+{
+	return;
+}
+
+void
+__wrapper::scannerData(
+	int, int,
+	const IB::ContractDetails&,
+	const IB::IBString&, const IB::IBString&,
+	const IB::IBString&, const IB::IBString&)
+{
+	return;
+}
+
+void
+__wrapper::scannerDataEnd(int)
+{
+	return;
+}
+
+void
+__wrapper::deltaNeutralValidation(int, const IB::UnderComp&)
+{
+	return;
+}
+
+void
+__wrapper::updateNewsBulletin(
+	int, int,
+	const IB::IBString&, const IB::IBString&)
+{
+	return;
+}
+
+void
+__wrapper::managedAccounts(const IB::IBString&)
+{
+	return;
+}
+
+void
+__wrapper::receiveFA(IB::faDataType, const IB::IBString&)
+{
+	return;
+}
+
 
 void
 rset_tws(tws_t tws)
@@ -220,7 +754,7 @@ tws_connect(tws_t tws, const char *host, uint16_t port, int client)
 #endif	// TWSAPI_IPV6
 
 	if (rc == 0) {
-		wrp_debug(tws, "connection to [%s]:%hu failed", host, port);
+		/* set the errno? */
 		return -1;
 	}
 

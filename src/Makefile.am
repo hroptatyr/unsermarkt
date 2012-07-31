@@ -284,6 +284,7 @@ annul_pf_LDADD =
 annul_pf_LDADD += -lm
 
 if HAVE_TWSAPI
+if HAVE_LIBEV
 noinst_PROGRAMS += annul-virtfx
 annul_virtfx_SOURCES = annul-virtfx.cpp
 annul_virtfx_SOURCES += gq.c gq.h
@@ -298,6 +299,7 @@ annul_virtfx_LDFLAGS += $(libev_LIBS)
 annul_virtfx_LDADD =
 annul_virtfx_LDADD += -lm
 annul_virtfx_LINK = $(LINK) $(annul_virtfx_LDFLAGS)
+endif  HAVE_LIBEV
 endif  HAVE_TWSAPI
 
 

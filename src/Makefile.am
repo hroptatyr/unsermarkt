@@ -82,7 +82,6 @@ endif  ## HAVE_MXML
 if HAVE_LIBEV
 bin_PROGRAMS += um-quomon
 um_quomon_SOURCES = um-quomon.c um-quomon-clo.ggo
-BUILT_SOURCES += um-quomon-clo.c um-quomon-clo.h
 um_quomon_CPPFLAGS = $(AM_CPPFLAGS) -D_GNU_SOURCE
 um_quomon_CPPFLAGS += $(libev_CFLAGS)
 um_quomon_CPPFLAGS += $(unserding_CFLAGS)
@@ -95,7 +94,6 @@ um_quomon_LDFLAGS += -lreadline
 
 bin_PROGRAMS += um-quodmp
 um_quodmp_SOURCES = um-quodmp.c um-quodmp-clo.ggo
-BUILT_SOURCES += um-quodmp-clo.c um-quodmp-clo.h
 um_quodmp_CPPFLAGS = $(AM_CPPFLAGS) -D_GNU_SOURCE
 um_quodmp_CPPFLAGS += $(libev_CFLAGS)
 um_quodmp_CPPFLAGS += $(unserding_CFLAGS)
@@ -107,7 +105,6 @@ um_quodmp_LDFLAGS += $(libev_LIBS)
 
 bin_PROGRAMS += um-apfmon
 um_apfmon_SOURCES = um-apfmon.c um-apfmon-clo.ggo
-BUILT_SOURCES += um-apfmon-clo.c um-apfmon-clo.h
 um_apfmon_SOURCES += gq.c gq.h
 um_apfmon_CPPFLAGS = $(AM_CPPFLAGS) -D_GNU_SOURCE
 um_apfmon_CPPFLAGS += $(libev_CFLAGS)
@@ -119,6 +116,9 @@ um_apfmon_LDFLAGS += $(unserding_LIBS)
 um_apfmon_LDFLAGS += $(libev_LIBS)
 um_apfmon_LDFLAGS += -lreadline
 endif  ## HAVE_LIBEV
+BUILT_SOURCES += um-quomon-clo.c um-quomon-clo.h
+BUILT_SOURCES += um-apfmon-clo.c um-apfmon-clo.h
+BUILT_SOURCES += um-quodmp-clo.c um-quodmp-clo.h
 
 bin_PROGRAMS += um-xmit
 um_xmit_SOURCES = um-xmit.c
@@ -133,7 +133,6 @@ um_xmit_LDFLAGS += $(unserding_LIBS)
 if HAVE_LIBEV
 noinst_PROGRAMS += ox-matchall
 ox_matchall_SOURCES = ox-matchall.c
-BUILT_SOURCES += ox-matchall-clo.c ox-matchall-clo.h
 ox_matchall_CPPFLAGS = $(AM_CPPFLAGS)
 ox_matchall_CPPFLAGS += $(uterus_CFLAGS)
 ox_matchall_CPPFLAGS += $(unserding_CFLAGS)
@@ -143,6 +142,7 @@ ox_matchall_LDFLAGS += $(uterus_LIBS)
 ox_matchall_LDFLAGS += $(unserding_LIBS)
 ox_matchall_LDFLAGS += $(libev_LIBS)
 endif  ## HAVE_LIBEV
+BUILT_SOURCES += ox-matchall-clo.c ox-matchall-clo.h
 
 if HAVE_TWSTOOLS
 noinst_LTLIBRARIES += tws-snarf.la
@@ -179,7 +179,6 @@ ox_tws_SOURCES += iso4217.c iso4217.h
 ox_tws_SOURCES += ox-tws-private.h
 ox_tws_SOURCES += wrp-debug.h
 EXTRA_ox_tws_SOURCES += gq.c gq.h
-BUILT_SOURCES += ox-tws-clo.c ox-tws-clo.h
 ox_tws_CPPFLAGS = $(AM_CPPFLAGS)
 ox_tws_CPPFLAGS += $(uterus_CFLAGS)
 ox_tws_CPPFLAGS += $(unserding_CFLAGS)
@@ -199,7 +198,6 @@ pf_tws_SOURCES += iso4217.c iso4217.h
 pf_tws_SOURCES += strops.h
 pf_tws_SOURCES += pf-tws-private.h
 pf_tws_SOURCES += wrp-debug.h
-BUILT_SOURCES += pf-tws-clo.c pf-tws-clo.h
 pf_tws_CPPFLAGS = $(AM_CPPFLAGS)
 pf_tws_CPPFLAGS += $(uterus_CFLAGS)
 pf_tws_CPPFLAGS += $(unserding_CFLAGS)
@@ -228,10 +226,6 @@ quo_tws_SOURCES += tws-cont.cpp tws-cont.h
 EXTRA_quo_tws_SOURCES += proto-twsxml-tag.gperf
 EXTRA_quo_tws_SOURCES += proto-twsxml-attr.gperf proto-twsxml-attr.h
 EXTRA_quo_tws_SOURCES += proto-twsxml-ns.gperf
-BUILT_SOURCES += quo-tws-clo.c quo-tws-clo.h
-BUILT_SOURCES += proto-twsxml-tag.c
-BUILT_SOURCES += proto-twsxml-attr.c
-BUILT_SOURCES += proto-twsxml-ns.c
 quo_tws_CPPFLAGS = $(AM_CPPFLAGS)
 quo_tws_CPPFLAGS += $(uterus_CFLAGS)
 quo_tws_CPPFLAGS += $(unserding_CFLAGS)
@@ -249,11 +243,16 @@ endif  ## HAVE_GPERF
 endif  ## HAVE_EXPAT
 endif  ## HAVE_LIBEV
 endif  ## HAVE_TWSAPI
+BUILT_SOURCES += ox-tws-clo.c ox-tws-clo.h
+BUILT_SOURCES += pf-tws-clo.c pf-tws-clo.h
+BUILT_SOURCES += quo-tws-clo.c quo-tws-clo.h
+BUILT_SOURCES += proto-twsxml-tag.c
+BUILT_SOURCES += proto-twsxml-attr.c
+BUILT_SOURCES += proto-twsxml-ns.c
 
 if HAVE_LIBEV
 bin_PROGRAMS += um-netdania
 um_netdania_SOURCES = um-netdania.c um-netdania.h um-netdania-clo.ggo
-BUILT_SOURCES += um-netdania-clo.c um-netdania-clo.h
 um_netdania_CPPFLAGS = $(AM_CPPFLAGS)
 um_netdania_CPPFLAGS += $(uterus_CFLAGS)
 um_netdania_CPPFLAGS += $(unserding_CFLAGS)
@@ -262,6 +261,7 @@ um_netdania_LDFLAGS = $(AM_LDFLAGS)
 um_netdania_LDFLAGS += $(unserding_LIBS)
 um_netdania_LDFLAGS += $(libev_LIBS)
 endif  ## HAVE_LIBEV
+BUILT_SOURCES += um-netdania-clo.c um-netdania-clo.h
 
 noinst_PROGRAMS += tk-example
 tk_example_SOURCES = tk-example.c
@@ -319,12 +319,12 @@ EXTRA_tws_xml_SOURCES =
 EXTRA_tws_xml_SOURCES += proto-twsxml-tag.gperf
 EXTRA_tws_xml_SOURCES += proto-twsxml-attr.gperf proto-twsxml-attr.h
 EXTRA_tws_xml_SOURCES += proto-twsxml-ns.gperf
-BUILT_SOURCES += proto-twsxml-tag.c
-BUILT_SOURCES += proto-twsxml-attr.c
-BUILT_SOURCES += proto-twsxml-ns.c
 endif  HAVE_TWSAPI
 endif  HAVE_GPERF
 endif  HAVE_EXPAT
+BUILT_SOURCES += proto-twsxml-tag.c
+BUILT_SOURCES += proto-twsxml-attr.c
+BUILT_SOURCES += proto-twsxml-ns.c
 
 noinst_PROGRAMS += ccy-graph
 ccy_graph_SOURCES = ccy-graph.c ccy-graph.h

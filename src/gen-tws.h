@@ -1,4 +1,4 @@
-/*** gen-tws-wrapper.h -- generic tws c api
+/*** gen-tws.h -- generic tws c api
  *
  * Copyright (C) 2012 Sebastian Freundt
  *
@@ -34,8 +34,8 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  ***/
-#if !defined INCLUDED_gen_tws_wrapper_h_
-#define INCLUDED_gen_tws_wrapper_h_
+#if !defined INCLUDED_gen_tws_h_
+#define INCLUDED_gen_tws_h_
 
 #if defined __cplusplus
 extern "C" {
@@ -47,10 +47,7 @@ typedef unsigned int tws_oid_t;
 typedef unsigned int tws_time_t;
 
 struct tws_s {
-	tws_oid_t next_oid;
-	tws_time_t time;
-	void *wrp;
-	void *cli;
+	void *priv;
 };
 
 
@@ -70,4 +67,4 @@ extern int tws_ready_p(tws_t);
 }
 #endif	/* __cplusplus */
 
-#endif	/* INCLUDED_gen_tws_wrapper_h_ */
+#endif	/* INCLUDED_gen_tws_h_ */

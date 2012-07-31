@@ -333,8 +333,8 @@ ccy_graph_CPPFLAGS = $(AM_CPPFLAGS) -DSTANDALONE
 
 if HAVE_TWSAPI
 noinst_PROGRAMS += gen-tws
-gen_tws_SOURCES = gen-tws.c
-gen_tws_SOURCES += gen-tws-wrapper.cpp gen-tws-wrapper.h
+gen_tws_SOURCES = gen-tws.c gen-tws.h
+gen_tws_SOURCES += gen-tws-wrapper.cpp
 gen_tws_CPPFLAGS = $(AM_CPPFLAGS) -DSTANDALONE
 gen_tws_CPPFLAGS += $(twsapi_CFLAGS)
 gen_tws_LDFLAGS = $(AM_LDFLAGS)

@@ -50,7 +50,8 @@
 #include <twsapi/Order.h>
 #include <twsapi/Contract.h>
 
-#include "gen-tws-wrapper.h"
+#include "gen-tws.h"
+#include "nifty.h"
 #include "wrp-debug.h"
 
 #if defined DEBUG_FLAG
@@ -145,112 +146,118 @@ public:
 	void tickSnapshotEnd(int reqId);
 
 	/* sort of private */
-	tws_t ctx;
+	tws_oid_t next_oid;
+	tws_time_t time;
+	void *cli;
+	void *tws;
 };
+
+#define TWS_WRP(x)	((__wrapper*)x)
+#define TWS_CLI(x)	((IB::EPosixClientSocket*)(TWS_WRP(x))->cli)
+#define TWS_PRIV_WRP(x)	TWS_WRP(((tws_t)x)->priv)
+#define TWS_PRIV_CLI(x)	TWS_CLI(((tws_t)x)->priv)
 
 
 void
-rset_tws(tws_t foo)
+rset_tws(tws_t tws)
 {
-	foo->time = 0;
-	foo->next_oid = 0;
+	TWS_PRIV_WRP(tws)->time = 0;
+	TWS_PRIV_WRP(tws)->next_oid = 0;
 	return;
 }
 
 int
-init_tws(tws_t foo)
+init_tws(tws_t tws)
 {
-	__wrapper *wrp = new __wrapper();
-
-	foo->cli = new IB::EPosixClientSocket(wrp);
-	foo->wrp = wrp;
-	rset_tws(foo);
+	tws->priv = new __wrapper();
+	rset_tws(tws);
+	TWS_PRIV_WRP(tws)->cli = new IB::EPosixClientSocket(TWS_PRIV_WRP(tws));
 
 	/* just so we know who we are */
-	wrp->ctx = foo;
+	TWS_PRIV_WRP(tws)->tws = tws;
 	return 0;
 }
 
 int
-fini_tws(tws_t foo)
+fini_tws(tws_t tws)
 {
-	IB::EPosixClientSocket *cli = (IB::EPosixClientSocket*)foo->cli;
-	__wrapper *wrp = (__wrapper*)foo->wrp;
-
-	tws_disconnect(foo);
-
+	if (tws->priv == NULL) {
+		// all's done innit
+		return 0;
+	}
+	tws_disconnect(tws);
 	/* wipe our context off the face of this earth */
-	wrp->ctx = NULL;
+	rset_tws(tws);
 
-	if (cli) {
-		delete cli;
+	TWS_PRIV_WRP(tws)->tws = NULL;
+	if (TWS_PRIV_CLI(tws)) {
+		delete TWS_PRIV_CLI(tws);
+		TWS_PRIV_WRP(tws)->cli = NULL;
 	}
-	if (wrp) {
-		delete wrp;
+	if (TWS_PRIV_WRP(tws)) {
+		delete TWS_PRIV_WRP(tws);
 	}
-
-	foo->cli = NULL;
-	foo->wrp = NULL;
-	rset_tws(foo);
+	tws->priv = NULL;
 	return 0;
 }
 
 int
-tws_connect(tws_t foo, const char *host, uint16_t port, int client)
+tws_connect(tws_t tws, const char *host, uint16_t port, int client)
 {
-	IB::EPosixClientSocket *cli = (IB::EPosixClientSocket*)foo->cli;
 	int rc;
 
+	if (UNLIKELY(tws->priv == NULL)) {
+		return - 1;
+	}
+
 #if defined TWSAPI_IPV6
-	rc = cli->eConnect2(host, port, client, AF_UNSPEC);
+	rc = TWS_PRIV_CLI(tws)->eConnect2(host, port, client, AF_UNSPEC);
 #else  // !TWSAPI_IPV6
-	rc = cli->eConnect(host, port, client);
+	rc = TWS_PRIV_CLI(tws)->eConnect(host, port, client);
 #endif	// TWSAPI_IPV6
 
 	if (rc == 0) {
-		wrp_debug(foo, "connection to [%s]:%hu failed", host, port);
+		wrp_debug(tws, "connection to [%s]:%hu failed", host, port);
 		return -1;
 	}
 
 	// just request a lot of buggery here
-	cli->reqCurrentTime();
-	return cli->fd();
+	TWS_PRIV_CLI(tws)->reqCurrentTime();
+	return TWS_PRIV_CLI(tws)->fd();
 }
 
 int
-tws_disconnect(tws_t foo)
+tws_disconnect(tws_t tws)
 {
-	IB::EPosixClientSocket *cli = (IB::EPosixClientSocket*)foo->cli;
-	cli->eDisconnect();
+	if (UNLIKELY(tws->priv == NULL)) {
+		return -1;
+	}
+	TWS_PRIV_CLI(tws)->eDisconnect();
 	return 0;
 }
 
 int
-tws_recv(tws_t foo)
+tws_recv(tws_t tws)
 {
-	IB::EPosixClientSocket *cli = (IB::EPosixClientSocket*)foo->cli;
-
-	cli->onReceive();
-	return cli->isSocketOK() ? 0 : -1;
+	TWS_PRIV_CLI(tws)->onReceive();
+	return TWS_PRIV_CLI(tws)->isSocketOK() ? 0 : -1;
 }
 
 int
-tws_send(tws_t foo)
+tws_send(tws_t tws)
 {
-	IB::EPosixClientSocket *cli = (IB::EPosixClientSocket*)foo->cli;
-
-	if (cli->isOutBufferEmpty()) {
+	if (TWS_PRIV_CLI(tws)->isOutBufferEmpty()) {
 		return 0;
 	}
-	cli->onSend();
-	return cli->isSocketOK() ? 0 : -1;
+	TWS_PRIV_CLI(tws)->onSend();
+	return TWS_PRIV_CLI(tws)->isSocketOK() ? 0 : -1;
 }
 
 int
-tws_ready_p(tws_t foo)
+tws_ready_p(tws_t tws)
 {
 /* inspect TWS and return non-nil if requests to the tws can be made */
-	return foo->next_oid > 0 && foo->time > 0;
+	return TWS_PRIV_WRP(tws)->next_oid > 0 && TWS_PRIV_WRP(tws)->time > 0;
 }
 
 /* gen-tws-wrapper.cpp ends here */

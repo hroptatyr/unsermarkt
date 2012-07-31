@@ -51,7 +51,7 @@
 #include <string.h>
 
 /* the tws api */
-#include "gen-tws-wrapper.h"
+#include "gen-tws.h"
 
 #if defined __INTEL_COMPILER
 # pragma warning (disable:981)

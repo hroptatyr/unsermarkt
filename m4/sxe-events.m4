@@ -39,15 +39,10 @@ AC_DEFUN([SXE_CHECK_LIBEV], [
 		[have_libev="no"; libev_LIBS="-lev"])
 	SXE_DUMP_LIBS
 	CPPFLAGS="$CPPFLAGS $libev_CFLAGS"
-	LDFLAGS="$LDFLAGS $libev_LIBS"
 	SXE_CHECK_HEADERS([ev.h])
-	SXE_LANG_WERROR([push+off])
-	SXE_CHECK_LIB_FUNCS([ev], [ev_loop_new])
-	SXE_LANG_WERROR([pop])
 	SXE_RESTORE_LIBS
 
-	if test "$ac_cv_header_ev_h" = "yes" -a \
-		"$ac_cv_lib_ev___ev_loop_new" = "yes"; then
+	if test "$ac_cv_header_ev_h" = "yes"; then
 		AC_DEFINE([HAVE_LIBEV], [1], [Whether libev is fully functional])
 		sxe_cv_feat_libev="yes"
 		have_libev="yes"

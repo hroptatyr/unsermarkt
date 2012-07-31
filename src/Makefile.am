@@ -333,6 +333,17 @@ ccy_graph_SOURCES = ccy-graph.c ccy-graph.h
 ccy_graph_SOURCES += iso4217.c iso4217.h
 ccy_graph_CPPFLAGS = $(AM_CPPFLAGS) -DSTANDALONE
 
+if HAVE_TWSAPI
+noinst_PROGRAMS += gen-tws
+gen_tws_SOURCES = gen-tws.c gen-tws.h
+gen_tws_SOURCES += gen-tws-wrapper.cpp
+gen_tws_CPPFLAGS = $(AM_CPPFLAGS) -DSTANDALONE
+gen_tws_CPPFLAGS += $(twsapi_CFLAGS)
+gen_tws_LDFLAGS = $(AM_LDFLAGS)
+gen_tws_LDFLAGS += $(twsapi_LIBS) -lstdc++
+gen_tws_LINK = $(LINK) $(gen_tws_LDFLAGS)
+endif  HAVE_TWSAPI
+
 
 ## our rule for gengetopt
 %.c %.h: %.ggo

@@ -93,6 +93,14 @@ error(int eno, const char *fmt, ...)
 
 
 #if defined STANDALONE
+static void
+infra_cb(tws_t tws, tws_cb_t what, struct tws_infra_clo_s clo)
+{
+	error(0, "infra called %p %u: oid %u  code %u  data %p",
+	      tws, what, clo.oid, clo.code, clo.data);
+	return;
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -104,6 +112,7 @@ main(int argc, char *argv[])
 	int s;
 	int res = 0;
 
+	logerr = stderr;
 	if (init_tws(tws) < 0) {
 		return 1;
 	}
@@ -120,6 +129,9 @@ main(int argc, char *argv[])
 	/* add s to epoll descriptor */
 	ev->events = EPOLLIN | EPOLLOUT | EPOLLHUP;
 	epoll_ctl(epfd, EPOLL_CTL_ADD, s, ev);
+
+	/* add some callbacks */
+	tws->infra_cb = infra_cb;
 
 	while (epoll_wait(epfd, ev, 1, 2000) > 0) {
 		if (ev->events & EPOLLHUP) {

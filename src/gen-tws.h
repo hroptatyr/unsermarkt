@@ -37,6 +37,8 @@
 #if !defined INCLUDED_gen_tws_h_
 #define INCLUDED_gen_tws_h_
 
+#include <stdbool.h>
+
 #if defined __cplusplus
 extern "C" {
 #endif	/* __cplusplus */
@@ -122,6 +124,7 @@ struct tws_s {
 };
 
 
+/* infra structure requests */
 extern int init_tws(tws_t);
 extern int fini_tws(tws_t);
 extern void rset_tws(tws_t);
@@ -132,7 +135,47 @@ extern int tws_disconnect(tws_t);
 extern int tws_recv(tws_t);
 extern int tws_send(tws_t);
 
+extern bool tws_needs_recv_p(tws_t);
+extern bool tws_needs_send_p(tws_t);
+
 extern int tws_ready_p(tws_t);
+
+/* pre requests */
+/**
+ * Subscribe to quote updates under the given id with contract data in DATA. */
+extern int tws_req_quo(tws_t, tws_oid_t, const void *data);
+
+/**
+ * Unsubscribe from quote updates identified by the given oid. */
+extern int tws_rem_quo(tws_t, tws_oid_t);
+
+/**
+ * Like `tws_req_quo()' but generate (and return) the oid. */
+extern tws_oid_t tws_gen_quo(tws_t, const void *data);
+
+
+/* trd requests */
+/**
+ * Place an order with order data DATA on contract CONT ref'd by the oid. */
+extern int tws_put_order(tws_t, tws_oid_t, const void *cont, const void *data);
+
+/**
+ * Cancel the order with the given oid. */
+extern int tws_rem_order(tws_t, tws_oid_t);
+
+/**
+ * Like `tws_put_order()` but generate (and return) a suitable oid. */
+extern tws_oid_t tws_gen_order(tws_t, const void *cont, const void *data);
+
+/* post requests */
+/**
+ * Subscribe to account updates for the account in DATA (a string), or
+ * if NULL all accounts. */
+extern int tws_req_ac(tws_t, const void *data);
+
+/**
+ * Unsubscribe from account updates referenced by the account name in DATA. */
+extern int tws_rem_ac(tws_t, const void *data);
 
 #if defined __cplusplus
 }

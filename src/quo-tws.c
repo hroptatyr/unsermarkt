@@ -81,6 +81,11 @@
 # pragma warning (disable:981)
 #endif	/* __INTEL_COMPILER */
 
+/* only recent ute versions (>=0.2.3) have this */
+#if !defined UO_NO_CREAT_TPC
+# define UO_NO_CREAT_TPC	(0)
+#endif	/* !UO_NO_CREAT_TPC */
+
 #if defined DEBUG_FLAG && !defined BENCHMARK
 # include <assert.h>
 # define QUO_DEBUG(args...)	fprintf(logerr, args)
@@ -856,7 +861,7 @@ main(int argc, char *argv[])
 	if (init_tws(tws) < 0) {
 		res = 1;
 		goto unroll;
-	} else if ((uu = ute_mktemp(0)) == NULL) {
+	} else if ((uu = ute_mktemp(UO_NO_CREAT_TPC)) == NULL) {
 		/* shall we warn the user about this */
 		res = 1;
 		goto unroll;

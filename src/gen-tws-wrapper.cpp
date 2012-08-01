@@ -163,21 +163,24 @@ public:
 
 
 /* pres */
+static struct tws_pre_clo_s pre_clo;
+
+#define __PRE_CB(x, what, _oid_, _tt_, _fancy_)		\
+	if (LIKELY(x->pre_cb != NULL)) {		\
+		pre_clo.oid = _oid_;			\
+		pre_clo.tt = _tt_;			\
+		pre_clo _fancy_;			\
+		x->pre_cb(x, what, pre_clo);		\
+	} else while (0)
+#define PRE_CB(x, what, args...)	__PRE_CB(x, what, args)
+#define PRE_ONLY_ID(_id)		(tws_oid_t)(_id), 0, .data = NULL
+
 void 
 __wrapper::tickPrice(IB::TickerId id, IB::TickType fld, double pri, int)
 {
 	tws_t tws = WRP_TWS(this);
 
-	if (LIKELY(tws->pre_cb != NULL)) {
-		struct tws_pre_clo_s clo = {
-			.oid = (tws_oid_t)id,
-			.tt = fld,
-			0,
-		};
-		/* c++ can't initialise the union therein */
-		clo.val = pri;
-		tws->pre_cb(tws, TWS_CB_PRE_PRICE, clo);
-	}
+	PRE_CB(tws, TWS_CB_PRE_PRICE, (tws_oid_t)id, fld, .val = pri);
 	return;
 }
 
@@ -186,16 +189,7 @@ __wrapper::tickSize(IB::TickerId id, IB::TickType fld, int size)
 {
 	tws_t tws = WRP_TWS(this);
 
-	if (LIKELY(tws->pre_cb != NULL)) {
-		struct tws_pre_clo_s clo = {
-			.oid = (tws_oid_t)id,
-			.tt = fld,
-			0,
-		};
-		/* c++ can't initialise the union therein */
-		clo.val = (double)size;
-		tws->pre_cb(tws, TWS_CB_PRE_SIZE, clo);
-	}
+	PRE_CB(tws, TWS_CB_PRE_SIZE, (tws_oid_t)id, fld, .val = (double)size);
 	return;
 }
 
@@ -208,16 +202,7 @@ __wrapper::tickOptionComputation(
 {
 	tws_t tws = WRP_TWS(this);
 
-	if (LIKELY(tws->pre_cb != NULL)) {
-		struct tws_pre_clo_s clo = {
-			.oid = (tws_oid_t)id,
-			.tt = fld,
-			0,
-		};
-		/* c++ can't initialise the union therein */
-		clo.data = NULL;
-		tws->pre_cb(tws, TWS_CB_PRE_OPTION, clo);
-	}
+	PRE_CB(tws, TWS_CB_PRE_OPTION, (tws_oid_t)id, fld, .data = NULL);
 	return;
 }
 
@@ -226,16 +211,7 @@ __wrapper::tickGeneric(IB::TickerId id, IB::TickType fld, double value)
 {
 	tws_t tws = WRP_TWS(this);
 
-	if (LIKELY(tws->pre_cb != NULL)) {
-		struct tws_pre_clo_s clo = {
-			.oid = (tws_oid_t)id,
-			.tt = fld,
-			0,
-		};
-		/* c++ can't initialise the union therein */
-		clo.val = value;
-		tws->pre_cb(tws, TWS_CB_PRE_GENERIC, clo);
-	}
+	PRE_CB(tws, TWS_CB_PRE_GENERIC, (tws_oid_t)id, fld, .val = value);
 	return;
 }
 
@@ -244,16 +220,7 @@ __wrapper::tickString(IB::TickerId id, IB::TickType fld, const IB::IBString &s)
 {
 	tws_t tws = WRP_TWS(this);
 
-	if (LIKELY(tws->pre_cb != NULL)) {
-		struct tws_pre_clo_s clo = {
-			.oid = (tws_oid_t)id,
-			.tt = fld,
-			0,
-		};
-		/* c++ can't initialise the union therein */
-		clo.str = s.c_str();
-		tws->pre_cb(tws, TWS_CB_PRE_STRING, clo);
-	}
+	PRE_CB(tws, TWS_CB_PRE_STRING, (tws_oid_t)id, fld, .str = s.c_str());
 	return;
 }
 
@@ -266,16 +233,7 @@ __wrapper::tickEFP(
 {
 	tws_t tws = WRP_TWS(this);
 
-	if (LIKELY(tws->pre_cb != NULL)) {
-		struct tws_pre_clo_s clo = {
-			.oid = (tws_oid_t)id,
-			.tt = fld,
-			0,
-		};
-		/* c++ can't initialise the union therein */
-		clo.data = NULL;
-		tws->pre_cb(tws, TWS_CB_PRE_EFP, clo);
-	}
+	PRE_CB(tws, TWS_CB_PRE_EFP, (tws_oid_t)id, fld, .data = NULL);
 	return;
 }
 
@@ -284,14 +242,7 @@ __wrapper::tickSnapshotEnd(int id)
 {
 	tws_t tws = WRP_TWS(this);
 
-	if (LIKELY(tws->pre_cb != NULL)) {
-		struct tws_pre_clo_s clo = {
-			.oid = (tws_oid_t)id,
-			.tt = 0,
-			0,
-		};
-		tws->pre_cb(tws, TWS_CB_PRE_SNAP_END, clo);
-	}
+	PRE_CB(tws, TWS_CB_PRE_SNAP_END, PRE_ONLY_ID(id));
 	return;
 }
 
@@ -301,16 +252,8 @@ __wrapper::marketDataType(IB::TickerId id, int mkt_data_type)
 {
 	tws_t tws = WRP_TWS(this);
 
-	if (LIKELY(tws->pre_cb != NULL)) {
-		struct tws_pre_clo_s clo = {
-			.oid = (tws_oid_t)id,
-			.tt = 0,
-			0,
-		};
-		/* grrr */
-		clo.i = mkt_data_type;
-		tws->pre_cb(tws, TWS_CB_PRE_MKT_DATA_TYPE, clo);
-	}
+	PRE_CB(tws, TWS_CB_PRE_MKT_DATA_TYPE,
+		(tws_oid_t)id, 0, .i = mkt_data_type);
 	return;
 }
 #endif	// 1
@@ -320,16 +263,7 @@ __wrapper::contractDetails(int req_id, const IB::ContractDetails &cd)
 {
 	tws_t tws = WRP_TWS(this);
 
-	if (LIKELY(tws->pre_cb != NULL)) {
-		struct tws_pre_clo_s clo = {
-			.oid = (tws_oid_t)req_id,
-			.tt = 0,
-			0,
-		};
-		/* grrr */
-		clo.data = &cd;
-		tws->pre_cb(tws, TWS_CB_PRE_CONT_DTL, clo);
-	}
+	PRE_CB(tws, TWS_CB_PRE_CONT_DTL, (tws_oid_t)req_id, 0, .data = &cd);
 	return;
 }
 
@@ -338,16 +272,7 @@ __wrapper::bondContractDetails(int req_id, const IB::ContractDetails &cd)
 {
 	tws_t tws = WRP_TWS(this);
 
-	if (LIKELY(tws->pre_cb != NULL)) {
-		struct tws_pre_clo_s clo = {
-			.oid = (tws_oid_t)req_id,
-			.tt = 0,
-			0,
-		};
-		/* grrr */
-		clo.data = &cd;
-		tws->pre_cb(tws, TWS_CB_PRE_CONT_DTL, clo);
-	}
+	PRE_CB(tws, TWS_CB_PRE_CONT_DTL, (tws_oid_t)req_id, 0, .data = &cd);
 	return;
 }
 
@@ -356,14 +281,7 @@ __wrapper::contractDetailsEnd(int req_id)
 {
 	tws_t tws = WRP_TWS(this);
 
-	if (LIKELY(tws->pre_cb != NULL)) {
-		struct tws_pre_clo_s clo = {
-			.oid = (tws_oid_t)req_id,
-			.tt = 0,
-			0,
-		};
-		tws->pre_cb(tws, TWS_CB_PRE_CONT_DTL_END, clo);
-	}
+	PRE_CB(tws, TWS_CB_PRE_CONT_DTL_END, PRE_ONLY_ID(req_id));
 	return;
 }
 
@@ -372,16 +290,8 @@ __wrapper::fundamentalData(IB::TickerId id, const IB::IBString &data)
 {
 	tws_t tws = WRP_TWS(this);
 
-	if (LIKELY(tws->pre_cb != NULL)) {
-		struct tws_pre_clo_s clo = {
-			.oid = (tws_oid_t)id,
-			.tt = 0,
-			0,
-		};
-		/* grrr */
-		clo.str = data.c_str();
-		tws->pre_cb(tws, TWS_CB_PRE_FUND_DATA, clo);
-	}
+	PRE_CB(tws, TWS_CB_PRE_FUND_DATA,
+		(tws_oid_t)id, 0, .str = data.c_str());
 	return;
 }
 
@@ -392,15 +302,7 @@ __wrapper::updateMktDepth(
 {
 	tws_t tws = WRP_TWS(this);
 
-	if (LIKELY(tws->pre_cb != NULL)) {
-		struct tws_pre_clo_s clo = {
-			.oid = (tws_oid_t)id,
-			.tt = 0,
-			0,
-		};
-		clo.data = NULL;
-		tws->pre_cb(tws, TWS_CB_PRE_UPD_MKT_DEPTH, clo);
-	}
+	PRE_CB(tws, TWS_CB_PRE_UPD_MKT_DEPTH, PRE_ONLY_ID(id));
 	return;
 }
 
@@ -412,15 +314,7 @@ __wrapper::updateMktDepthL2(
 {
 	tws_t tws = WRP_TWS(this);
 
-	if (LIKELY(tws->pre_cb != NULL)) {
-		struct tws_pre_clo_s clo = {
-			.oid = (tws_oid_t)id,
-			.tt = 0,
-			0,
-		};
-		clo.data = NULL;
-		tws->pre_cb(tws, TWS_CB_PRE_UPD_MKT_DEPTH, clo);
-	}
+	PRE_CB(tws, TWS_CB_PRE_UPD_MKT_DEPTH, PRE_ONLY_ID(id));
 	return;
 }
 
@@ -432,15 +326,7 @@ __wrapper::historicalData(
 {
 	tws_t tws = WRP_TWS(this);
 
-	if (LIKELY(tws->pre_cb != NULL)) {
-		struct tws_pre_clo_s clo = {
-			.oid = (tws_oid_t)id,
-			.tt = 0,
-			0,
-		};
-		clo.data = NULL;
-		tws->pre_cb(tws, TWS_CB_PRE_HIST_DATA, clo);
-	}
+	PRE_CB(tws, TWS_CB_PRE_HIST_DATA, PRE_ONLY_ID(id));
 	return;
 }
 
@@ -452,20 +338,22 @@ __wrapper::realtimeBar(
 {
 	tws_t tws = WRP_TWS(this);
 
-	if (LIKELY(tws->pre_cb != NULL)) {
-		struct tws_pre_clo_s clo = {
-			.oid = (tws_oid_t)id,
-			.tt = 0,
-			0,
-		};
-		clo.data = NULL;
-		tws->pre_cb(tws, TWS_CB_PRE_REALTIME_BAR, clo);
-	}
+	PRE_CB(tws, TWS_CB_PRE_REALTIME_BAR, PRE_ONLY_ID(id));
 	return;
 }
 
 
 /* trades */
+static struct tws_trd_clo_s trd_clo;
+
+#define __TRD_CB(x, what, _id_, _data_)			\
+	if (LIKELY(x->trd_cb != NULL)) {		\
+		trd_clo.oid = _id_;			\
+		trd_clo.data = _data_;			\
+		x->trd_cb(x, what, trd_clo);		\
+	} else while (0)
+#define TRD_CB(x, what, args...)	__TRD_CB(x, what, args)
+
 void
 __wrapper::orderStatus(
 	IB::OrderId id, const IB::IBString&,
@@ -475,13 +363,7 @@ __wrapper::orderStatus(
 {
 	tws_t tws = WRP_TWS(this);
 
-	if (LIKELY(tws->trd_cb != NULL)) {
-		struct tws_trd_clo_s clo = {
-			.oid = (tws_oid_t)id,
-			NULL
-		};
-		tws->trd_cb(tws, TWS_CB_TRD_ORD_STATUS, clo);
-	}
+	TRD_CB(tws, TWS_CB_TRD_ORD_STATUS, (tws_oid_t)id, NULL);
 	return;
 }
 
@@ -492,13 +374,7 @@ __wrapper::openOrder(
 {
 	tws_t tws = WRP_TWS(this);
 
-	if (LIKELY(tws->trd_cb != NULL)) {
-		struct tws_trd_clo_s clo = {
-			.oid = (tws_oid_t)id,
-			NULL
-		};
-		tws->trd_cb(tws, TWS_CB_TRD_OPEN_ORD, clo);
-	}
+	TRD_CB(tws, TWS_CB_TRD_OPEN_ORD, (tws_oid_t)id, NULL);
 	return;
 }
 
@@ -507,30 +383,28 @@ __wrapper::openOrderEnd(void)
 {
 	tws_t tws = WRP_TWS(this);
 
-	if (LIKELY(tws->trd_cb != NULL)) {
-		struct tws_trd_clo_s clo = {
-			.oid = 0,
-			NULL
-		};
-		tws->trd_cb(tws, TWS_CB_TRD_OPEN_ORD_END, clo);
-	}
+	TRD_CB(tws, TWS_CB_TRD_OPEN_ORD_END, 0, NULL);
 	return;
 }
 
 
 /* post trade */
+static struct tws_post_clo_s post_clo;
+
+#define __POST_CB(x, what, _id_, _data_)		\
+	if (LIKELY(x->post_cb != NULL)) {		\
+		post_clo.oid = _id_;			\
+		post_clo.data = _data_;			\
+		x->post_cb(x, what, post_clo);		\
+	} else while (0)
+#define POST_CB(x, what, args...)	__POST_CB(x, what, args)
+
 void
 __wrapper::execDetails(int req_id, const IB::Contract&, const IB::Execution&)
 {
 	tws_t tws = WRP_TWS(this);
 
-	if (LIKELY(tws->post_cb != NULL)) {
-		struct tws_post_clo_s clo = {
-			.oid = (tws_oid_t)req_id,
-			NULL
-		};
-		tws->post_cb(tws, TWS_CB_POST_EXEC_DTL, clo);
-	}
+	POST_CB(tws, TWS_CB_POST_EXEC_DTL, (tws_oid_t)req_id, NULL);
 	return;
 }
 
@@ -539,13 +413,7 @@ __wrapper::execDetailsEnd(int req_id)
 {
 	tws_t tws = WRP_TWS(this);
 
-	if (LIKELY(tws->post_cb != NULL)) {
-		struct tws_post_clo_s clo = {
-			.oid = (tws_oid_t)req_id,
-			NULL
-		};
-		tws->post_cb(tws, TWS_CB_POST_EXEC_DTL_END, clo);
-	}
+	POST_CB(tws, TWS_CB_POST_EXEC_DTL_END, (tws_oid_t)req_id, NULL);
 	return;
 }
 
@@ -580,19 +448,23 @@ __wrapper::accountDownloadEnd(const IB::IBString&)
 
 
 /* infra */
+static struct tws_infra_clo_s infra_clo;
+
+#define __INFRA_CB(x, what, _oid_, _code_, _data_)	\
+	if (LIKELY(x->infra_cb != NULL)) {		\
+		infra_clo.oid = _oid_;			\
+		infra_clo.code = _code_;		\
+		infra_clo.data = _data_;		\
+		x->infra_cb(x, what, infra_clo);	\
+	} else while (0)
+#define INFRA_CB(x, what, args...)	__INFRA_CB(x, what, args)
+
 void
 __wrapper::error(const int id, const int code, const IB::IBString msg)
 {
 	tws_t tws = WRP_TWS(this);
 
-	if (LIKELY(tws->infra_cb != NULL)) {
-		struct tws_infra_clo_s clo = {
-			.oid = (tws_oid_t)id,
-			.code = (tws_oid_t)code,
-			.data = &msg,
-		};
-		tws->infra_cb(tws, TWS_CB_INFRA_ERROR, clo);
-	}
+	INFRA_CB(tws, TWS_CB_INFRA_ERROR, (tws_oid_t)id, code, msg.c_str());
 	return;
 }
 
@@ -601,14 +473,7 @@ __wrapper::winError(const IB::IBString &str, int code)
 {
 	tws_t tws = WRP_TWS(this);
 
-	if (LIKELY(tws->infra_cb != NULL)) {
-		struct tws_infra_clo_s clo = {
-			.oid = (tws_oid_t)0,
-			.code = (tws_oid_t)code,
-			.data = str.c_str(),
-		};
-		tws->infra_cb(tws, TWS_CB_INFRA_ERROR, clo);
-	}
+	INFRA_CB(tws, TWS_CB_INFRA_ERROR, 0, code, str.c_str());
 	return;
 }
 
@@ -617,14 +482,7 @@ __wrapper::connectionClosed(void)
 {
 	tws_t tws = WRP_TWS(this);
 
-	if (LIKELY(tws->infra_cb != NULL)) {
-		struct tws_infra_clo_s clo = {
-			.oid = (tws_oid_t)0,
-			.code = (tws_oid_t)0,
-			.data = NULL,
-		};
-		tws->infra_cb(tws, TWS_CB_INFRA_CONN_CLOSED, clo);
-	}
+	INFRA_CB(tws, TWS_CB_INFRA_CONN_CLOSED, 0, 0, 0);
 	return;
 }
 

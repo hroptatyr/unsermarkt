@@ -506,19 +506,26 @@ __asm_cash_ins(IB::Contract *cont, const char *sym)
 	const char *bas = sym;
 	const char *trm;
 
-	if (!strcmp(bas, "EUR") ||
+	if (!strcmp(bas, "USD") ||
 	    !strcmp(bas, "GBP") ||
 	    !strcmp(bas, "AUD") ||
-	    !strcmp(bas, "NZD")) {
-		trm = "USD";
-	} else if (!strcmp(bas, "USD")) {
+	    !strcmp(bas, "NZD") ||
+	    !strcmp(bas, "SEK") ||
+	    !strcmp(bas, "NOK") ||
+	    !strcmp(bas, "DKK") ||
+	    !strcmp(bas, "CHF") ||
+	    !strcmp(bas, "JPY") ||
+	    !strcmp(bas, "CAD")) {
 		trm = bas;
 		bas = "EUR";
+	} else if (!strcmp(bas, "EUR")) {
+		trm = "USD";
 	} else {
 		trm = bas;
 		bas = "USD";
 	}
 
+	ANN_DEBUG("using %s%s\n", bas, trm);
 	cont->symbol = std::string(bas);
 	cont->currency = std::string(trm);
 	cont->secType = std::string("CASH");
@@ -544,6 +551,8 @@ __wrapper::updateAccountValue(
 		IB::Contract cont;
 
 		if (!strcmp(cc, "BASE")) {
+			return;
+		} else if (!strcmp(cc, "EUR")) {
 			return;
 		}
 		__asm_cash_ins(&cont, cc);
@@ -903,7 +912,7 @@ tws_cont_nick(tws_cont_t cont)
 		const char *trm = c->currency.c_str();
 
 		if (c->exchange == std::string("FXCONV")) {
-			snprintf(nick, sizeof(nick), "%s", bas);
+			snprintf(nick, sizeof(nick), "c%s", trm);
 		} else {
 			snprintf(nick, sizeof(nick), "%s.%s", bas, trm);
 		}
@@ -1231,7 +1240,11 @@ flush_queue(my_tws_t tws)
 				ANN_DEBUG("SELL %zu %.4f %s\n", i, lqty, nick);
 
 				x = new IB::Order;
-				x->action = std::string("SELL");
+				if (nick[0] == 'c') {
+					x->action = std::string("BUY");
+				} else {
+					x->action = std::string("SELL");
+				}
 				x->orderType = std::string("MKT");
 				x->totalQuantity = (long int)lqty;
 			} else if (sqty >= 10000.0) {
@@ -1239,7 +1252,11 @@ flush_queue(my_tws_t tws)
 				ANN_DEBUG("BUY  %zu %.4f %s\n", i, sqty, nick);
 
 				x = new IB::Order;
-				x->action = std::string("BUY");
+				if (nick[0] == 'c') {
+					x->action = std::string("SELL");
+				} else {
+					x->action = std::string("BUY");
+				}
 				x->orderType = std::string("MKT");
 				x->totalQuantity = (long int)sqty;
 			} else {

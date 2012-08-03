@@ -167,8 +167,19 @@ popt(int key, char *arg, struct argp_state *state)
 static void
 infra_cb(tws_t tws, tws_cb_t what, struct tws_infra_clo_s clo)
 {
-	error(0, "infra called %p %u: oid %u  code %u  data %p",
-	      tws, what, clo.oid, clo.code, clo.data);
+	switch (what) {
+	case TWS_CB_INFRA_ERROR:
+		error(0, "tws %p: oid %u  code %u: %s",
+			tws, clo.oid, clo.code, (const char*)clo.data);
+		break;
+	case TWS_CB_INFRA_CONN_CLOSED:
+		error(0, "tws %p: connection closed", tws);
+		break;
+	default:
+		error(0, "%p infra called: what %u  oid %u  code %u  data %p",
+			tws, what, clo.oid, clo.code, clo.data);
+		break;
+	}
 	return;
 }
 

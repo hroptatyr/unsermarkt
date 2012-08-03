@@ -589,6 +589,12 @@ fini_tws(tws_t tws)
 		// all's done innit
 		return 0;
 	}
+#if defined HAVE_TWSAPI_HANDSHAKE
+	/* we used to call tws_disconnect() here but that's ancient history
+	 * just like we don't call tws_connect() in tws_init() we won't call
+	 * tws_disconnect() here. */
+	tws_stop(tws);
+#endif	/* HAVE_TWSAPI_HANDSHAKE */
 	/* wipe our context off the face of this earth */
 	rset_tws(tws);
 
@@ -638,6 +644,31 @@ tws_disconnect(tws_t tws)
 	TWS_PRIV_CLI(tws)->eDisconnect();
 	return 0;
 }
+
+#if defined HAVE_TWSAPI_HANDSHAKE
+int
+tws_started_p(tws_t tws)
+{
+	return TWS_PRIV_CLI(tws)->handshake() == 1;
+}
+
+int
+tws_start(tws_t tws)
+{
+	int st;
+
+	if ((st = TWS_PRIV_CLI(tws)->handshake()) == 1) {
+		TWS_PRIV_CLI(tws)->reqCurrentTime();
+	}
+	return st;
+}
+
+int
+tws_stop(tws_t tws)
+{
+	return TWS_PRIV_CLI(tws)->wavegoodbye();
+}
+#endif	/* HAVE_TWSAPI_HANDSHAKE */
 
 static inline int
 __sock_ok_p(tws_t tws)

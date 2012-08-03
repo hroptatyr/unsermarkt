@@ -38,8 +38,10 @@
 # include "config.h"
 #endif	/* HAVE_CONFIG_H */
 #include <unistd.h>
+#include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
+#include <string.h>
 #include <errno.h>
 /* for gmtime_r */
 #include <time.h>
@@ -48,8 +50,6 @@
 #include <fcntl.h>
 #include <netinet/in.h>
 #include <netdb.h>
-#include <stdarg.h>
-#include <string.h>
 #if defined STANDALONE
 # include <sys/epoll.h>
 #endif	/* STANDALONE */
@@ -93,6 +93,77 @@ error(int eno, const char *fmt, ...)
 
 
 #if defined STANDALONE
+#include <argp.h>
+
+const char *argp_program_version = "gen-tws " VERSION;
+const char *argp_program_bug_address = NULL;
+static char doc[] = "\
+Test driver for the gen-tws C wrapper.\n\
+";
+
+static struct argp_option options[] = {
+	{"help", 'h', 0, 0, "Print this help screen"},
+	{"version", 'V', 0, 0, "Print version number"},
+	{0, '\0', 0, 0, "TWS options", 1},
+	{"host", 'h' + 256, "STR", 0, "TWS host"},
+	{"port", 'p' + 256, "NUM", 0, "TWS port"},
+	{"client-id", 'c' + 256, "NUM", 0, "TWS client id"},
+	{0},
+};
+
+struct my_args_s {
+	const char *host;
+	short unsigned int port;
+	int client;
+};
+
+static error_t
+popt(int key, char *arg, struct argp_state *state)
+{
+	struct my_args_s *args = state->input;
+
+	switch (key) {
+	case 'h' + 256:
+		args->host = arg;
+		break;
+	case 'p' + 256: {
+		char *p;
+		long int foo;
+
+		if ((foo = strtol(arg, &p, 0)) && !*p) {
+			args->port = (short unsigned int)foo;
+		}
+		break;
+	}
+	case 'c' + 256: {
+		char *p;
+		long int foo;
+
+		if ((foo = strtol(arg, &p, 0)) && !*p) {
+			args->client = (int)foo;
+		}
+		break;
+	}
+
+	case 'h':
+		argp_state_help(state, state->out_stream, ARGP_HELP_STD_HELP);
+		exit(0);
+	case 'V':
+		puts(argp_program_version);
+		exit(0);
+
+	case ARGP_KEY_ARG:
+		break;
+
+	case ARGP_KEY_END:
+		break;
+
+	default:
+		return ARGP_ERR_UNKNOWN;
+	}
+	return 0;
+}
+
 static void
 infra_cb(tws_t tws, tws_cb_t what, struct tws_infra_clo_s clo)
 {
@@ -104,8 +175,12 @@ infra_cb(tws_t tws, tws_cb_t what, struct tws_infra_clo_s clo)
 int
 main(int argc, char *argv[])
 {
-	const char host[] = "quant";
-	short unsigned int port = 7474;
+	struct my_args_s args = {
+		.host = "quant",
+		.port = 7474,
+		.client = 3333,
+	};
+	struct argp aprs = {options, popt, NULL, doc};
 	struct tws_s tws[1] = {{0}};
 	struct epoll_event ev[1];
 	int epfd;
@@ -113,11 +188,13 @@ main(int argc, char *argv[])
 	int res = 0;
 
 	logerr = stderr;
+	argp_parse(&aprs, argc, argv, ARGP_NO_HELP, 0, &args);
+
 	if (init_tws(tws) < 0) {
 		return 1;
 	}
 
-	if ((s = tws_connect(tws, host, port, 3333)) < 0) {
+	if ((s = tws_connect(tws, args.host, args.port, args.client)) < 0) {
 		res = 1;
 		goto fini;
 	}

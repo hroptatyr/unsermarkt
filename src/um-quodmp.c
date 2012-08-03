@@ -484,7 +484,7 @@ rotate_outfile(EV_P)
 		 * and let unroll do the work */
 		u_fn = nu_fn;
 		/* let libev know we're a fork */
-		ev_default_fork();
+		ev_loop_fork(EV_DEFAULT);
 
 		/* close everything but the ute file */
 		for (size_t i = 0; i < nbeef; i++) {

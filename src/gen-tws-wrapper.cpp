@@ -631,21 +631,39 @@ tws_disconnect(tws_t tws)
 	return 0;
 }
 
+static inline int
+__sock_ok_p(tws_t tws)
+{
+	return TWS_PRIV_CLI(tws)->isSocketOK() ? 0 : -1;
+}
+
+bool
+tws_needs_recv_p(tws_t tws)
+{
+	return !TWS_PRIV_CLI(tws)->isInBufferEmpty();
+}
+
 int
 tws_recv(tws_t tws)
 {
 	TWS_PRIV_CLI(tws)->onReceive();
-	return TWS_PRIV_CLI(tws)->isSocketOK() ? 0 : -1;
+	return __sock_ok_p(tws);
+}
+
+bool
+tws_needs_send_p(tws_t tws)
+{
+	return !TWS_PRIV_CLI(tws)->isOutBufferEmpty();
 }
 
 int
 tws_send(tws_t tws)
 {
-	if (TWS_PRIV_CLI(tws)->isOutBufferEmpty()) {
+	if (!tws_needs_send_p(tws)) {
 		return 0;
 	}
 	TWS_PRIV_CLI(tws)->onSend();
-	return TWS_PRIV_CLI(tws)->isSocketOK() ? 0 : -1;
+	return __sock_ok_p(tws);
 }
 
 int
@@ -653,6 +671,125 @@ tws_ready_p(tws_t tws)
 {
 /* inspect TWS and return non-nil if requests to the tws can be made */
 	return TWS_PRIV_WRP(tws)->next_oid > 0 && TWS_PRIV_WRP(tws)->time > 0;
+}
+
+
+/* pre requests */
+int
+tws_req_quo(tws_t tws, tws_oid_t oid, const void *data)
+{
+	long int real_idx;
+
+	if (UNLIKELY(!tws_ready_p(tws))) {
+		return -1;
+	}
+
+	/* we'll request idx + next_oid */
+	if (oid <= TWS_PRIV_WRP(tws)->next_oid - 1) {
+		TWS_PRIV_WRP(tws)->next_oid += oid;
+		real_idx = TWS_PRIV_WRP(tws)->next_oid - 1;
+	} else {
+		real_idx = oid;
+	}
+	/* and now we just assume it works */
+	{
+		const IB::Contract *cont = (const IB::Contract*)data;
+		IB::IBString generics = std::string("");
+		bool snapp = false;
+
+		TWS_PRIV_CLI(tws)->reqMktData(real_idx, *cont, generics, snapp);
+	}
+	return __sock_ok_p(tws);
+}
+
+int
+tws_rem_quo(tws_t tws, tws_oid_t oid)
+{
+	TWS_PRIV_CLI(tws)->cancelMktData((IB::TickerId)oid);
+	return __sock_ok_p(tws);
+}
+
+tws_oid_t
+tws_gen_quo(tws_t tws, const void *data)
+{
+	tws_oid_t res;
+
+	if (UNLIKELY(!tws_ready_p(tws))) {
+		return 0;
+	}
+
+	/* we'll request idx + next_oid */
+	res = TWS_PRIV_WRP(tws)->next_oid++;
+	if (tws_req_quo(tws, res, data) < 0) {
+		return 0;
+	}
+	return res;
+}
+
+/* trd requests */
+int
+tws_put_order(tws_t tws, tws_oid_t id, const void *cont, const void *data)
+{
+	const IB::Contract *ib_c = (const IB::Contract*)cont;
+	const IB::Order *ib_o = (const IB::Order*)data;
+
+	TWS_PRIV_CLI(tws)->placeOrder((IB::OrderId)id, *ib_c, *ib_o);
+	return __sock_ok_p(tws);
+}
+
+int
+tws_rem_order(tws_t tws, tws_oid_t id)
+{
+	TWS_PRIV_CLI(tws)->cancelOrder((IB::OrderId)id);
+	return __sock_ok_p(tws);
+}
+
+tws_oid_t
+tws_gen_order(tws_t tws, const void *cont, const void *data)
+{
+	tws_oid_t res;
+
+	if (UNLIKELY(!tws_ready_p(tws))) {
+		return 0;
+	}
+
+	/* snatch a oid, then put the order on the market */
+	res = TWS_PRIV_WRP(tws)->next_oid++;
+	if (tws_put_order(tws, res, cont, data) < 0) {
+		return 0;
+	}
+	return res;
+}
+
+/* post requests */
+int
+tws_req_ac(tws_t tws, const void *data)
+{
+	IB::IBString name;
+
+	if (data == NULL) {
+		name = std::string("");
+	} else {
+		name = std::string((const char*)data);
+	}
+
+	TWS_PRIV_CLI(tws)->reqAccountUpdates(true, name);
+	return __sock_ok_p(tws);
+}
+
+int
+tws_rem_ac(tws_t tws, const void *data)
+{
+	IB::IBString name;
+
+	if (data == NULL) {
+		name = std::string("");
+	} else {
+		name = std::string((const char*)data);
+	}
+
+	TWS_PRIV_CLI(tws)->reqAccountUpdates(false, name);
+	return __sock_ok_p(tws);
 }
 
 /* gen-tws-wrapper.cpp ends here */

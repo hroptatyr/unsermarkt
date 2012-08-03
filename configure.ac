@@ -145,8 +145,33 @@ fi
 AM_CONDITIONAL([HAVE_TWSTOOLS], [test "${have_twstools}" = "yes"])
 
 ## check for twsapi
-PKG_CHECK_MODULES([twsapi], [twsapi >= 0.4.0], [:], [:])
-AM_CONDITIONAL([HAVE_TWSAPI], [test -n "${pkg_cv_twsapi_LIBS}"])
+PKG_CHECK_MODULES([twsapi], [twsapi >= 0.4.0],
+	[have_twsapi="yes"], [have_twsapi="no"])
+if test "${have_twsapi}" = "yes"; then
+	## check for handshake functions in there
+	AC_MSG_CHECKING([if twsapi has handshake functions])
+	SXE_DUMP_LIBS
+	AC_LANG([C++])
+	CPPFLAGS="${CPPFLAGS} ${twsapi_CFLAGS}"
+	LIBS="${LIBS} ${twsapi_LIBS} -lstdc++"
+	AC_LINK_IFELSE([AC_LANG_PROGRAM([[
+#include <twsapi/EPosixClientSocket.h>
+]], [[
+	IB::EPosixClientSocket *cli = NULL;
+	cli->prepareHandshake(-1, 0);
+	cli->handshake();
+	cli->wavegoodbye();
+]])], [have_twsapi_handshake="yes"], [have_twsapi_handshake="no"])
+	SXE_RESTORE_LIBS
+	AC_LANG([C])
+	AC_MSG_RESULT([${have_twsapi_handshake}])
+
+	if test "${have_twsapi_handshake}" = "yes"; then
+		AC_DEFINE([HAVE_TWSAPI_HANDSHAKE], [1],
+			[define when libtwsapi has handshake functions])
+	fi
+fi
+AM_CONDITIONAL([HAVE_TWSAPI], [test "${have_twsapi}" = "yes"])
 
 ## just shortly before we're going libtool, check for the ldflags
 SXE_CHECK_LDFLAGS

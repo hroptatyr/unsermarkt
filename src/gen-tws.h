@@ -84,6 +84,7 @@ typedef enum {
 	/* INFRAs */
 	TWS_CB_INFRA_ERROR,
 	TWS_CB_INFRA_CONN_CLOSED,
+	TWS_CB_INFRA_READY,
 } tws_cb_t;
 
 /* we split the callbacks into 4 big groups, just like fix:
@@ -125,12 +126,19 @@ struct tws_s {
 
 
 /* infra structure requests */
-extern int init_tws(tws_t);
+extern int init_tws(tws_t, int sock, int client);
 extern int fini_tws(tws_t);
 extern void rset_tws(tws_t);
 
 extern int tws_connect(tws_t, const char *host, uint16_t port, int client);
 extern int tws_disconnect(tws_t);
+
+#if defined HAVE_TWSAPI_HANDSHAKE
+/* handshake api */
+extern int tws_started_p(tws_t);
+extern int tws_start(tws_t);
+extern int tws_stop(tws_t);
+#endif	/* HAVE_TWSAPI_HANDSHAKE */
 
 extern int tws_recv(tws_t);
 extern int tws_send(tws_t);

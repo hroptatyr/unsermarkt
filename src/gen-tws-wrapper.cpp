@@ -562,7 +562,13 @@ rset_tws(tws_t tws)
 }
 
 int
-init_tws(tws_t tws)
+init_tws(tws_t tws,
+#if defined HAVE_TWSAPI_HANDSHAKE
+	int sock, int client
+#else  /* !HAVE_TWSAPI_HANDSHAKE */
+	int, int
+#endif	/* HAVE_TWSAPI_HANDSHAKE */
+	)
 {
 	tws->priv = new __wrapper();
 	rset_tws(tws);
@@ -570,6 +576,9 @@ init_tws(tws_t tws)
 
 	/* just so we know who we are */
 	TWS_PRIV_WRP(tws)->tws = tws;
+#if defined HAVE_TWSAPI_HANDSHAKE
+	TWS_PRIV_CLI(tws)->prepareHandshake(sock, client);
+#endif	/* HAVE_TWSAPI_HANDSHAKE */
 	return 0;
 }
 
@@ -580,7 +589,12 @@ fini_tws(tws_t tws)
 		// all's done innit
 		return 0;
 	}
-	tws_disconnect(tws);
+#if defined HAVE_TWSAPI_HANDSHAKE
+	/* we used to call tws_disconnect() here but that's ancient history
+	 * just like we don't call tws_connect() in tws_init() we won't call
+	 * tws_disconnect() here. */
+	tws_stop(tws);
+#endif	/* HAVE_TWSAPI_HANDSHAKE */
 	/* wipe our context off the face of this earth */
 	rset_tws(tws);
 
@@ -631,6 +645,31 @@ tws_disconnect(tws_t tws)
 	return 0;
 }
 
+#if defined HAVE_TWSAPI_HANDSHAKE
+int
+tws_started_p(tws_t tws)
+{
+	return TWS_PRIV_CLI(tws)->handshake() == 1;
+}
+
+int
+tws_start(tws_t tws)
+{
+	int st;
+
+	if ((st = TWS_PRIV_CLI(tws)->handshake()) == 1) {
+		TWS_PRIV_CLI(tws)->reqCurrentTime();
+	}
+	return st;
+}
+
+int
+tws_stop(tws_t tws)
+{
+	return TWS_PRIV_CLI(tws)->wavegoodbye();
+}
+#endif	/* HAVE_TWSAPI_HANDSHAKE */
+
 static inline int
 __sock_ok_p(tws_t tws)
 {
@@ -659,9 +698,6 @@ tws_needs_send_p(tws_t tws)
 int
 tws_send(tws_t tws)
 {
-	if (!tws_needs_send_p(tws)) {
-		return 0;
-	}
 	TWS_PRIV_CLI(tws)->onSend();
 	return __sock_ok_p(tws);
 }

@@ -172,6 +172,47 @@ infra_cb(tws_t tws, tws_cb_t what, struct tws_infra_clo_s clo)
 	return;
 }
 
+#if defined HAVE_TWSAPI_HANDSHAKE
+static int
+rslv(struct addrinfo **res, const char *host, short unsigned int port)
+{
+	char strport[32];
+	struct addrinfo hints;
+
+	memset(&hints, 0, sizeof(struct addrinfo));
+	hints.ai_family = AF_INET;
+	hints.ai_socktype = SOCK_STREAM;
+	hints.ai_flags = 0;
+	hints.ai_protocol = 0;
+
+	/* Convert the port number into a string. */
+	snprintf(strport, sizeof(strport), "%hu", port);
+
+	return getaddrinfo(host, strport, &hints, res);
+}
+
+static int
+conn(struct addrinfo *ais)
+{
+	int s = -1;
+
+	for (struct addrinfo *aip = ais; aip; aip = aip->ai_next) {
+		if ((s = socket(aip->ai_family, aip->ai_socktype, 0)) < 0) {
+			/* great way to start the day */
+			;
+		} else if (connect(s, aip->ai_addr, aip->ai_addrlen) < 0) {
+			/* bugger */
+			close(s);
+		} else {
+			/* yippie */
+			break;
+		}
+	}
+	freeaddrinfo(ais);
+	return s;
+}
+#endif	/* HAVE_TWSAPI_HANDSHAKE */
+
 int
 main(int argc, char *argv[])
 {
@@ -183,6 +224,9 @@ main(int argc, char *argv[])
 	struct argp aprs = {options, popt, NULL, doc};
 	struct tws_s tws[1] = {{0}};
 	struct epoll_event ev[1];
+#if defined HAVE_TWSAPI_HANDSHAKE
+	struct addrinfo *ais = NULL;
+#endif	/* HAVE_TWSAPI_HANDSHAKE */
 	int epfd;
 	int s;
 	int res = 0;
@@ -190,26 +234,68 @@ main(int argc, char *argv[])
 	logerr = stderr;
 	argp_parse(&aprs, argc, argv, ARGP_NO_HELP, 0, &args);
 
-	if (init_tws(tws) < 0) {
+#if defined HAVE_TWSAPI_HANDSHAKE
+	/* we check if we can connect to the host/port in question
+	 * BEFORE populating (and hence ctor'ing) the tws object */
+	if (rslv(&ais, args.host, args.port) < 0) {
+		error(0, "cannot resolve [%s]:%hu", args.host, args.port);
+		res = 1;
+		goto fini;
+	} else if ((s = conn(ais)) < 0) {
+		error(0, "cannot connect to [%s]:%hu", args.host, args.port);
+		res = 1;
+		goto fini;
+	}
+
+	if (init_tws(tws, s, args.client) < 0) {
+		return 1;
+	}
+#else  /* !HAVE_TWSAPI_HANDSHAKE */
+	/* in the traditional connection procedure the tws object must
+	 * be initialised first as the underlying worker functions are
+	 * part of the EPosixClientSocket blackbox and need ctor'ing */
+	if (init_tws(tws, 0, 0) < 0) {
 		return 1;
 	}
 
 	if ((s = tws_connect(tws, args.host, args.port, args.client)) < 0) {
+		error(0, "cannot connect to [%s]:%hu", args.host, args.port);
 		res = 1;
 		goto fini;
 	}
+#endif	/* HAVE_TWSAPI_HANDSHAKE */
 
 	if ((epfd = epoll_create(1)) < 0) {
 		res = 1;
 		goto disc;
 	}
 	/* add s to epoll descriptor */
-	ev->events = EPOLLIN | EPOLLOUT | EPOLLHUP;
+	ev->events = EPOLLIN | EPOLLHUP;
 	epoll_ctl(epfd, EPOLL_CTL_ADD, s, ev);
 
 	/* add some callbacks */
 	tws->infra_cb = infra_cb;
 
+#if defined HAVE_TWSAPI_HANDSHAKE
+	/* handshake first */
+	do {
+		switch (tws_start(tws)) {
+		case -1:
+			/* fuck */
+			error(0, "handshake with [%s]:%hu/%i failed",
+			      args.host, args.port, args.client);
+			res = 1;
+			goto clos;
+		case 1:
+			/* handshake's finished yay */
+			goto main_loop;
+		case 0:
+			break;
+		}
+	} while (epoll_wait(epfd, ev, 1, 2000) > 0);
+
+main_loop:
+#endif	/* HAVE_TWSAPI_HANDSHAKE */
 	while (epoll_wait(epfd, ev, 1, 2000) > 0) {
 		if (ev->events & EPOLLHUP) {
 			break;
@@ -217,18 +303,29 @@ main(int argc, char *argv[])
 		if (ev->events & EPOLLIN) {
 			tws_recv(tws);
 		}
-		if (ev->events & EPOLLOUT) {
+		if (1) {
 			tws_send(tws);
-			ev->events = EPOLLIN | EPOLLHUP;
-			epoll_ctl(epfd, EPOLL_CTL_MOD, s, ev);
 		}
 	}
 
 disc:
+#if defined HAVE_TWSAPI_HANDSHAKE
+	if (tws_stop(tws) < 0) {
+		res = 1;
+		goto clos;
+	}
+#else  /* HAVE_TWSAPI_HANDSHAKE */
 	if (tws_disconnect(tws) < 0) {
 		res = 1;
 		goto fini;
 	}
+#endif	/* HAVE_TWSAPI_HANDSHAKE */
+
+#if defined HAVE_TWSAPI_HANDSHAKE
+/* in this case we need to close our socket ourselves of course */
+clos:
+	close(s);
+#endif	/* HAVE_TWSAPI_HANDSHAKE */
 
 fini:
 	if (fini_tws(tws) < 0) {

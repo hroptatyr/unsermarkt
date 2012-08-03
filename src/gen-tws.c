@@ -204,7 +204,7 @@ main(int argc, char *argv[])
 		goto disc;
 	}
 	/* add s to epoll descriptor */
-	ev->events = EPOLLIN | EPOLLOUT | EPOLLHUP;
+	ev->events = EPOLLIN | EPOLLHUP;
 	epoll_ctl(epfd, EPOLL_CTL_ADD, s, ev);
 
 	/* add some callbacks */
@@ -217,10 +217,8 @@ main(int argc, char *argv[])
 		if (ev->events & EPOLLIN) {
 			tws_recv(tws);
 		}
-		if (ev->events & EPOLLOUT) {
+		if (1) {
 			tws_send(tws);
-			ev->events = EPOLLIN | EPOLLHUP;
-			epoll_ctl(epfd, EPOLL_CTL_MOD, s, ev);
 		}
 	}
 

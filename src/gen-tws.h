@@ -84,6 +84,7 @@ typedef enum {
 	/* INFRAs */
 	TWS_CB_INFRA_ERROR,
 	TWS_CB_INFRA_CONN_CLOSED,
+	TWS_CB_INFRA_READY,
 } tws_cb_t;
 
 /* we split the callbacks into 4 big groups, just like fix:

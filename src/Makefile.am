@@ -8,6 +8,7 @@ moddir = $(libdir)/unserding
 
 bin_PROGRAMS =
 noinst_PROGRAMS =
+lib_LTLIBRARIES =
 mod_LTLIBRARIES =
 noinst_LTLIBRARIES =
 noinst_HEADERS =
@@ -334,13 +335,32 @@ ccy_graph_SOURCES += iso4217.c iso4217.h
 ccy_graph_CPPFLAGS = $(AM_CPPFLAGS) -DSTANDALONE
 
 if HAVE_TWSAPI
+noinst_LTLIBRARIES += libtwscapi.la
+libtwscapi_la_SOURCES = gen-tws.c gen-tws.h
+libtwscapi_la_SOURCES += gen-tws-wrapper.cpp
+if HAVE_EXPAT
+libtwscapi_la_SOURCES += gen-tws-cont.c gen-tws-cont.h
+libtwscapi_la_SOURCES += gen-tws-cont-glu.cpp gen-tws-cont-glu.h
+libtwscapi_la_SOURCES += proto-twsxml-tag.gperf
+libtwscapi_la_SOURCES += proto-twsxml-attr.gperf
+libtwscapi_la_SOURCES += proto-twsxml-ns.gperf
+endif  HAVE_EXPAT
+libtwscapi_la_SOURCES +=
+libtwscapi_la_CPPFLAGS = $(AM_CPPFLAGS)
+libtwscapi_la_CPPFLAGS += $(twsapi_CFLAGS)
+libtwscapi_la_LDFLAGS = $(AM_LDFLAGS) -rpath /none
+libtwscapi_la_LDFLAGS += $(twsapi_LIBS) -lstdc++
+if HAVE_EXPAT
+libtwscapi_la_CPPFLAGS += $(expat_CFLAGS)
+libtwscapi_la_LDFLAGS += $(expat_LIBS)
+endif  HAVE_EXPAT
+libtwscapi_la_LINK = $(LINK) $(libtwscapi_la_LDFLAGS)
+
 noinst_PROGRAMS += gen-tws
-gen_tws_SOURCES = gen-tws.c gen-tws.h
-gen_tws_SOURCES += gen-tws-wrapper.cpp
+gen_tws_SOURCES = gen-tws.c
 gen_tws_CPPFLAGS = $(AM_CPPFLAGS) -DSTANDALONE
-gen_tws_CPPFLAGS += $(twsapi_CFLAGS)
+gen_tws_LDADD = libtwscapi.la
 gen_tws_LDFLAGS = $(AM_LDFLAGS)
-gen_tws_LDFLAGS += $(twsapi_LIBS) -lstdc++
 gen_tws_LINK = $(LINK) $(gen_tws_LDFLAGS)
 endif  HAVE_TWSAPI
 

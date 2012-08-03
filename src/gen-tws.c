@@ -56,6 +56,7 @@
 
 /* the tws api */
 #include "gen-tws.h"
+#include "gen-tws-cont.h"
 
 #if defined __INTEL_COMPILER
 # pragma warning (disable:981)
@@ -71,25 +72,6 @@
 # define MAYBE_NOINLINE
 #endif	/* DEBUG_FLAG */
 void *logerr;
-
-/* error() impl */
-static void
-__attribute__((format(printf, 2, 3)))
-error(int eno, const char *fmt, ...)
-{
-	va_list vap;
-	va_start(vap, fmt);
-	fputs("[quo-tws] ", stderr);
-	vfprintf(logerr, fmt, vap);
-	va_end(vap);
-	if (eno || errno) {
-		fputc(':', stderr);
-		fputc(' ', stderr);
-		fputs(strerror(eno ? eno : errno), stderr);
-	}
-	fputc('\n', stderr);
-	return;
-}
 
 
 #if defined STANDALONE
@@ -116,6 +98,25 @@ struct my_args_s {
 	short unsigned int port;
 	int client;
 };
+
+/* error() impl */
+static void
+__attribute__((format(printf, 2, 3)))
+error(int eno, const char *fmt, ...)
+{
+	va_list vap;
+	va_start(vap, fmt);
+	fputs("[quo-tws] ", stderr);
+	vfprintf(logerr, fmt, vap);
+	va_end(vap);
+	if (eno || errno) {
+		fputc(':', stderr);
+		fputc(' ', stderr);
+		fputs(strerror(eno ? eno : errno), stderr);
+	}
+	fputc('\n', stderr);
+	return;
+}
 
 static error_t
 popt(int key, char *arg, struct argp_state *state)
@@ -224,6 +225,19 @@ conn(struct addrinfo *ais)
 }
 #endif	/* HAVE_TWSAPI_HANDSHAKE */
 
+#if defined HAVE_EXPAT_H
+static const char xmpl_cont[] = "\
+<TWSXML xmlns="">\n\
+  <request type=\"market_data\">\n\
+    <query>\n\
+      <reqContract symbol=\"EUR\" currency=\"USD\" secType=\"CASH\"\n\
+        exchange=\"IDEALPRO\"/>\n\
+    </query>\n\
+  </request>\n\
+</TWSXML>\n\
+";
+#endif	/* HAVE_EXPAT_H */
+
 int
 main(int argc, char *argv[])
 {
@@ -318,6 +332,15 @@ main_loop:
 			tws_send(tws);
 		}
 	}
+
+#if defined HAVE_EXPAT_H
+/* test contract builder */
+	{
+		tws_cont_t x = tws_cont(xmpl_cont, sizeof(xmpl_cont));
+		fprintf(logerr, "built contract %p\n", x);
+		tws_free_cont(x);
+	}
+#endif	/* HAVE_EXPAT_H */
 
 disc:
 #if defined HAVE_TWSAPI_HANDSHAKE

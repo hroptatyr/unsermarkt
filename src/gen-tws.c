@@ -190,7 +190,7 @@ main(int argc, char *argv[])
 	logerr = stderr;
 	argp_parse(&aprs, argc, argv, ARGP_NO_HELP, 0, &args);
 
-	if (init_tws(tws) < 0) {
+	if (init_tws(tws, -1, 0) < 0) {
 		return 1;
 	}
 

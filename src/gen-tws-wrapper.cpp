@@ -562,7 +562,13 @@ rset_tws(tws_t tws)
 }
 
 int
-init_tws(tws_t tws)
+init_tws(tws_t tws,
+#if defined HAVE_TWSAPI_HANDSHAKE
+	int sock, int client
+#else  /* !HAVE_TWSAPI_HANDSHAKE */
+	int, int
+#endif	/* HAVE_TWSAPI_HANDSHAKE */
+	)
 {
 	tws->priv = new __wrapper();
 	rset_tws(tws);
@@ -570,6 +576,9 @@ init_tws(tws_t tws)
 
 	/* just so we know who we are */
 	TWS_PRIV_WRP(tws)->tws = tws;
+#if defined HAVE_TWSAPI_HANDSHAKE
+	TWS_PRIV_CLI(tws)->prepareHandshake(sock, client);
+#endif	/* HAVE_TWSAPI_HANDSHAKE */
 	return 0;
 }
 
@@ -580,7 +589,6 @@ fini_tws(tws_t tws)
 		// all's done innit
 		return 0;
 	}
-	tws_disconnect(tws);
 	/* wipe our context off the face of this earth */
 	rset_tws(tws);
 

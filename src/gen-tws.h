@@ -125,7 +125,7 @@ struct tws_s {
 
 
 /* infra structure requests */
-extern int init_tws(tws_t);
+extern int init_tws(tws_t, int sock, int client);
 extern int fini_tws(tws_t);
 extern void rset_tws(tws_t);
 

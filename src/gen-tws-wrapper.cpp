@@ -698,9 +698,6 @@ tws_needs_send_p(tws_t tws)
 int
 tws_send(tws_t tws)
 {
-	if (!tws_needs_send_p(tws)) {
-		return 0;
-	}
 	TWS_PRIV_CLI(tws)->onSend();
 	return __sock_ok_p(tws);
 }

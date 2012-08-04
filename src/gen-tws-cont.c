@@ -581,7 +581,7 @@ tws_cont(const char *xml, size_t len)
 	XML_SetElementHandler(hdl, el_sta, el_end);
 	XML_SetUserData(hdl, &clo);
 
-	if (XML_Parse(hdl, xml, len, XML_FALSE) == XML_STATUS_ERROR) {
+	if (XML_Parse(hdl, xml, len, XML_TRUE) == XML_STATUS_ERROR) {
 		tws_free_cont(clo.res);
 	fucked:
 		return NULL;

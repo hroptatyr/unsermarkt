@@ -192,7 +192,7 @@ rslv(struct addrinfo **res, const char *host, short unsigned int port)
 	struct addrinfo hints;
 
 	memset(&hints, 0, sizeof(struct addrinfo));
-	hints.ai_family = AF_INET;
+	hints.ai_family = AF_UNSPEC;
 	hints.ai_socktype = SOCK_STREAM;
 	hints.ai_flags = 0;
 	hints.ai_protocol = 0;

@@ -473,12 +473,6 @@ sax_eo_TWSXML_elt(__ctx_t ctx, const char *elem)
 		void *req = pop_state(ctx);
 
 		TX_DEBUG("/req %p\n", req);
-#if 0
-		if (ctx->cb) {
-			/* callback */
-			ctx->cb(req, ctx->clo);
-		}
-#endif
 		break;
 	}
 	case TX_TAG_QUERY:

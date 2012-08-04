@@ -49,6 +49,7 @@
 #include "proto-twsxml-tag.c"
 #include "proto-twsxml-attr.c"
 #include "proto-twsxml-ns.c"
+#include "proto-twsxml-reqtyp.c"
 
 #if defined DEBUG_FLAG
 # include <stdio.h>
@@ -60,15 +61,6 @@
 typedef struct __ctx_s *__ctx_t;
 typedef struct ptx_ns_s *ptx_ns_t;
 typedef struct ptx_ctxcb_s *ptx_ctxcb_t;
-
-/* tws xml is still non-normative */
-typedef enum {
-	TWS_XML_REQ_TYP_UNK,
-	TWS_XML_REQ_TYP_MKT_DATA,
-	TWS_XML_REQ_TYP_HIST_DATA,
-	TWS_XML_REQ_TYP_CON_DTLS,
-	TWS_XML_REQ_TYP_PLC_ORDER,
-} tws_xml_req_typ_t;
 
 typedef struct tws_xml_req_s *tws_xml_req_t;
 
@@ -140,10 +132,9 @@ struct __ctx_s {
 static tws_xml_req_typ_t
 parse_req_typ(const char *typ)
 {
-	if (!strcmp(typ, "market_data")) {
-		return TWS_XML_REQ_TYP_MKT_DATA;
-	}
-	return TWS_XML_REQ_TYP_UNK;
+	const struct tws_xml_rtcell_s *rtc = __rtiddify(typ, strlen(typ));
+
+	return rtc->rtid;
 }
 
 static const char*

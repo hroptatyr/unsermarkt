@@ -500,6 +500,13 @@ sax_eo_TWSXML_elt(__ctx_t ctx, const char *elem)
 		switch (req->typ) {
 		case TWS_XML_REQ_TYP_MKT_DATA:
 			req->qry.mkt_data.ins = cont;
+			break;
+		case TWS_XML_REQ_TYP_CON_DTLS:
+			req->qry.con_dtls.ins = cont;
+			break;
+		case TWS_XML_REQ_TYP_HIST_DATA:
+			req->qry.hist_data.ins = cont;
+			break;
 		default:
 			break;
 		}

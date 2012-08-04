@@ -5,7 +5,10 @@ typedef enum {
 	/* must be first */
 	TX_NS_UNK,
 	/* alphabetic list of name spaces */
+	TX_NS_FIXML_4_4,
+	TX_NS_FIXML_5_0,
 	TX_NS_TWSXML_0_1,
+	TX_NS_MDDL_3_0,
 
 } tws_xml_nsid_t;
 
@@ -26,3 +29,6 @@ struct tws_xml_nsuri_s {
 
 %%
 http://www.ga-group.nl/twsxml-0.1,	TX_NS_TWSXML_0_1
+http://www.fixprotocol.org/FIXML-5-0,	TX_NS_FIXML_5_0
+http://www.fixprotocol.org/FIXML-4-4,	TX_NS_FIXML_4_4
+http://www.mddl.org/mddl/3.0-beta,	TX_NS_MDDL_3_0

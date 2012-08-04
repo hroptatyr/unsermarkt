@@ -56,6 +56,7 @@
 
 /* the tws api */
 #include "gen-tws.h"
+#include "gen-tws-cont.h"
 
 #if defined __INTEL_COMPILER
 # pragma warning (disable:981)
@@ -71,25 +72,6 @@
 # define MAYBE_NOINLINE
 #endif	/* DEBUG_FLAG */
 void *logerr;
-
-/* error() impl */
-static void
-__attribute__((format(printf, 2, 3)))
-error(int eno, const char *fmt, ...)
-{
-	va_list vap;
-	va_start(vap, fmt);
-	fputs("[quo-tws] ", stderr);
-	vfprintf(logerr, fmt, vap);
-	va_end(vap);
-	if (eno || errno) {
-		fputc(':', stderr);
-		fputc(' ', stderr);
-		fputs(strerror(eno ? eno : errno), stderr);
-	}
-	fputc('\n', stderr);
-	return;
-}
 
 
 #if defined STANDALONE
@@ -116,6 +98,25 @@ struct my_args_s {
 	short unsigned int port;
 	int client;
 };
+
+/* error() impl */
+static void
+__attribute__((format(printf, 2, 3)))
+error(int eno, const char *fmt, ...)
+{
+	va_list vap;
+	va_start(vap, fmt);
+	fputs("[quo-tws] ", stderr);
+	vfprintf(logerr, fmt, vap);
+	va_end(vap);
+	if (eno || errno) {
+		fputc(':', stderr);
+		fputc(' ', stderr);
+		fputs(strerror(eno ? eno : errno), stderr);
+	}
+	fputc('\n', stderr);
+	return;
+}
 
 static error_t
 popt(int key, char *arg, struct argp_state *state)
@@ -167,8 +168,19 @@ popt(int key, char *arg, struct argp_state *state)
 static void
 infra_cb(tws_t tws, tws_cb_t what, struct tws_infra_clo_s clo)
 {
-	error(0, "infra called %p %u: oid %u  code %u  data %p",
-	      tws, what, clo.oid, clo.code, clo.data);
+	switch (what) {
+	case TWS_CB_INFRA_ERROR:
+		error(0, "tws %p: oid %u  code %u: %s",
+			tws, clo.oid, clo.code, (const char*)clo.data);
+		break;
+	case TWS_CB_INFRA_CONN_CLOSED:
+		error(0, "tws %p: connection closed", tws);
+		break;
+	default:
+		error(0, "%p infra called: what %u  oid %u  code %u  data %p",
+			tws, what, clo.oid, clo.code, clo.data);
+		break;
+	}
 	return;
 }
 
@@ -180,7 +192,7 @@ rslv(struct addrinfo **res, const char *host, short unsigned int port)
 	struct addrinfo hints;
 
 	memset(&hints, 0, sizeof(struct addrinfo));
-	hints.ai_family = AF_INET;
+	hints.ai_family = AF_UNSPEC;
 	hints.ai_socktype = SOCK_STREAM;
 	hints.ai_flags = 0;
 	hints.ai_protocol = 0;
@@ -212,6 +224,19 @@ conn(struct addrinfo *ais)
 	return s;
 }
 #endif	/* HAVE_TWSAPI_HANDSHAKE */
+
+#if defined HAVE_EXPAT_H
+static const char xmpl_cont[] = "\
+<TWSXML xmlns=\"http://www.ga-group.nl/twsxml-0.1\">\n\
+  <request type=\"market_data\">\n\
+    <query>\n\
+      <reqContract symbol=\"EUR\" currency=\"USD\" secType=\"CASH\"\n\
+        exchange=\"IDEALPRO\"/>\n\
+    </query>\n\
+  </request>\n\
+</TWSXML>\n\
+";
+#endif	/* HAVE_EXPAT_H */
 
 int
 main(int argc, char *argv[])
@@ -307,6 +332,15 @@ main_loop:
 			tws_send(tws);
 		}
 	}
+
+#if defined HAVE_EXPAT_H
+/* test contract builder */
+	{
+		tws_cont_t x = tws_cont(xmpl_cont, sizeof(xmpl_cont) - 1);
+		fprintf(logerr, "built contract %p\n", x);
+		tws_free_cont(x);
+	}
+#endif	/* HAVE_EXPAT_H */
 
 disc:
 #if defined HAVE_TWSAPI_HANDSHAKE

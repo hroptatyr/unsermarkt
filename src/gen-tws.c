@@ -227,7 +227,7 @@ conn(struct addrinfo *ais)
 
 #if defined HAVE_EXPAT_H
 static const char xmpl_cont[] = "\
-<TWSXML xmlns="">\n\
+<TWSXML xmlns=\"http://www.ga-group.nl/twsxml-0.1\">\n\
   <request type=\"market_data\">\n\
     <query>\n\
       <reqContract symbol=\"EUR\" currency=\"USD\" secType=\"CASH\"\n\

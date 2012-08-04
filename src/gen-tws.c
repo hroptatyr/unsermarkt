@@ -336,7 +336,7 @@ main_loop:
 #if defined HAVE_EXPAT_H
 /* test contract builder */
 	{
-		tws_cont_t x = tws_cont(xmpl_cont, sizeof(xmpl_cont));
+		tws_cont_t x = tws_cont(xmpl_cont, sizeof(xmpl_cont) - 1);
 		fprintf(logerr, "built contract %p\n", x);
 		tws_free_cont(x);
 	}

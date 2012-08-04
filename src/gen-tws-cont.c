@@ -573,7 +573,7 @@ tws_cont_t
 tws_cont(const char *xml, size_t len)
 {
 	XML_Parser hdl;
-	struct __ctx_s clo;
+	struct __ctx_s clo = {0};
 
 	if ((hdl = XML_ParserCreate(NULL)) == NULL) {
 		goto fucked;

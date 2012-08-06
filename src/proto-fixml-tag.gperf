@@ -19,6 +19,7 @@ struct fixml_tag_s {
 };
 
 %%
+Batch, FIX_TAG_BATCH
 FIXML, FIX_TAG_FIXML
 Instrmt, FIX_TAG_INSTRMT
 SecDef, FIX_TAG_SECDEF

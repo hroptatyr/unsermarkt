@@ -631,6 +631,7 @@ tws_connect(tws_t tws, const char *host, uint16_t port, int client)
 	}
 
 	// just request a lot of buggery here
+	TWS_PRIV_CLI(tws)->reqIds(0);
 	TWS_PRIV_CLI(tws)->reqCurrentTime();
 	return TWS_PRIV_CLI(tws)->fd();
 }

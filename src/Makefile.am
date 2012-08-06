@@ -8,6 +8,7 @@ moddir = $(libdir)/unserding
 
 bin_PROGRAMS =
 noinst_PROGRAMS =
+lib_LTLIBRARIES =
 mod_LTLIBRARIES =
 noinst_LTLIBRARIES =
 noinst_HEADERS =
@@ -225,7 +226,7 @@ quo_tws_SOURCES += prchunk.c prchunk.h
 quo_tws_SOURCES += tws-cont.cpp tws-cont.h
 EXTRA_quo_tws_SOURCES += proto-twsxml-tag.gperf
 EXTRA_quo_tws_SOURCES += proto-twsxml-attr.gperf proto-twsxml-attr.h
-EXTRA_quo_tws_SOURCES += proto-twsxml-ns.gperf
+EXTRA_quo_tws_SOURCES += proto-tx-ns.gperf proto-tx-ns.h
 quo_tws_CPPFLAGS = $(AM_CPPFLAGS)
 quo_tws_CPPFLAGS += $(uterus_CFLAGS)
 quo_tws_CPPFLAGS += $(unserding_CFLAGS)
@@ -246,9 +247,6 @@ endif  ## HAVE_TWSAPI
 BUILT_SOURCES += ox-tws-clo.c ox-tws-clo.h
 BUILT_SOURCES += pf-tws-clo.c pf-tws-clo.h
 BUILT_SOURCES += quo-tws-clo.c quo-tws-clo.h
-BUILT_SOURCES += proto-twsxml-tag.c
-BUILT_SOURCES += proto-twsxml-attr.c
-BUILT_SOURCES += proto-twsxml-ns.c
 
 if HAVE_LIBEV
 bin_PROGRAMS += um-netdania
@@ -320,13 +318,10 @@ tws_xml_LINK = $(LINK) $(tws_xml_LDFLAGS)
 EXTRA_tws_xml_SOURCES =
 EXTRA_tws_xml_SOURCES += proto-twsxml-tag.gperf
 EXTRA_tws_xml_SOURCES += proto-twsxml-attr.gperf proto-twsxml-attr.h
-EXTRA_tws_xml_SOURCES += proto-twsxml-ns.gperf
+EXTRA_tws_xml_SOURCES += proto-tx-ns.gperf proto-tx-ns.h
 endif  HAVE_TWSAPI
 endif  HAVE_GPERF
 endif  HAVE_EXPAT
-BUILT_SOURCES += proto-twsxml-tag.c
-BUILT_SOURCES += proto-twsxml-attr.c
-BUILT_SOURCES += proto-twsxml-ns.c
 
 noinst_PROGRAMS += ccy-graph
 ccy_graph_SOURCES = ccy-graph.c ccy-graph.h
@@ -334,13 +329,41 @@ ccy_graph_SOURCES += iso4217.c iso4217.h
 ccy_graph_CPPFLAGS = $(AM_CPPFLAGS) -DSTANDALONE
 
 if HAVE_TWSAPI
+noinst_LTLIBRARIES += libtwscapi.la
+libtwscapi_la_SOURCES = gen-tws.c gen-tws.h
+libtwscapi_la_SOURCES += gen-tws-wrapper.cpp
+if HAVE_EXPAT
+libtwscapi_la_SOURCES += gen-tws-cont.c gen-tws-cont.h
+libtwscapi_la_SOURCES += gen-tws-cont-glu.cpp gen-tws-cont-glu.h
+libtwscapi_la_SOURCES += proto-twsxml-tag.gperf proto-twsxml-tag.h
+libtwscapi_la_SOURCES += proto-twsxml-attr.gperf proto-twsxml-attr.h
+libtwscapi_la_SOURCES += proto-tx-ns.gperf proto-tx-ns.h
+libtwscapi_la_SOURCES += proto-twsxml-reqtyp.gperf proto-twsxml-reqtyp.h
+libtwscapi_la_SOURCES += proto-fixml-tag.gperf proto-fixml-tag.h
+libtwscapi_la_SOURCES += proto-fixml-attr.gperf proto-fixml-attr.h
+endif  HAVE_EXPAT
+libtwscapi_la_SOURCES +=
+libtwscapi_la_CPPFLAGS = $(AM_CPPFLAGS)
+libtwscapi_la_CPPFLAGS += $(twsapi_CFLAGS)
+libtwscapi_la_LDFLAGS = $(AM_LDFLAGS) -rpath /none
+libtwscapi_la_LDFLAGS += $(twsapi_LIBS) -lstdc++
+if HAVE_EXPAT
+libtwscapi_la_CPPFLAGS += $(expat_CFLAGS)
+libtwscapi_la_LDFLAGS += $(expat_LIBS)
+endif  HAVE_EXPAT
+libtwscapi_la_LINK = $(LINK) $(libtwscapi_la_LDFLAGS)
+BUILT_SOURCES += proto-twsxml-tag.c
+BUILT_SOURCES += proto-twsxml-attr.c
+BUILT_SOURCES += proto-tx-ns.c
+BUILT_SOURCES += proto-twsxml-reqtyp.c
+BUILT_SOURCES += proto-fixml-tag.c
+BUILT_SOURCES += proto-fixml-attr.c
+
 noinst_PROGRAMS += gen-tws
-gen_tws_SOURCES = gen-tws.c gen-tws.h
-gen_tws_SOURCES += gen-tws-wrapper.cpp
+gen_tws_SOURCES = gen-tws.c
 gen_tws_CPPFLAGS = $(AM_CPPFLAGS) -DSTANDALONE
-gen_tws_CPPFLAGS += $(twsapi_CFLAGS)
+gen_tws_LDADD = libtwscapi.la
 gen_tws_LDFLAGS = $(AM_LDFLAGS)
-gen_tws_LDFLAGS += $(twsapi_LIBS) -lstdc++
 gen_tws_LINK = $(LINK) $(gen_tws_LDFLAGS)
 endif  HAVE_TWSAPI
 

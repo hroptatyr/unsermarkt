@@ -1,6 +1,5 @@
-/*** tws-xml.c -- conversion between IB/API structs and xml
+/*** gen-tws-cont.c -- generic tws c api contract builder
  *
- * Copyright (C) 2011-2012 Ruediger Meier
  * Copyright (C) 2012 Sebastian Freundt
  *
  * Author:  Sebastian Freundt <freundt@ga-group.nl>
@@ -35,24 +34,25 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  ***/
-
 #if defined HAVE_CONFIG_H
 # include "config.h"
 #endif	/* HAVE_CONFIG_H */
 #include <unistd.h>
-#include <fcntl.h>
 #include <string.h>
-#include <stdio.h>
 #include <stdbool.h>
-
+#include <stdio.h>
 #include <expat.h>
-#include "prchunk.h"
-#include "tws-xml.h"
+#include "nifty.h"
 
-/* gperf goodness */
-#include "proto-twsxml-tag.c"
-#include "proto-twsxml-attr.c"
-#include "proto-tx-ns.c"
+#include "gen-tws-cont.h"
+#include "gen-tws-cont-glu.h"
+
+#include "proto-twsxml-tag.h"
+#include "proto-twsxml-attr.h"
+#include "proto-twsxml-reqtyp.h"
+#include "proto-tx-ns.h"
+#include "proto-fixml-tag.h"
+#include "proto-fixml-attr.h"
 
 #if defined DEBUG_FLAG
 # define TX_DEBUG(args...)	fprintf(stderr, args)
@@ -60,19 +60,43 @@
 # define TX_DEBUG(args...)
 #endif	/* DEBUG_FLAG */
 
-#if !defined UNLIKELY
-# define UNLIKELY(x)		__builtin_expect(!!(x), 0)
-#endif	/* !UNLIKELY */
-#if !defined LIKELY
-# define LIKELY(x)		__builtin_expect(!!(x), 1)
-#endif	/* !LIKELY */
-#if !defined countof
-# define countof(x)		(sizeof(x) / sizeof(*x))
-#endif	/* !countof */
-
 typedef struct __ctx_s *__ctx_t;
 typedef struct ptx_ns_s *ptx_ns_t;
 typedef struct ptx_ctxcb_s *ptx_ctxcb_t;
+
+typedef union tx_tid_u tx_tid_t;
+
+typedef struct tws_xml_req_s *tws_xml_req_t;
+
+union tx_tid_u {
+	unsigned int u;
+	tws_xml_tid_t tx;
+	fixml_tid_t fix;
+};
+
+#if 0
+union tws_xml_qry_u {
+	/* mkt data */
+	struct {
+		tws_cont_t ins;
+	} mkt_data;
+	struct {
+		tws_cont_t ins;
+	} hist_data;
+	struct {
+		tws_cont_t ins;
+	} con_dtls;
+};
+
+union tws_xml_rsp_u {
+};
+
+struct tws_xml_req_s {
+	tws_xml_req_typ_t typ;
+	union tws_xml_qry_u qry;
+	union tws_xml_rsp_u rsp;
+};
+#endif
 
 struct ptx_ns_s {
 	char *pref;
@@ -86,7 +110,8 @@ struct ptx_ctxcb_s {
 	ptx_ctxcb_t next;
 
 	/* navigation info, stores the context */
-	tws_xml_tid_t otype;
+	tx_tid_t otype;
+	tx_nsid_t nsid;
 	union {
 		void *object;
 		long int objint;
@@ -108,20 +133,35 @@ struct __ctx_s {
 	struct ptx_ctxcb_s ctxcb_pool[16];
 	ptx_ctxcb_t ctxcb_head;
 
-	void(*cb)(tws_xml_req_t, void*);
-	void *clo;
-	/* the request we're building */
-	struct tws_xml_req_s req[1];
+	/* result, will be built incrementally */
+	tws_cont_t res;
 };
 
 
-static tws_xml_req_typ_t
+/* all the generated stuff */
+#if defined __INTEL_COMPILER
+# pragma warning (disable:869)
+#endif	/* __INTEL_COMPILER */
+
+#include "proto-twsxml-tag.c"
+#include "proto-twsxml-attr.c"
+#include "proto-tx-ns.c"
+#include "proto-twsxml-reqtyp.c"
+
+#include "proto-fixml-tag.c"
+#include "proto-fixml-attr.c"
+
+#if defined __INTEL_COMPILER
+# pragma warning (default:869)
+#endif	/* __INTEL_COMPILER */
+
+
+static __attribute__((unused)) tws_xml_req_typ_t
 parse_req_typ(const char *typ)
 {
-	if (!strcmp(typ, "market_data")) {
-		return TWS_XML_REQ_TYP_MKT_DATA;
-	}
-	return TWS_XML_REQ_TYP_UNK;
+	const struct tws_xml_rtcell_s *rtc = __rtiddify(typ, strlen(typ));
+
+	return rtc->rtid;
 }
 
 static const char*
@@ -144,7 +184,6 @@ __pref_to_ns(__ctx_t ctx, const char *pref, size_t pref_len)
 {
 	if (UNLIKELY(ctx->ns[0].nsid == TX_NS_UNK)) {
 		/* bit of a hack innit? */
-		ctx->ns->nsid = TX_NS_TWSXML_0_1;
 		return ctx->ns;
 
 	} else if (LIKELY(pref_len == 0 && ctx->ns[0].pref == NULL)) {
@@ -166,7 +205,7 @@ __pref_to_ns(__ctx_t ctx, const char *pref, size_t pref_len)
 }
 
 static tws_xml_tid_t
-sax_tid_from_tag(const char *tag)
+sax_tx_tid_from_tag(const char *tag)
 {
 	size_t tlen = strlen(tag);
 	const struct tws_xml_tag_s *t = __tiddify(tag, tlen);
@@ -174,17 +213,33 @@ sax_tid_from_tag(const char *tag)
 }
 
 static tws_xml_aid_t
-sax_aid_from_attr(const char *attr)
+sax_tx_aid_from_attr(const char *attr)
 {
 	size_t alen = strlen(attr);
 	const struct tws_xml_attr_s *a = __aiddify(attr, alen);
 	return a ? a->aid : TX_ATTR_UNK;
 }
 
-static tws_xml_tid_t
+static fixml_tid_t
+sax_fix_tid_from_tag(const char *tag)
+{
+	size_t tlen = strlen(tag);
+	const struct fixml_tag_s *t = __fix_tiddify(tag, tlen);
+	return t ? t->tid : FIX_TAG_UNK;
+}
+
+static fixml_aid_t
+sax_fix_aid_from_attr(const char *attr)
+{
+	size_t alen = strlen(attr);
+	const struct fixml_attr_s *a = __fix_aiddify(attr, alen);
+	return a ? a->aid : FIX_ATTR_UNK;
+}
+
+static tx_tid_t
 get_state_otype(__ctx_t ctx)
 {
-	return ctx->state ? ctx->state->otype : TX_TAG_UNK;
+	return ctx->state ? ctx->state->otype : (tx_tid_t)0U;
 }
 
 static void* __attribute__((unused))
@@ -245,12 +300,13 @@ pop_state(__ctx_t ctx)
 }
 
 static ptx_ctxcb_t
-push_state(__ctx_t ctx, tws_xml_tid_t otype, void *object)
+push_state(__ctx_t ctx, tx_nsid_t nsid, tx_tid_t otype, void *object)
 {
 	ptx_ctxcb_t res = pop_ctxcb(ctx);
 
 	/* stuff it with the object we want to keep track of */
 	res->object = object;
+	res->nsid = nsid;
 	res->otype = otype;
 	/* fiddle with the states in our context */
 	res->old_state = ctx->state;
@@ -288,6 +344,8 @@ ptx_reg_ns(__ctx_t ctx, const char *pref, const char *href)
 		switch (nsid) {
 			size_t i;
 		case TX_NS_TWSXML_0_1:
+		case TX_NS_FIXML_5_0:
+		case TX_NS_FIXML_4_4:
 			if (UNLIKELY(ctx->ns[0].href != NULL)) {
 				i = ctx->nns++;
 				ctx->ns[i] = ctx->ns[0];
@@ -338,10 +396,10 @@ ptx_pref_p(__ctx_t ctx, const char *pref, size_t pref_len)
 }
 
 static tws_xml_aid_t
-check_attr(__ctx_t ctx, const char *attr)
+check_tx_attr(__ctx_t ctx, const char *attr)
 {
 	const char *rattr = tag_massage(attr);
-	const tws_xml_aid_t aid = sax_aid_from_attr(rattr);
+	const tws_xml_aid_t aid = sax_tx_aid_from_attr(rattr);
 
 	if (!ptx_pref_p(ctx, attr, rattr - attr)) {
 		/* dont know what to do */
@@ -351,12 +409,50 @@ check_attr(__ctx_t ctx, const char *attr)
 	return aid;
 }
 
+static fixml_aid_t
+check_fix_attr(__ctx_t ctx, const char *attr)
+{
+	const char *rattr = tag_massage(attr);
+	const fixml_aid_t aid = sax_fix_aid_from_attr(rattr);
+
+	if (!ptx_pref_p(ctx, attr, rattr - attr)) {
+		/* dont know what to do */
+		TX_DEBUG("unknown namespace %s\n", attr);
+		return FIX_ATTR_UNK;
+	}
+	return aid;
+}
+
 
 static void
-proc_TWSXML_xmlns(__ctx_t ctx, const char *pref, const char *value)
+proc_TX_xmlns(__ctx_t ctx, const char *pref, const char *value)
 {
 	TX_DEBUG("reg'ging name space %s <- %s\n", pref, value);
 	ptx_reg_ns(ctx, pref, value);
+	return;
+}
+
+static void
+proc_UNK_attr(__ctx_t ctx, const char *attr, const char *value)
+{
+	const char *rattr = tag_massage(attr);
+	tws_xml_aid_t aid;
+
+	if (UNLIKELY(rattr > attr && !ptx_pref_p(ctx, attr, rattr - attr))) {
+		const struct tws_xml_attr_s *a =
+			__aiddify(attr, rattr - attr - 1);
+		aid = a ? a->aid : TX_ATTR_UNK;
+	} else {
+		aid = sax_tx_aid_from_attr(rattr);
+	}
+
+	switch (aid) {
+	case TX_ATTR_XMLNS:
+		proc_TX_xmlns(ctx, rattr == attr ? NULL : rattr, value);
+		break;
+	default:
+		break;
+	}
 	return;
 }
 
@@ -371,12 +467,12 @@ proc_TWSXML_attr(__ctx_t ctx, const char *attr, const char *value)
 			__aiddify(attr, rattr - attr - 1);
 		aid = a ? a->aid : TX_ATTR_UNK;
 	} else {
-		aid = sax_aid_from_attr(rattr);
+		aid = sax_tx_aid_from_attr(rattr);
 	}
 
 	switch (aid) {
 	case TX_ATTR_XMLNS:
-		proc_TWSXML_xmlns(ctx, rattr == attr ? NULL : rattr, value);
+		proc_TX_xmlns(ctx, rattr == attr ? NULL : rattr, value);
 		break;
 	default:
 		TX_DEBUG("WARN: unknown attr %s\n", attr);
@@ -386,19 +482,63 @@ proc_TWSXML_attr(__ctx_t ctx, const char *attr, const char *value)
 }
 
 static void
-proc_REQCONTRACT_attr(__ctx_t ctx, tws_xml_aid_t aid, const char *value)
+proc_FIXML_attr(__ctx_t ctx, const char *attr, const char *value)
 {
-	ptx_ctxcb_t curr = ctx->state;
-	void *obj = curr->object;
+	const char *rattr = tag_massage(attr);
+	fixml_aid_t aid;
 
-	tws_cont_build(obj, aid, value);
+	if (UNLIKELY(rattr > attr && !ptx_pref_p(ctx, attr, rattr - attr))) {
+		const struct fixml_attr_s *a =
+			__fix_aiddify(attr, rattr - attr - 1);
+		aid = a ? a->aid : FIX_ATTR_UNK;
+	} else {
+		aid = sax_fix_aid_from_attr(rattr);
+	}
+
+	switch (aid) {
+	case FIX_ATTR_XMLNS:
+		proc_TX_xmlns(ctx, rattr == attr ? NULL : rattr, value);
+		break;
+	case FIX_ATTR_S:
+	case FIX_ATTR_R:
+		/* we're so not interested in version mumbo jumbo */
+		break;
+	case FIX_ATTR_V:
+		break;
+	default:
+		TX_DEBUG("WARN: unknown attr %s\n", attr);
+		break;
+	}
 	return;
 }
 
 static void
+proc_REQCONTRACT_attr(
+	tws_cont_t ins, tx_nsid_t ns, tws_xml_aid_t aid, const char *value)
+{
+	tws_cont_x(ins, ns, aid, value);
+	return;
+}
+
+static void
+proc_INSTRMT_attr(tws_cont_t ins, tx_nsid_t ns, fixml_aid_t aid, const char *v)
+{
+	tws_cont_x(ins, ns, aid, v);
+	return;
+}
+
+static void
+proc_SECDEF_attr(tws_cont_t ins, tx_nsid_t ns, fixml_aid_t aid, const char *v)
+{
+	tws_cont_x(ins, ns, aid, v);
+	return;
+}
+
+
+static void
 sax_bo_TWSXML_elt(__ctx_t ctx, const char *elem, const char **attr)
 {
-	const tws_xml_tid_t tid = sax_tid_from_tag(elem);
+	const tws_xml_tid_t tid = sax_tx_tid_from_tag(elem);
 
 	/* all the stuff that needs a new sax handler */
 	switch (tid) {
@@ -415,36 +555,25 @@ sax_bo_TWSXML_elt(__ctx_t ctx, const char *elem, const char **attr)
 		break;
 
 	case TX_TAG_REQUEST:
-		/* obtain the type */
-		for (const char **ap = attr; ap && *ap; ap += 2) {
-			const tws_xml_aid_t aid = check_attr(ctx, ap[0]);
-
-			switch (aid) {
-			case TX_ATTR_TYPE:
-				ctx->req->typ = parse_req_typ(ap[1]);
-			default:
-				break;
-			}
-		}
-		push_state(ctx, tid, ctx->req);
+		push_state(ctx, TX_NS_TWSXML_0_1, (tx_tid_t)tid, NULL);
+		break;
 
 	case TX_TAG_QUERY:
 	case TX_TAG_RESPONSE:
-		push_state(ctx, tid, get_state_object(ctx));
+		push_state(ctx, TX_NS_TWSXML_0_1, (tx_tid_t)tid, NULL);
 		break;
 
-	case TX_TAG_REQCONTRACT: {
-		tws_cont_t x = make_cont();
-
-		push_state(ctx, tid, x);
+	case TX_TAG_REQCONTRACT:
 		/* get all them contract specs */
 		for (const char **ap = attr; ap && *ap; ap += 2) {
-			const tws_xml_aid_t aid = check_attr(ctx, ap[0]);
+			const tws_xml_aid_t aid = check_tx_attr(ctx, ap[0]);
+			tws_cont_t ins = ctx->res;
 
-			proc_REQCONTRACT_attr(ctx, aid, ap[1]);
+			proc_REQCONTRACT_attr(
+				ins, TX_NS_TWSXML_0_1, aid, ap[1]);
 		}
+		push_state(ctx, TX_NS_TWSXML_0_1, (tx_tid_t)tid, NULL);
 		break;
-	}
 
 	default:
 		break;
@@ -455,7 +584,7 @@ sax_bo_TWSXML_elt(__ctx_t ctx, const char *elem, const char **attr)
 static void
 sax_eo_TWSXML_elt(__ctx_t ctx, const char *elem)
 {
-	tws_xml_tid_t tid = sax_tid_from_tag(elem);
+	tws_xml_tid_t tid = sax_tx_tid_from_tag(elem);
 
 	/* stuff that needed to be done, fix up state etc. */
 	switch (tid) {
@@ -466,10 +595,6 @@ sax_eo_TWSXML_elt(__ctx_t ctx, const char *elem)
 		void *req = pop_state(ctx);
 
 		TX_DEBUG("/req %p\n", req);
-		if (ctx->cb) {
-			/* callback */
-			ctx->cb(req, ctx->clo);
-		}
 		break;
 	}
 	case TX_TAG_QUERY:
@@ -478,30 +603,88 @@ sax_eo_TWSXML_elt(__ctx_t ctx, const char *elem)
 		break;
 
 		/* non top-levels without children */
-	case TX_TAG_REQCONTRACT: {
-		void *cont = pop_state(ctx);
-		tws_xml_req_t req = get_state_object(ctx);
-
-		if (UNLIKELY(get_state_otype(ctx) != TX_TAG_QUERY)) {
+	case TX_TAG_REQCONTRACT:
+		pop_state(ctx);
+		if (UNLIKELY(get_state_otype(ctx).tx != TX_TAG_QUERY)) {
 			/* huh? a reqContract in a response? */
-			TX_DEBUG("weirdness %u\n", get_state_otype(ctx));
-			break;
-		}
-
-		switch (req->typ) {
-		case TWS_XML_REQ_TYP_MKT_DATA:
-			req->qry.mkt_data.ins = cont;
-		default:
+			TX_DEBUG("weirdness %u\n", get_state_otype(ctx).u);
 			break;
 		}
 		break;
-	}
+
 	default:
 		break;
 	}
 	return;
 }
 
+static void
+sax_bo_FIXML_elt(__ctx_t ctx, const char *elem, const char **attr)
+{
+	const fixml_tid_t tid = sax_fix_tid_from_tag(elem);
+
+	/* all the stuff that needs a new sax handler */
+	switch (tid) {
+	case FIX_TAG_FIXML:
+		ptx_init(ctx);
+
+		if (UNLIKELY(attr == NULL)) {
+			break;
+		}
+
+		for (const char **ap = attr; ap && *ap; ap += 2) {
+			proc_FIXML_attr(ctx, ap[0], ap[1]);
+		}
+		break;
+
+	case FIX_TAG_SECDEF:
+		for (const char **ap = attr; ap && *ap; ap += 2) {
+			const fixml_aid_t aid = check_fix_attr(ctx, ap[0]);
+			tws_cont_t ins = ctx->res;
+
+			proc_SECDEF_attr(ins, TX_NS_FIXML_5_0, aid, ap[1]);
+		}
+		push_state(ctx, TX_NS_FIXML_5_0, (tx_tid_t)tid, NULL);
+		break;
+
+	case FIX_TAG_INSTRMT:
+		for (const char **ap = attr; ap && *ap; ap += 2) {
+			const fixml_aid_t aid = check_fix_attr(ctx, ap[0]);
+			tws_cont_t ins = ctx->res;
+
+			proc_INSTRMT_attr(ins, TX_NS_FIXML_5_0, aid, ap[1]);
+		}
+		push_state(ctx, TX_NS_FIXML_5_0, (tx_tid_t)tid, NULL);
+		break;
+
+	default:
+		break;
+	}
+	return;
+}
+
+static void
+sax_eo_FIXML_elt(__ctx_t ctx, const char *elem)
+{
+	fixml_tid_t tid = sax_fix_tid_from_tag(elem);
+
+	/* stuff that needed to be done, fix up state etc. */
+	switch (tid) {
+		/* top-levels */
+	case FIX_TAG_FIXML:
+		break;
+	case FIX_TAG_SECDEF:
+	case FIX_TAG_INSTRMT:
+		pop_state(ctx);
+		break;
+
+	default:
+		break;
+	}
+	return;
+}
+
+
 static void
 el_sta(void *clo, const char *elem, const char **attr)
 {
@@ -515,12 +698,24 @@ el_sta(void *clo, const char *elem, const char **attr)
 		return;
 	}
 
+retry:
 	switch (ns->nsid) {
 	case TX_NS_TWSXML_0_1:
 		sax_bo_TWSXML_elt(ctx, relem, attr);
 		break;
 
+	case TX_NS_FIXML_4_4:
+	case TX_NS_FIXML_5_0:
+		sax_bo_FIXML_elt(ctx, relem, attr);
+		break;
+
 	case TX_NS_UNK:
+		for (const char **ap = attr; ap && *ap; ap += 2) {
+			proc_UNK_attr(ctx, ap[0], ap[1]);
+		}
+		ns = ctx->ns;
+		goto retry;
+
 	default:
 		TX_DEBUG("unknown namespace %s (%s)\n", elem, ns->href);
 		break;
@@ -541,6 +736,11 @@ el_end(void *clo, const char *elem)
 		sax_eo_TWSXML_elt(ctx, relem);
 		break;
 
+	case TX_NS_FIXML_4_4:
+	case TX_NS_FIXML_5_0:
+		sax_eo_FIXML_elt(ctx, relem);
+		break;
+
 	case TX_NS_UNK:
 	default:
 		TX_DEBUG("unknown namespace %s (%s)\n", elem, ns->href);
@@ -549,99 +749,37 @@ el_end(void *clo, const char *elem)
 	return;
 }
 
-static int
-proc_line(XML_Parser hdl, const char *line, size_t llen)
-{
-	struct xml_clo_s *clo = XML_GetUserData(hdl);
-
-	if (XML_Parse(hdl, line, llen, XML_FALSE) == XML_STATUS_ERROR) {
-		return -1;
-#if 0
-	} else if (clo->level < 0) {
-		XML_StopParser(hdl, XML_TRUE);
-#endif
-	}
-	return 0;
-}
-
 
-int
-tws_xml_parse(const char *fn, void(*cb)(tws_xml_req_t, void*), void *cb_clo)
+/* public funs */
+tws_cont_t
+tws_cont(const char *xml, size_t len)
 {
 	XML_Parser hdl;
-	void *pctx;
-	int fd;
-	struct __ctx_s clo = {
-		.cb = cb,
-		.clo = cb_clo,
-	};
-	int res = 0;
+	struct __ctx_s clo = {0};
 
-	if (fn == NULL) {
-		fd = STDIN_FILENO;
-	} else if ((fd = open(fn, O_RDONLY)) < 0) {
-		res = -1;
-		goto super_fucked;
-	}
-
-	/* using the prchunk reader now */
-	if ((pctx = init_prchunk(fd)) == NULL) {
-		res = -1;
-		goto fucked;
-	}
-
-	/* parser init */
 	if ((hdl = XML_ParserCreate(NULL)) == NULL) {
-		res = -1;
+		goto fucked;
+	} else if ((clo.res = tws_make_cont()) == NULL) {
 		goto fucked;
 	}
 	XML_SetElementHandler(hdl, el_sta, el_end);
 	XML_SetUserData(hdl, &clo);
 
-	while (prchunk_fill(pctx) >= 0) {
-		for (char *line; prchunk_haslinep(pctx);) {
-			size_t llen;
-
-			llen = prchunk_getline(pctx, &line);
-			proc_line(hdl, line, llen);
-		}
+	if (XML_Parse(hdl, xml, len, XML_TRUE) == XML_STATUS_ERROR) {
+		tws_free_cont(clo.res);
+	fucked:
+		return NULL;
 	}
+
 	/* get rid of resources */
-	free_prchunk(pctx);
 	XML_ParserFree(hdl);
-
-fucked:
-	close(fd);
-super_fucked:
-	return res;
-}
-
-
-#if defined STANDALONE
-static void
-me_req(tws_xml_req_t req, void *clo)
-{
-	TX_DEBUG("request type %u\n", req->typ);
-	switch (req->typ) {
-	case TWS_XML_REQ_TYP_MKT_DATA:
-		TX_DEBUG("aaah mkt data %p\n", req->qry.mkt_data.ins);
-		break;
-	default:
-		break;
-	}
-	return;
+	return clo.res;
 }
 
 int
-main(int argc, char *argv[])
+tws_cont_xml(char *UNUSED(buf), size_t UNUSED(bsz), tws_cont_t UNUSED(c))
 {
-	int res = 0;
-
-	if (tws_xml_parse(argv[1], me_req, NULL) < 0) {
-		res = 1;
-	}
-	return res;
+	return 0;
 }
-#endif	/* STANDALONE */
 
-/* tws-xml.c ends here */
+/* gen-tws-cont.c ends here */

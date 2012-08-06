@@ -184,7 +184,6 @@ __pref_to_ns(__ctx_t ctx, const char *pref, size_t pref_len)
 {
 	if (UNLIKELY(ctx->ns[0].nsid == TX_NS_UNK)) {
 		/* bit of a hack innit? */
-		ctx->ns->nsid = TX_NS_TWSXML_0_1;
 		return ctx->ns;
 
 	} else if (LIKELY(pref_len == 0 && ctx->ns[0].pref == NULL)) {
@@ -345,6 +344,8 @@ ptx_reg_ns(__ctx_t ctx, const char *pref, const char *href)
 		switch (nsid) {
 			size_t i;
 		case TX_NS_TWSXML_0_1:
+		case TX_NS_FIXML_5_0:
+		case TX_NS_FIXML_4_4:
 			if (UNLIKELY(ctx->ns[0].href != NULL)) {
 				i = ctx->nns++;
 				ctx->ns[i] = ctx->ns[0];
@@ -428,6 +429,30 @@ proc_TX_xmlns(__ctx_t ctx, const char *pref, const char *value)
 {
 	TX_DEBUG("reg'ging name space %s <- %s\n", pref, value);
 	ptx_reg_ns(ctx, pref, value);
+	return;
+}
+
+static void
+proc_UNK_attr(__ctx_t ctx, const char *attr, const char *value)
+{
+	const char *rattr = tag_massage(attr);
+	tws_xml_aid_t aid;
+
+	if (UNLIKELY(rattr > attr && !ptx_pref_p(ctx, attr, rattr - attr))) {
+		const struct tws_xml_attr_s *a =
+			__aiddify(attr, rattr - attr - 1);
+		aid = a ? a->aid : TX_ATTR_UNK;
+	} else {
+		aid = sax_tx_aid_from_attr(rattr);
+	}
+
+	switch (aid) {
+	case TX_ATTR_XMLNS:
+		proc_TX_xmlns(ctx, rattr == attr ? NULL : rattr, value);
+		break;
+	default:
+		break;
+	}
 	return;
 }
 
@@ -673,6 +698,7 @@ el_sta(void *clo, const char *elem, const char **attr)
 		return;
 	}
 
+retry:
 	switch (ns->nsid) {
 	case TX_NS_TWSXML_0_1:
 		sax_bo_TWSXML_elt(ctx, relem, attr);
@@ -684,6 +710,12 @@ el_sta(void *clo, const char *elem, const char **attr)
 		break;
 
 	case TX_NS_UNK:
+		for (const char **ap = attr; ap && *ap; ap += 2) {
+			proc_UNK_attr(ctx, ap[0], ap[1]);
+		}
+		ns = ctx->ns;
+		goto retry;
+
 	default:
 		TX_DEBUG("unknown namespace %s (%s)\n", elem, ns->href);
 		break;

@@ -339,6 +339,8 @@ libtwscapi_la_SOURCES += proto-twsxml-tag.gperf proto-twsxml-tag.h
 libtwscapi_la_SOURCES += proto-twsxml-attr.gperf proto-twsxml-attr.h
 libtwscapi_la_SOURCES += proto-tx-ns.gperf proto-tx-ns.h
 libtwscapi_la_SOURCES += proto-twsxml-reqtyp.gperf proto-twsxml-reqtyp.h
+libtwscapi_la_SOURCES += proto-fixml-tag.gperf proto-fixml-tag.h
+libtwscapi_la_SOURCES += proto-fixml-attr.gperf proto-fixml-attr.h
 endif  HAVE_EXPAT
 libtwscapi_la_SOURCES +=
 libtwscapi_la_CPPFLAGS = $(AM_CPPFLAGS)
@@ -354,6 +356,8 @@ BUILT_SOURCES += proto-twsxml-tag.c
 BUILT_SOURCES += proto-twsxml-attr.c
 BUILT_SOURCES += proto-tx-ns.c
 BUILT_SOURCES += proto-twsxml-reqtyp.c
+BUILT_SOURCES += proto-fixml-tag.c
+BUILT_SOURCES += proto-fixml-attr.c
 
 noinst_PROGRAMS += gen-tws
 gen_tws_SOURCES = gen-tws.c

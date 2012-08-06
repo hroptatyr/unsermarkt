@@ -37,30 +37,19 @@
 #if defined HAVE_CONFIG_H
 # include "config.h"
 #endif	// HAVE_CONFIG_H
+#include <string.h>
 #include <twsapi/Contract.h>
 
+#include "proto-tx-ns.h"
+#include "proto-fixml-attr.h"
 #include "proto-twsxml-attr.h"
 
 #include "gen-tws-cont.h"
 #include "gen-tws-cont-glu.h"
 
-tws_cont_t
-tws_make_cont(void)
-{
-	return (tws_cont_t)new IB::Contract;
-}
 
-void
-tws_free_cont(tws_cont_t c)
-{
-	if (c) {
-		delete (IB::Contract*)c;
-	}
-	return;
-}
-
-int
-tws_cont_x(tws_cont_t tgt, unsigned int aid, const char *val)
+static int
+tws_cont_tx(tws_cont_t tgt, unsigned int aid, const char *val)
 {
 	IB::Contract *c = (IB::Contract*)tgt;
 
@@ -83,5 +72,59 @@ tws_cont_x(tws_cont_t tgt, unsigned int aid, const char *val)
 	return 0;
 }
 
+static int
+tws_cont_fix(tws_cont_t tgt, unsigned int aid, const char *val)
+{
+	IB::Contract *c = (IB::Contract*)tgt;
+
+	switch ((fixml_aid_t)aid) {
+	case FIX_ATTR_CCY:
+		c->currency = std::string(val);
+		break;
+	case FIX_ATTR_EXCH:
+		c->exchange = std::string(val);
+		break;
+	case FIX_ATTR_SYM:
+		c->localSymbol = std::string(val);
+		break;
+	case FIX_ATTR_SECTYP:
+		if (!strcmp(val, "FXSPOT")) {
+			c->secType = std::string("CASH");
+		}
+		break;
+	default:
+		break;
+	}
+	return 0;
+}
+
+
+tws_cont_t
+tws_make_cont(void)
+{
+	return (tws_cont_t)new IB::Contract;
+}
+
+void
+tws_free_cont(tws_cont_t c)
+{
+	if (c) {
+		delete (IB::Contract*)c;
+	}
+	return;
+}
+
+int
+tws_cont_x(tws_cont_t tgt, unsigned int nsid, unsigned int aid, const char *val)
+{
+	switch ((tx_nsid_t)nsid) {
+	case TX_NS_TWSXML_0_1:
+		return tws_cont_tx(tgt, aid, val);
+	case TX_NS_FIXML_5_0:
+		return tws_cont_fix(tgt, aid, val);
+	default:
+		return -1;
+	}
+}
 
 // gen-tws-cont-glu.cpp ends here

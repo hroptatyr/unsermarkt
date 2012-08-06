@@ -58,7 +58,18 @@ extern tws_cont_t tws_make_cont(void);
 extern void tws_free_cont(tws_cont_t);
 
 extern tws_cont_t tws_cont(const char *xml, size_t len);
-extern int tws_cont_xml(char *restrict buf, size_t bsz, tws_cont_t);
+extern ssize_t tws_cont_xml(char *restrict buf, size_t bsz, tws_cont_t);
+
+/* batch reader */
+/**
+ * For every occurrence of a contract call CB with the contract and
+ * a custom pointer as specified by CLO.
+ * If CB return value is <0 the contract will be freed, otherwise the
+ * caller is responsible for freeing the contract. */
+extern int
+tws_batch_cont(
+	const char *xml, size_t len,
+	int(*cb)(tws_cont_t, void*), void *clo);
 
 /* chunkwise readers/printers */
 extern tws_cont_t

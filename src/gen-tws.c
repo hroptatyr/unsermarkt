@@ -378,16 +378,20 @@ main_loop:
 			tws_cont_t x;
 
 			x = tws_cont(xmpl_cont_tx, sizeof(xmpl_cont_tx) - 1);
-			fprintf(logerr, "built contract %p from TX\n", x);
-			r1 = tws_gen_quo(tws, x);
-			fprintf(logerr, "req'd %u\n", r1);
-			tws_free_cont(x);
+			if (x) {
+				fprintf(logerr, "built cont %p from TX\n", x);
+				r1 = tws_gen_quo(tws, x);
+				fprintf(logerr, "req'd %u\n", r1);
+				tws_free_cont(x);
+			}
 
 			x = tws_cont(xmpl_cont_fix, sizeof(xmpl_cont_fix) - 1);
-			fprintf(logerr, "built contract %p from FIX\n", x);
-			r2 = tws_gen_quo(tws, x);
-			fprintf(logerr, "req'd %u\n", r2);
-			tws_free_cont(x);
+			if (x) {
+				fprintf(logerr, "built cont %p from FIX\n", x);
+				r2 = tws_gen_quo(tws, x);
+				fprintf(logerr, "req'd %u\n", r2);
+				tws_free_cont(x);
+			}
 #endif	/* HAVE_EXPAT_H */
 
 			ready_p = 1;

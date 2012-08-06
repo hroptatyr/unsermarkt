@@ -184,6 +184,23 @@ infra_cb(tws_t tws, tws_cb_t what, struct tws_infra_clo_s clo)
 	return;
 }
 
+static void
+pre_cb(tws_t tws, tws_cb_t what, struct tws_pre_clo_s clo)
+{
+	switch (what) {
+	case TWS_CB_PRE_PRICE:
+	case TWS_CB_PRE_SIZE:
+		error(0, "tws %p: pri/qty up for %u  %u",
+			tws, clo.oid, clo.tt);
+		break;
+	default:
+		error(0, "%p pre called: what %u  oid %u  tt %u  data %p",
+			tws, what, clo.oid, clo.tt, clo.data);
+		break;
+	}
+	return;
+}
+
 #if defined HAVE_TWSAPI_HANDSHAKE
 static int
 rslv(struct addrinfo **res, const char *host, short unsigned int port)
@@ -311,6 +328,7 @@ main(int argc, char *argv[])
 
 	/* add some callbacks */
 	tws->infra_cb = infra_cb;
+	tws->pre_cb = pre_cb;
 
 #if defined HAVE_TWSAPI_HANDSHAKE
 	/* handshake first */

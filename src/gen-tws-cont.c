@@ -812,6 +812,33 @@ tws_cont(const char *xml, size_t len)
 	return res;
 }
 
+int
+tws_batch_cont(
+	const char *xml, size_t len,
+	int(*cb)(tws_cont_t, void*), void *cbclo)
+{
+	XML_Parser hdl;
+	struct __ctx_s clo = {0};
+
+	if ((hdl = XML_ParserCreate(NULL)) == NULL) {
+		return -1;
+	}
+	/* register our callback */
+	clo.cont_cb = cb;
+	clo.cbclo = cbclo;
+
+	XML_SetElementHandler(hdl, el_sta, el_end);
+	XML_SetUserData(hdl, &clo);
+
+	if (XML_Parse(hdl, xml, len, XML_TRUE) == XML_STATUS_ERROR) {
+		return -1;
+	}
+
+	/* get rid of resources */
+	XML_ParserFree(hdl);
+	return 0;
+}
+
 ssize_t
 tws_cont_xml(char *UNUSED(buf), size_t UNUSED(bsz), tws_cont_t UNUSED(c))
 {

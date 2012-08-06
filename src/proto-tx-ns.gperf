@@ -1,16 +1,7 @@
 %{
-typedef struct tws_xml_nsuri_s *tws_xml_nsuri_t;
+typedef struct tx_nsuri_s *tx_nsuri_t;
 
-typedef enum {
-	/* must be first */
-	TX_NS_UNK,
-	/* alphabetic list of name spaces */
-	TX_NS_FIXML_4_4,
-	TX_NS_FIXML_5_0,
-	TX_NS_TWSXML_0_1,
-	TX_NS_MDDL_3_0,
-
-} tws_xml_nsid_t;
+#include "proto-tx-ns.h"
 
 %}
 %7bit
@@ -22,9 +13,9 @@ typedef enum {
 %null-strings
 %enum
 
-struct tws_xml_nsuri_s {
+struct tx_nsuri_s {
 	const char *nsuri;
-	tws_xml_nsid_t nsid;
+	tx_nsid_t nsid;
 };
 
 %%

@@ -48,7 +48,7 @@
 
 #include "proto-twsxml-tag.c"
 #include "proto-twsxml-attr.c"
-#include "proto-twsxml-ns.c"
+#include "proto-tx-ns.c"
 #include "proto-twsxml-reqtyp.c"
 
 #if defined DEBUG_FLAG
@@ -90,7 +90,7 @@ struct tws_xml_req_s {
 struct ptx_ns_s {
 	char *pref;
 	char *href;
-	tws_xml_nsid_t nsid;
+	tx_nsid_t nsid;
 };
 
 /* contextual callbacks */
@@ -295,8 +295,8 @@ ptx_reg_ns(__ctx_t ctx, const char *pref, const char *href)
 	/* get us those lovely ns ids */
 	{
 		size_t ulen = strlen(href);
-		const struct tws_xml_nsuri_s *n = __nsiddify(href, ulen);
-		const tws_xml_nsid_t nsid = n ? n->nsid : TX_NS_UNK;
+		const struct tx_nsuri_s *n = __nsiddify(href, ulen);
+		const tx_nsid_t nsid = n ? n->nsid : TX_NS_UNK;
 
 		switch (nsid) {
 			size_t i;

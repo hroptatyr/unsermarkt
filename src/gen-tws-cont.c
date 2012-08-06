@@ -776,7 +776,7 @@ tws_cont(const char *xml, size_t len)
 	return clo.res;
 }
 
-int
+ssize_t
 tws_cont_xml(char *UNUSED(buf), size_t UNUSED(bsz), tws_cont_t UNUSED(c))
 {
 	return 0;

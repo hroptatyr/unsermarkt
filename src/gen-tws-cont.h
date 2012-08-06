@@ -58,7 +58,7 @@ extern tws_cont_t tws_make_cont(void);
 extern void tws_free_cont(tws_cont_t);
 
 extern tws_cont_t tws_cont(const char *xml, size_t len);
-extern int tws_cont_xml(char *restrict buf, size_t bsz, tws_cont_t);
+extern ssize_t tws_cont_xml(char *restrict buf, size_t bsz, tws_cont_t);
 
 /* chunkwise readers/printers */
 extern tws_cont_t

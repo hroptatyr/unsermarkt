@@ -133,8 +133,9 @@ struct __ctx_s {
 	struct ptx_ctxcb_s ctxcb_pool[16];
 	ptx_ctxcb_t ctxcb_head;
 
-	/* result, will be built incrementally */
-	tws_cont_t res;
+	/* results will be built incrementally */
+	int(*cont_cb)(tws_cont_t, void*);
+	void *cbclo;
 };
 
 
@@ -234,12 +235,6 @@ sax_fix_aid_from_attr(const char *attr)
 	size_t alen = strlen(attr);
 	const struct fixml_attr_s *a = __fix_aiddify(attr, alen);
 	return a ? a->aid : FIX_ATTR_UNK;
-}
-
-static tx_tid_t
-get_state_otype(__ctx_t ctx)
-{
-	return ctx->state ? ctx->state->otype : (tx_tid_t)0U;
 }
 
 static void* __attribute__((unused))
@@ -563,17 +558,19 @@ sax_bo_TWSXML_elt(__ctx_t ctx, const char *elem, const char **attr)
 		push_state(ctx, TX_NS_TWSXML_0_1, (tx_tid_t)tid, NULL);
 		break;
 
-	case TX_TAG_REQCONTRACT:
+	case TX_TAG_REQCONTRACT: {
+		tws_cont_t ins = tws_make_cont();
+
 		/* get all them contract specs */
 		for (const char **ap = attr; ap && *ap; ap += 2) {
 			const tws_xml_aid_t aid = check_tx_attr(ctx, ap[0]);
-			tws_cont_t ins = ctx->res;
 
 			proc_REQCONTRACT_attr(
 				ins, TX_NS_TWSXML_0_1, aid, ap[1]);
 		}
-		push_state(ctx, TX_NS_TWSXML_0_1, (tx_tid_t)tid, NULL);
+		push_state(ctx, TX_NS_TWSXML_0_1, (tx_tid_t)tid, ins);
 		break;
+	}
 
 	default:
 		break;
@@ -603,14 +600,18 @@ sax_eo_TWSXML_elt(__ctx_t ctx, const char *elem)
 		break;
 
 		/* non top-levels without children */
-	case TX_TAG_REQCONTRACT:
-		pop_state(ctx);
-		if (UNLIKELY(get_state_otype(ctx).tx != TX_TAG_QUERY)) {
-			/* huh? a reqContract in a response? */
-			TX_DEBUG("weirdness %u\n", get_state_otype(ctx).u);
+	case TX_TAG_REQCONTRACT: {
+		tws_cont_t ins = pop_state(ctx);
+
+		if (UNLIKELY(ins == NULL)) {
+			TX_DEBUG("internal parser error, cont is NULL\n");
 			break;
+		} else if (ctx->cont_cb == NULL ||
+			   ctx->cont_cb(ins, ctx->cbclo) < 0) {
+			tws_free_cont(ins);
 		}
 		break;
+	}
 
 	default:
 		break;
@@ -637,25 +638,32 @@ sax_bo_FIXML_elt(__ctx_t ctx, const char *elem, const char **attr)
 		}
 		break;
 
-	case FIX_TAG_SECDEF:
+	case FIX_TAG_BATCH:
+		break;
+
+	case FIX_TAG_SECDEF: {
+		tws_cont_t ins = tws_make_cont();
+
 		for (const char **ap = attr; ap && *ap; ap += 2) {
 			const fixml_aid_t aid = check_fix_attr(ctx, ap[0]);
-			tws_cont_t ins = ctx->res;
 
 			proc_SECDEF_attr(ins, TX_NS_FIXML_5_0, aid, ap[1]);
 		}
-		push_state(ctx, TX_NS_FIXML_5_0, (tx_tid_t)tid, NULL);
+		push_state(ctx, TX_NS_FIXML_5_0, (tx_tid_t)tid, ins);
 		break;
+	}
 
-	case FIX_TAG_INSTRMT:
+	case FIX_TAG_INSTRMT: {
+		tws_cont_t ins = get_state_object(ctx);
+
 		for (const char **ap = attr; ap && *ap; ap += 2) {
 			const fixml_aid_t aid = check_fix_attr(ctx, ap[0]);
-			tws_cont_t ins = ctx->res;
 
 			proc_INSTRMT_attr(ins, TX_NS_FIXML_5_0, aid, ap[1]);
 		}
-		push_state(ctx, TX_NS_FIXML_5_0, (tx_tid_t)tid, NULL);
+		push_state(ctx, TX_NS_FIXML_5_0, (tx_tid_t)tid, ins);
 		break;
+	}
 
 	default:
 		break;
@@ -672,8 +680,22 @@ sax_eo_FIXML_elt(__ctx_t ctx, const char *elem)
 	switch (tid) {
 		/* top-levels */
 	case FIX_TAG_FIXML:
+	case FIX_TAG_BATCH:
 		break;
-	case FIX_TAG_SECDEF:
+
+	case FIX_TAG_SECDEF: {
+		tws_cont_t ins = pop_state(ctx);
+
+		if (UNLIKELY(ins == NULL)) {
+			TX_DEBUG("internal parser error, cont is NULL\n");
+			break;
+		} else if (ctx->cont_cb == NULL ||
+			   ctx->cont_cb(ins, ctx->cbclo) < 0) {
+			tws_free_cont(ins);
+		}
+		break;
+	}
+
 	case FIX_TAG_INSTRMT:
 		pop_state(ctx);
 		break;
@@ -751,32 +773,73 @@ el_end(void *clo, const char *elem)
 
 
 /* public funs */
+static int
+priv_cont_cb(tws_cont_t c, void *clo)
+{
+	tws_cont_t *res = clo;
+
+	if (*res) {
+		/* great */
+		tws_free_cont(*res);
+	}
+	*res = c;
+	return 0;
+}
+
 tws_cont_t
 tws_cont(const char *xml, size_t len)
 {
 	XML_Parser hdl;
 	struct __ctx_s clo = {0};
+	tws_cont_t res = NULL;
 
 	if ((hdl = XML_ParserCreate(NULL)) == NULL) {
-		goto fucked;
-	} else if ((clo.res = tws_make_cont()) == NULL) {
-		goto fucked;
+		return NULL;
 	}
+	/* register the callback */
+	clo.cont_cb = priv_cont_cb;
+	clo.cbclo = &res;
+
 	XML_SetElementHandler(hdl, el_sta, el_end);
 	XML_SetUserData(hdl, &clo);
 
 	if (XML_Parse(hdl, xml, len, XML_TRUE) == XML_STATUS_ERROR) {
-		tws_free_cont(clo.res);
-	fucked:
 		return NULL;
 	}
 
 	/* get rid of resources */
 	XML_ParserFree(hdl);
-	return clo.res;
+	return res;
 }
 
 int
+tws_batch_cont(
+	const char *xml, size_t len,
+	int(*cb)(tws_cont_t, void*), void *cbclo)
+{
+	XML_Parser hdl;
+	struct __ctx_s clo = {0};
+
+	if ((hdl = XML_ParserCreate(NULL)) == NULL) {
+		return -1;
+	}
+	/* register our callback */
+	clo.cont_cb = cb;
+	clo.cbclo = cbclo;
+
+	XML_SetElementHandler(hdl, el_sta, el_end);
+	XML_SetUserData(hdl, &clo);
+
+	if (XML_Parse(hdl, xml, len, XML_TRUE) == XML_STATUS_ERROR) {
+		return -1;
+	}
+
+	/* get rid of resources */
+	XML_ParserFree(hdl);
+	return 0;
+}
+
+ssize_t
 tws_cont_xml(char *UNUSED(buf), size_t UNUSED(bsz), tws_cont_t UNUSED(c))
 {
 	return 0;

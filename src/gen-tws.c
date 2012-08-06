@@ -240,7 +240,7 @@ static const char xmpl_cont_tx[] = "\
 static const char xmpl_cont_fix[] = "\
 <FIXML xmlns=\"http://www.fixprotocol.org/FIXML-5-0\">\n\
   <SecDef Ccy=\"USD\">\n\
-    <Instrmt Exch=\"IDEALPRO\" Sym=\"EUR.USD\" SecTyp=\"FXSPOT\" Prod=\"4\"\n\
+    <Instrmt Exch=\"IDEALPRO\" Sym=\"GBP.USD\" SecTyp=\"FXSPOT\" Prod=\"4\"\n\
       CFI=\"FFCPNO\" UOMQty=\"1\" Mult=\"1\"/>\n\
   </SecDef>\n\
 </FIXML>\n\
@@ -330,7 +330,27 @@ main(int argc, char *argv[])
 
 main_loop:
 #endif	/* HAVE_TWSAPI_HANDSHAKE */
-	while (epoll_wait(epfd, ev, 1, 2000) > 0) {
+#if defined HAVE_EXPAT_H
+/* test contract builder, subscribe to symbols, innit */
+	{
+		tws_cont_t x = tws_cont(
+			xmpl_cont_tx, sizeof(xmpl_cont_tx) - 1);
+		fprintf(logerr, "built contract %p from TX\n", x);
+		tws_req_quo(tws, 1, x);
+		tws_free_cont(x);
+	}
+
+	{
+		tws_cont_t x = tws_cont(
+			xmpl_cont_fix, sizeof(xmpl_cont_fix) - 1);
+		fprintf(logerr, "built contract %p from FIX\n", x);
+		tws_req_quo(tws, 2, x);
+		tws_free_cont(x);
+	}
+#endif	/* HAVE_EXPAT_H */
+
+	ev->events = 0;
+	do {
 		if (ev->events & EPOLLHUP) {
 			break;
 		}
@@ -340,24 +360,7 @@ main_loop:
 		if (1) {
 			tws_send(tws);
 		}
-	}
-
-#if defined HAVE_EXPAT_H
-/* test contract builder */
-	{
-		tws_cont_t x = tws_cont(
-			xmpl_cont_tx, sizeof(xmpl_cont_tx) - 1);
-		fprintf(logerr, "built contract %p from TX\n", x);
-		tws_free_cont(x);
-	}
-
-	{
-		tws_cont_t x = tws_cont(
-			xmpl_cont_fix, sizeof(xmpl_cont_fix) - 1);
-		fprintf(logerr, "built contract %p from FIX\n", x);
-		tws_free_cont(x);
-	}
-#endif	/* HAVE_EXPAT_H */
+	} while (epoll_wait(epfd, ev, 1, 2000) > 0);
 
 disc:
 #if defined HAVE_TWSAPI_HANDSHAKE

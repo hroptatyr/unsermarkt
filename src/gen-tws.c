@@ -184,6 +184,23 @@ infra_cb(tws_t tws, tws_cb_t what, struct tws_infra_clo_s clo)
 	return;
 }
 
+static void
+pre_cb(tws_t tws, tws_cb_t what, struct tws_pre_clo_s clo)
+{
+	switch (what) {
+	case TWS_CB_PRE_PRICE:
+	case TWS_CB_PRE_SIZE:
+		error(0, "tws %p: pri/qty up for %u  %u",
+			tws, clo.oid, clo.tt);
+		break;
+	default:
+		error(0, "%p pre called: what %u  oid %u  tt %u  data %p",
+			tws, what, clo.oid, clo.tt, clo.data);
+		break;
+	}
+	return;
+}
+
 #if defined HAVE_TWSAPI_HANDSHAKE
 static int
 rslv(struct addrinfo **res, const char *host, short unsigned int port)
@@ -226,7 +243,7 @@ conn(struct addrinfo *ais)
 #endif	/* HAVE_TWSAPI_HANDSHAKE */
 
 #if defined HAVE_EXPAT_H
-static const char xmpl_cont[] = "\
+static const char xmpl_cont_tx[] = "\
 <TWSXML xmlns=\"http://www.ga-group.nl/twsxml-0.1\">\n\
   <request type=\"market_data\">\n\
     <query>\n\
@@ -235,6 +252,15 @@ static const char xmpl_cont[] = "\
     </query>\n\
   </request>\n\
 </TWSXML>\n\
+";
+
+static const char xmpl_cont_fix[] = "\
+<FIXML xmlns=\"http://www.fixprotocol.org/FIXML-5-0\">\n\
+  <SecDef Ccy=\"USD\">\n\
+    <Instrmt Exch=\"IDEALPRO\" Sym=\"GBP.USD\" SecTyp=\"FXSPOT\" Prod=\"4\"\n\
+      CFI=\"FFCPNO\" UOMQty=\"1\" Mult=\"1\"/>\n\
+  </SecDef>\n\
+</FIXML>\n\
 ";
 #endif	/* HAVE_EXPAT_H */
 
@@ -255,6 +281,8 @@ main(int argc, char *argv[])
 	int epfd;
 	int s;
 	int res = 0;
+	int ready_p = 0;
+	time_t strt;
 
 	logerr = stderr;
 	argp_parse(&aprs, argc, argv, ARGP_NO_HELP, 0, &args);
@@ -300,6 +328,7 @@ main(int argc, char *argv[])
 
 	/* add some callbacks */
 	tws->infra_cb = infra_cb;
+	tws->pre_cb = pre_cb;
 
 #if defined HAVE_TWSAPI_HANDSHAKE
 	/* handshake first */
@@ -321,7 +350,15 @@ main(int argc, char *argv[])
 
 main_loop:
 #endif	/* HAVE_TWSAPI_HANDSHAKE */
-	while (epoll_wait(epfd, ev, 1, 2000) > 0) {
+
+	ev->events = 0;
+	strt = time(NULL);
+	do {
+#if defined HAVE_EXPAT_H
+		static tws_oid_t r1 = 0;
+		static tws_oid_t r2 = 0;
+#endif	/* HAVE_EXPAT_H */
+
 		if (ev->events & EPOLLHUP) {
 			break;
 		}
@@ -329,18 +366,43 @@ main_loop:
 			tws_recv(tws);
 		}
 		if (1) {
-			tws_send(tws);
+			if (tws_send(tws) < 0) {
+				error(0, "socket b0rked");
+				break;
+			}
 		}
-	}
 
+		if (!ready_p && tws_ready_p(tws)) {
 #if defined HAVE_EXPAT_H
-/* test contract builder */
-	{
-		tws_cont_t x = tws_cont(xmpl_cont, sizeof(xmpl_cont) - 1);
-		fprintf(logerr, "built contract %p\n", x);
-		tws_free_cont(x);
-	}
+/* test contract builder, subscribe to symbols, innit */
+			tws_cont_t x;
+
+			x = tws_cont(xmpl_cont_tx, sizeof(xmpl_cont_tx) - 1);
+			fprintf(logerr, "built contract %p from TX\n", x);
+			r1 = tws_gen_quo(tws, x);
+			fprintf(logerr, "req'd %u\n", r1);
+			tws_free_cont(x);
+
+			x = tws_cont(xmpl_cont_fix, sizeof(xmpl_cont_fix) - 1);
+			fprintf(logerr, "built contract %p from FIX\n", x);
+			r2 = tws_gen_quo(tws, x);
+			fprintf(logerr, "req'd %u\n", r2);
+			tws_free_cont(x);
 #endif	/* HAVE_EXPAT_H */
+
+			ready_p = 1;
+		}
+
+		if (time(NULL) > strt + 10) {
+#if defined HAVE_EXPAT_H
+			/* time to unsubscribe */
+			fprintf(logerr, "unsub %u\n", r1);
+			tws_rem_quo(tws, r1);
+			fprintf(logerr, "unsub %u\n", r2);
+			tws_rem_quo(tws, r2);
+#endif	/* HAVE_EXPAT_H */
+		}
+	} while (epoll_wait(epfd, ev, 1, 5000) > 0);
 
 disc:
 #if defined HAVE_TWSAPI_HANDSHAKE

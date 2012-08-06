@@ -1,22 +1,15 @@
 %{
 typedef struct fixml_tag_s *fixml_tag_t;
 
-/* all the tags we know about */
-typedef enum {
-	/* must be first */
-	TX_TAG_UNK,
-	/* alphabetic list of tags */
-	TX_TAG_INSTRMT,
-	TX_TAG_FIXML,
-	TX_TAG_SECDEF,
-} fixml_tid_t;
+#include "proto-fixml-tag.h"
+
 %}
 %7bit
 %readonly-tables
 %struct-type
 %define slot-name tag
-%define hash-function-name __tid_hash
-%define lookup-function-name __tiddify
+%define hash-function-name __fix_tid_hash
+%define lookup-function-name __fix_tiddify
 %null-strings
 %enum
 
@@ -26,6 +19,6 @@ struct fixml_tag_s {
 };
 
 %%
-FIXML, TX_TAG_FIXML
-Instrmt, TX_TAG_INSTRMT
-SecDef, TX_TAG_SECDEF
+FIXML, FIX_TAG_FIXML
+Instrmt, FIX_TAG_INSTRMT
+SecDef, FIX_TAG_SECDEF

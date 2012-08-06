@@ -631,6 +631,7 @@ tws_connect(tws_t tws, const char *host, uint16_t port, int client)
 	}
 
 	// just request a lot of buggery here
+	TWS_PRIV_CLI(tws)->reqIds(0);
 	TWS_PRIV_CLI(tws)->reqCurrentTime();
 	return TWS_PRIV_CLI(tws)->fd();
 }
@@ -714,26 +715,17 @@ tws_ready_p(tws_t tws)
 int
 tws_req_quo(tws_t tws, tws_oid_t oid, const void *data)
 {
-	long int real_idx;
-
 	if (UNLIKELY(!tws_ready_p(tws))) {
 		return -1;
 	}
 
-	/* we'll request idx + next_oid */
-	if (oid <= TWS_PRIV_WRP(tws)->next_oid - 1) {
-		TWS_PRIV_WRP(tws)->next_oid += oid;
-		real_idx = TWS_PRIV_WRP(tws)->next_oid - 1;
-	} else {
-		real_idx = oid;
-	}
 	/* and now we just assume it works */
 	{
 		const IB::Contract *cont = (const IB::Contract*)data;
 		IB::IBString generics = std::string("");
 		bool snapp = false;
 
-		TWS_PRIV_CLI(tws)->reqMktData(real_idx, *cont, generics, snapp);
+		TWS_PRIV_CLI(tws)->reqMktData(oid, *cont, generics, snapp);
 	}
 	return __sock_ok_p(tws);
 }

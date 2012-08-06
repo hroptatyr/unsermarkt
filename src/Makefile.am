@@ -226,7 +226,7 @@ quo_tws_SOURCES += prchunk.c prchunk.h
 quo_tws_SOURCES += tws-cont.cpp tws-cont.h
 EXTRA_quo_tws_SOURCES += proto-twsxml-tag.gperf
 EXTRA_quo_tws_SOURCES += proto-twsxml-attr.gperf proto-twsxml-attr.h
-EXTRA_quo_tws_SOURCES += proto-twsxml-ns.gperf
+EXTRA_quo_tws_SOURCES += proto-tx-ns.gperf proto-tx-ns.h
 quo_tws_CPPFLAGS = $(AM_CPPFLAGS)
 quo_tws_CPPFLAGS += $(uterus_CFLAGS)
 quo_tws_CPPFLAGS += $(unserding_CFLAGS)
@@ -247,9 +247,6 @@ endif  ## HAVE_TWSAPI
 BUILT_SOURCES += ox-tws-clo.c ox-tws-clo.h
 BUILT_SOURCES += pf-tws-clo.c pf-tws-clo.h
 BUILT_SOURCES += quo-tws-clo.c quo-tws-clo.h
-BUILT_SOURCES += proto-twsxml-tag.c
-BUILT_SOURCES += proto-twsxml-attr.c
-BUILT_SOURCES += proto-twsxml-ns.c
 
 if HAVE_LIBEV
 bin_PROGRAMS += um-netdania
@@ -321,13 +318,10 @@ tws_xml_LINK = $(LINK) $(tws_xml_LDFLAGS)
 EXTRA_tws_xml_SOURCES =
 EXTRA_tws_xml_SOURCES += proto-twsxml-tag.gperf
 EXTRA_tws_xml_SOURCES += proto-twsxml-attr.gperf proto-twsxml-attr.h
-EXTRA_tws_xml_SOURCES += proto-twsxml-ns.gperf
+EXTRA_tws_xml_SOURCES += proto-tx-ns.gperf proto-tx-ns.h
 endif  HAVE_TWSAPI
 endif  HAVE_GPERF
 endif  HAVE_EXPAT
-BUILT_SOURCES += proto-twsxml-tag.c
-BUILT_SOURCES += proto-twsxml-attr.c
-BUILT_SOURCES += proto-twsxml-ns.c
 
 noinst_PROGRAMS += ccy-graph
 ccy_graph_SOURCES = ccy-graph.c ccy-graph.h
@@ -341,10 +335,12 @@ libtwscapi_la_SOURCES += gen-tws-wrapper.cpp
 if HAVE_EXPAT
 libtwscapi_la_SOURCES += gen-tws-cont.c gen-tws-cont.h
 libtwscapi_la_SOURCES += gen-tws-cont-glu.cpp gen-tws-cont-glu.h
-libtwscapi_la_SOURCES += proto-twsxml-tag.gperf
+libtwscapi_la_SOURCES += proto-twsxml-tag.gperf proto-twsxml-tag.h
 libtwscapi_la_SOURCES += proto-twsxml-attr.gperf proto-twsxml-attr.h
-libtwscapi_la_SOURCES += proto-twsxml-ns.gperf
+libtwscapi_la_SOURCES += proto-tx-ns.gperf proto-tx-ns.h
 libtwscapi_la_SOURCES += proto-twsxml-reqtyp.gperf proto-twsxml-reqtyp.h
+libtwscapi_la_SOURCES += proto-fixml-tag.gperf proto-fixml-tag.h
+libtwscapi_la_SOURCES += proto-fixml-attr.gperf proto-fixml-attr.h
 endif  HAVE_EXPAT
 libtwscapi_la_SOURCES +=
 libtwscapi_la_CPPFLAGS = $(AM_CPPFLAGS)
@@ -358,8 +354,10 @@ endif  HAVE_EXPAT
 libtwscapi_la_LINK = $(LINK) $(libtwscapi_la_LDFLAGS)
 BUILT_SOURCES += proto-twsxml-tag.c
 BUILT_SOURCES += proto-twsxml-attr.c
-BUILT_SOURCES += proto-twsxml-ns.c
+BUILT_SOURCES += proto-tx-ns.c
 BUILT_SOURCES += proto-twsxml-reqtyp.c
+BUILT_SOURCES += proto-fixml-tag.c
+BUILT_SOURCES += proto-fixml-attr.c
 
 noinst_PROGRAMS += gen-tws
 gen_tws_SOURCES = gen-tws.c

@@ -48,7 +48,8 @@ extern "C" {
 # endif
 #endif	/* __cplusplus */
 
-extern int tws_cont_x(tws_cont_t tgt, unsigned int aid, const char *val);
+extern int
+tws_cont_x(tws_cont_t tgt, unsigned int ns, unsigned int aid, const char *val);
 
 #if defined __cplusplus
 }

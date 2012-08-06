@@ -46,10 +46,10 @@
 #include "gen-tws-cont.h"
 #include "gen-tws-cont-glu.h"
 
-#include "proto-twsxml-tag.c"
-#include "proto-twsxml-attr.c"
-#include "proto-tx-ns.c"
-#include "proto-twsxml-reqtyp.c"
+#include "proto-twsxml-tag.h"
+#include "proto-twsxml-attr.h"
+#include "proto-twsxml-reqtyp.h"
+#include "proto-tx-ns.h"
 
 #if defined DEBUG_FLAG
 # include <stdio.h>
@@ -127,6 +127,21 @@ struct __ctx_s {
 	/* result */
 	tws_cont_t res;
 };
+
+
+/* all the generated stuff */
+#if defined __INTEL_COMPILER
+# pragma warning (disable:869)
+#endif	/* __INTEL_COMPILER */
+
+#include "proto-twsxml-tag.c"
+#include "proto-twsxml-attr.c"
+#include "proto-tx-ns.c"
+#include "proto-twsxml-reqtyp.c"
+
+#if defined __INTEL_COMPILER
+# pragma warning (default:869)
+#endif	/* __INTEL_COMPILER */
 
 
 static tws_xml_req_typ_t

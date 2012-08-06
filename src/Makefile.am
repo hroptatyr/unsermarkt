@@ -335,7 +335,7 @@ libtwscapi_la_SOURCES += gen-tws-wrapper.cpp
 if HAVE_EXPAT
 libtwscapi_la_SOURCES += gen-tws-cont.c gen-tws-cont.h
 libtwscapi_la_SOURCES += gen-tws-cont-glu.cpp gen-tws-cont-glu.h
-libtwscapi_la_SOURCES += proto-twsxml-tag.gperf
+libtwscapi_la_SOURCES += proto-twsxml-tag.gperf proto-twsxml-tag.h
 libtwscapi_la_SOURCES += proto-twsxml-attr.gperf proto-twsxml-attr.h
 libtwscapi_la_SOURCES += proto-tx-ns.gperf proto-tx-ns.h
 libtwscapi_la_SOURCES += proto-twsxml-reqtyp.gperf proto-twsxml-reqtyp.h

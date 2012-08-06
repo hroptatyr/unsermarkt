@@ -237,12 +237,6 @@ sax_fix_aid_from_attr(const char *attr)
 	return a ? a->aid : FIX_ATTR_UNK;
 }
 
-static tx_tid_t
-get_state_otype(__ctx_t ctx)
-{
-	return ctx->state ? ctx->state->otype : (tx_tid_t)0U;
-}
-
 static void* __attribute__((unused))
 get_state_object(__ctx_t ctx)
 {

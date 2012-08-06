@@ -264,6 +264,8 @@ main(int argc, char *argv[])
 	int epfd;
 	int s;
 	int res = 0;
+	int ready_p = 0;
+	time_t strt;
 
 	logerr = stderr;
 	argp_parse(&aprs, argc, argv, ARGP_NO_HELP, 0, &args);
@@ -330,27 +332,15 @@ main(int argc, char *argv[])
 
 main_loop:
 #endif	/* HAVE_TWSAPI_HANDSHAKE */
-#if defined HAVE_EXPAT_H
-/* test contract builder, subscribe to symbols, innit */
-	{
-		tws_cont_t x = tws_cont(
-			xmpl_cont_tx, sizeof(xmpl_cont_tx) - 1);
-		fprintf(logerr, "built contract %p from TX\n", x);
-		tws_req_quo(tws, 1, x);
-		tws_free_cont(x);
-	}
-
-	{
-		tws_cont_t x = tws_cont(
-			xmpl_cont_fix, sizeof(xmpl_cont_fix) - 1);
-		fprintf(logerr, "built contract %p from FIX\n", x);
-		tws_req_quo(tws, 2, x);
-		tws_free_cont(x);
-	}
-#endif	/* HAVE_EXPAT_H */
 
 	ev->events = 0;
+	strt = time(NULL);
 	do {
+#if defined HAVE_EXPAT_H
+		static tws_oid_t r1 = 0;
+		static tws_oid_t r2 = 0;
+#endif	/* HAVE_EXPAT_H */
+
 		if (ev->events & EPOLLHUP) {
 			break;
 		}
@@ -358,9 +348,43 @@ main_loop:
 			tws_recv(tws);
 		}
 		if (1) {
-			tws_send(tws);
+			if (tws_send(tws) < 0) {
+				error(0, "socket b0rked");
+				break;
+			}
 		}
-	} while (epoll_wait(epfd, ev, 1, 2000) > 0);
+
+		if (!ready_p && tws_ready_p(tws)) {
+#if defined HAVE_EXPAT_H
+/* test contract builder, subscribe to symbols, innit */
+			tws_cont_t x;
+
+			x = tws_cont(xmpl_cont_tx, sizeof(xmpl_cont_tx) - 1);
+			fprintf(logerr, "built contract %p from TX\n", x);
+			r1 = tws_gen_quo(tws, x);
+			fprintf(logerr, "req'd %u\n", r1);
+			tws_free_cont(x);
+
+			x = tws_cont(xmpl_cont_fix, sizeof(xmpl_cont_fix) - 1);
+			fprintf(logerr, "built contract %p from FIX\n", x);
+			r2 = tws_gen_quo(tws, x);
+			fprintf(logerr, "req'd %u\n", r2);
+			tws_free_cont(x);
+#endif	/* HAVE_EXPAT_H */
+
+			ready_p = 1;
+		}
+
+		if (time(NULL) > strt + 10) {
+#if defined HAVE_EXPAT_H
+			/* time to unsubscribe */
+			fprintf(logerr, "unsub %u\n", r1);
+			tws_rem_quo(tws, r1);
+			fprintf(logerr, "unsub %u\n", r2);
+			tws_rem_quo(tws, r2);
+#endif	/* HAVE_EXPAT_H */
+		}
+	} while (epoll_wait(epfd, ev, 1, 5000) > 0);
 
 disc:
 #if defined HAVE_TWSAPI_HANDSHAKE

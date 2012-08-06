@@ -71,6 +71,10 @@ tws_batch_cont(
 	const char *xml, size_t len,
 	int(*cb)(tws_cont_t, void*), void *clo);
 
+/**
+ * Return a nick name for given contract. */
+extern const char *tws_cont_nick(tws_cont_t);
+
 /* chunkwise readers/printers */
 extern tws_cont_t
 tws_chnk_cont(tws_cctx_t, const char *xml, size_t len);

@@ -194,7 +194,6 @@ ox_tws_LINK = $(LINK) $(ox_tws_LDFLAGS)
 noinst_PROGRAMS += pf-tws
 EXTRA_pf_tws_SOURCES =
 pf_tws_SOURCES = pf-tws.c pf-tws-clo.ggo
-pf_tws_SOURCES += pf-tws-wrapper.cpp pf-tws-wrapper.h
 pf_tws_SOURCES += iso4217.c iso4217.h
 pf_tws_SOURCES += strops.h
 pf_tws_SOURCES += pf-tws-private.h
@@ -208,6 +207,7 @@ pf_tws_LDFLAGS = $(AM_LDFLAGS)
 pf_tws_LDFLAGS += $(unserding_LIBS)
 pf_tws_LDFLAGS += $(twsapi_LIBS) -lstdc++
 pf_tws_LDFLAGS += $(libev_LIBS)
+pf_tws_LDADD = libtwscapi.la
 pf_tws_LINK = $(LINK) $(pf_tws_LDFLAGS)
 
 if HAVE_EXPAT

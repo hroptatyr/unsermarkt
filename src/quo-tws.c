@@ -69,13 +69,14 @@
 #endif	/* HAVE_UTERUS_UTERUS_H || HAVE_UTERUS_H */
 
 /* the tws api */
-#include "quo-tws-wrapper.h"
+#include "gen-tws.h"
+#include "gen-tws-cont.h"
 #include "quo-tws-private.h"
-#include "tws-xml.h"
-#include "tws-cont.h"
 #include "nifty.h"
 #include "strops.h"
 #include "gq.h"
+
+#include "proto-twsxml-reqtyp.h"
 
 #if defined __INTEL_COMPILER
 # pragma warning (disable:981)
@@ -109,7 +110,7 @@ struct ctx_s {
 	int client;
 
 	/* dynamic context */
-	my_tws_t tws;
+	tws_t tws;
 	int tws_sock;
 };
 
@@ -279,7 +280,7 @@ ud_chan_send_ser_all(udpc_seria_t ser)
 }
 
 static void
-flush_queue(my_tws_t UNUSED(tws))
+flush_queue(tws_t UNUSED(tws))
 {
 	static size_t pno = 0;
 	char buf[UDPC_PKTLEN];
@@ -469,7 +470,7 @@ out_revok:
 static void
 cake_cb(EV_P_ ev_io *w, int revents)
 {
-	my_tws_t tws = w->data;
+	tws_t tws = w->data;
 
 	if (revents & EV_READ) {
 		if (tws_recv(tws) < 0) {
@@ -504,23 +505,18 @@ mmap_size(size_t nelem, size_t elemsz)
 }
 
 static void
-__req_cb(tws_xml_req_t req, void *clo)
+__cont_batch_cb(tws_cont_t ins, void *clo)
 {
 	struct {
 		utectx_t u;
 	} *ctx = clo;
 	uint16_t iidx;
 	const char *nick;
-	tws_cont_t c;
 
-	if (UNLIKELY(req->typ != TWS_XML_REQ_TYP_MKT_DATA)) {
-		error(0, "warning, not a market data request");
-		return;
-	} else if (UNLIKELY((c = req->qry.mkt_data.ins) == NULL)) {
-		error(0, "warning, invalid contract");
-		return;
-	} else if (UNLIKELY((nick = tws_cont_nick(c)) == NULL)) {
-		error(0, "warning, could not find a nick name for %p", c);
+	if (UNLIKELY(ins == NULL)) {
+		error(0, "invalid contract");
+	} else if (UNLIKELY((nick = tws_cont_nick(ins)) == NULL)) {
+		error(0, "warning, could not find a nick name for %p", ins);
 		return;
 	} else if (UNLIKELY((iidx = ute_sym2idx(ctx->u, nick)) == 0)) {
 		error(0, "warning, cannot find suitable index for %s", nick);
@@ -555,7 +551,7 @@ __req_cb(tws_xml_req_t req, void *clo)
 			sizeof(*subs.quos) - 1;
 	}
 
-	subs.inss[iidx - 1] = c;
+	subs.inss[iidx - 1] = ins;
 	QUO_DEBUG("reg'd %s %hu\n", nick, iidx);
 	return;
 }
@@ -563,18 +559,33 @@ __req_cb(tws_xml_req_t req, void *clo)
 static void
 init_subs(const char *file)
 {
-	struct {
-		utectx_t u;
-	} x = {
-		.u = uu,
-	};
+#define PR	(PROT_READ)
+#define MS	(MAP_SHARED)
+	void *fp;
+	int fd;
+	struct stat st;
+	ssize_t fsz;
 
-	tws_xml_parse(file, __req_cb, &x);
+	if (stat(file, &st) < 0 || (fsz = st.st_size) < 0) {
+		error(0, "subscription file %s invalid", file);
+	} else if ((fd = open(file, O_RDONLY)) < 0) {
+		error(0, "cannot read subscription file %s", file);
+	} else if ((fp = mmap(NULL, fsz, PR, MS, 0, fd)) == MAP_FAILED) {
+		error(0, "cannot read subscription file %s", file);
+	} else {
+		struct {
+			utectx_t u;
+		} x = {
+			.u = uu,
+		};
+
+		tws_batch_cont(fp, fsz, __cont_batch_cb, &x);
+	}
 	return;
 }
 
 static void
-redo_subs(my_tws_t tws)
+redo_subs(tws_t tws)
 {
 	if (UNLIKELY(tws == NULL)) {
 		/* stop ourselves */
@@ -599,7 +610,7 @@ del_req:
 }
 
 static void
-undo_subs(my_tws_t UNUSED(tws))
+undo_subs(tws_t UNUSED(tws))
 {
 	for (size_t i = 0; i < subs.nsubs; i++) {
 		if (subs.inss[i]) {
@@ -688,7 +699,7 @@ prep_cb(EV_P_ ev_prepare *w, int UNUSED(revents))
 		/* and the oid semaphore */
 		conndp = 0;
 
-	} else if (!conndp && tws_connd_p(ctx->tws)) {
+	} else if (!conndp && tws_ready_p(ctx->tws)) {
 		/* a DREAM i tell ya, let's do our subscriptions */
 		redo_subs(ctx->tws);
 		conndp = 1;
@@ -787,7 +798,7 @@ main(int argc, char *argv[])
 	ev_io ctrl[1];
 	ev_prepare prp[1];
 	/* tws stuff */
-	struct my_tws_s tws[1];
+	struct tws_s tws[1];
 	/* final result */
 	int res = 0;
 
@@ -858,7 +869,7 @@ main(int argc, char *argv[])
 		ev_io_start(EV_A_ beef);
 	}
 
-	if (init_tws(tws) < 0) {
+	if (init_tws(tws, -1, ctx->client) < 0) {
 		res = 1;
 		goto unroll;
 	} else if ((uu = ute_mktemp(UO_NO_CREAT_TPC)) == NULL) {

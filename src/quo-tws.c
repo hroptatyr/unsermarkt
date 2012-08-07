@@ -615,7 +615,7 @@ undo_subs(tws_t UNUSED(tws))
 {
 	for (size_t i = 0; i < subs.nsubs; i++) {
 		if (subs.inss[i]) {
-			tws_disassemble_instr(subs.inss[i]);
+			tws_free_cont(subs.inss[i]);
 			subs.inss[i] = NULL;
 		}
 	}

@@ -104,13 +104,14 @@ typedef struct q30_s q30_t;
 typedef m30_t q30_pack_t[4];
 
 struct ctx_s {
+	struct tws_s tws[1];
+
 	/* static context */
 	const char *host;
 	uint16_t port;
 	int client;
 
 	/* dynamic context */
-	tws_t tws;
 	int tws_sock;
 };
 
@@ -787,7 +788,7 @@ detach(void)
 int
 main(int argc, char *argv[])
 {
-	struct ctx_s ctx[1];
+	struct ctx_s ctx[1] = {{0}};
 	/* args */
 	struct quo_args_info argi[1];
 	/* use the default event loop unless you have special needs */
@@ -798,8 +799,6 @@ main(int argc, char *argv[])
 	ev_signal sigterm_watcher[1];
 	ev_io ctrl[1];
 	ev_prepare prp[1];
-	/* tws stuff */
-	struct tws_s tws[1];
 	/* final result */
 	int res = 0;
 
@@ -870,7 +869,7 @@ main(int argc, char *argv[])
 		ev_io_start(EV_A_ beef);
 	}
 
-	if (init_tws(tws, -1, ctx->client) < 0) {
+	if (init_tws(ctx->tws, -1, ctx->client) < 0) {
 		res = 1;
 		goto unroll;
 	} else if ((uu = ute_mktemp(UO_NO_CREAT_TPC)) == NULL) {
@@ -879,7 +878,6 @@ main(int argc, char *argv[])
 		goto unroll;
 	}
 	/* prepare the context */
-	ctx->tws = tws;
 	ctx->tws_sock = -1;
 	/* pre and post poll hooks */
 	prp->data = ctx;
@@ -904,7 +902,7 @@ main(int argc, char *argv[])
 	ev_prepare_stop(EV_A_ prp);
 
 	/* kill all tws associated data */
-	undo_subs(tws);
+	undo_subs(ctx->tws);
 	/* secondly, get rid of the tws intrinsics */
 	QUO_DEBUG("finalising tws guts\n");
 	(void)fini_tws(ctx->tws);

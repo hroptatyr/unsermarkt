@@ -446,6 +446,15 @@ __wrapper::accountDownloadEnd(const IB::IBString&)
 	return;
 }
 
+void
+__wrapper::managedAccounts(const IB::IBString &ac)
+{
+	tws_t tws = WRP_TWS(this);
+
+	POST_CB(tws, TWS_CB_POST_MNGD_AC, (tws_oid_t)0, ac.c_str());
+	return;
+}
+
 
 /* infra */
 static struct tws_infra_clo_s infra_clo;
@@ -536,12 +545,6 @@ void
 __wrapper::updateNewsBulletin(
 	int, int,
 	const IB::IBString&, const IB::IBString&)
-{
-	return;
-}
-
-void
-__wrapper::managedAccounts(const IB::IBString&)
 {
 	return;
 }

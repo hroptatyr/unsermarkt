@@ -80,6 +80,7 @@ typedef enum {
 	/* POSTs */
 	TWS_CB_POST_EXEC_DTL,
 	TWS_CB_POST_EXEC_DTL_END,
+	TWS_CB_POST_MNGD_AC,
 
 	/* INFRAs */
 	TWS_CB_INFRA_ERROR,

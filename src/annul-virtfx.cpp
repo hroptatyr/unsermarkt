@@ -77,8 +77,6 @@
 #include "nifty.h"
 #include "gq.h"
 
-#include "tws-cont.h"
-
 /* only recent ute versions (>=0.2.3) have this */
 #if !defined UO_NO_CREAT_TPC
 # define UO_NO_CREAT_TPC	(0)
@@ -97,6 +95,7 @@ void *logerr;
 
 typedef struct my_tws_s *my_tws_t;
 typedef void *tws_order_t;
+typedef void *tws_cont_t;
 
 typedef unsigned int tws_oid_t;
 
@@ -313,23 +312,24 @@ public:
 extern "C" {
 #endif	// __cplusplus
 
-extern int init_tws(my_tws_t);
-extern int fini_tws(my_tws_t);
+static int init_tws(my_tws_t);
+static int fini_tws(my_tws_t);
+static void rset_tws(my_tws_t);
 
-extern int tws_connect(my_tws_t, const char *host, uint16_t port, int client);
-extern int tws_disconnect(my_tws_t);
+static int tws_connect(my_tws_t, const char *host, uint16_t port, int client);
+static int tws_disconnect(my_tws_t);
 
-extern int tws_recv(my_tws_t);
-extern int tws_send(my_tws_t);
+static int tws_recv(my_tws_t);
+static int tws_send(my_tws_t);
 
-extern void fix_quot(quo_qq_t, struct quo_s);
-extern void fix_pos_rpt(pf_pq_t, const char *ac, struct pf_pos_s pos);
-extern void fix_alloc_rpt(void*, tws_oid_t, unsigned int msg, tws_oid_t);
+static void fix_quot(quo_qq_t, struct quo_s);
+static void fix_pos_rpt(pf_pq_t, const char *ac, struct pf_pos_s pos);
+static void fix_alloc_rpt(void*, tws_oid_t, unsigned int msg, tws_oid_t);
 
 
-extern void tws_disassemble_instr(tws_cont_t);
-extern int tws_req_ac(my_tws_t, const char *name);
-extern const char *tws_cont_nick(tws_cont_t);
+static void tws_disassemble_instr(tws_cont_t);
+static int tws_req_ac(my_tws_t, const char *name);
+static const char *tws_cont_nick(tws_cont_t);
 
 static void
 __attribute__((format(printf, 2, 3)))

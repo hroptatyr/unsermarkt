@@ -74,7 +74,7 @@ tws_batch_cont(
 
 /**
  * Return a nick name for given contract. */
-extern const char *tws_cont_nick(tws_cont_t);
+extern const char *tws_cont_nick(tws_const_cont_t);
 
 /* chunkwise readers/printers */
 extern tws_cont_t

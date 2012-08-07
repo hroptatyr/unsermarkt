@@ -129,10 +129,10 @@ tws_cont_x(tws_cont_t tgt, unsigned int nsid, unsigned int aid, const char *val)
 
 // until there's a better place
 const char*
-tws_cont_nick(tws_cont_t cont)
+tws_cont_nick(tws_const_cont_t cont)
 {
 	static char nick[64];
-	IB::Contract *c = (IB::Contract*)cont;
+	const IB::Contract *c = (const IB::Contract*)cont;
 
 	if (c->localSymbol.length() > 0) {
 		return c->localSymbol.c_str();

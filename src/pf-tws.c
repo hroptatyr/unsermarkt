@@ -443,6 +443,21 @@ infra_cb(tws_t tws, tws_cb_t what, struct tws_infra_clo_s clo)
 	return;
 }
 
+static void
+post_cb(tws_t tws, tws_cb_t what, struct tws_post_clo_s clo)
+{
+	switch (what) {
+	case TWS_CB_POST_MNGD_AC:
+		PF_DEBUG("tws %p post MNGD_AC: %s\n",
+			tws, (const char*)clo.data);
+		break;
+	default:
+		PF_DEBUG("%p post called: what %u  oid %u  data %p\n",
+			tws, what, clo.oid, clo.data);
+	}
+	return;
+}
+
 
 static void
 beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
@@ -784,6 +799,7 @@ main(int argc, char *argv[])
 	}
 	/* prepare the tws and the context */
 	ctx->tws->infra_cb = infra_cb;
+	ctx->tws->post_cb = post_cb;
 	ctx->tws_sock = -1;
 	/* pre and post poll hooks */
 	prp->data = ctx;

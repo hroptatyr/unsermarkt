@@ -122,6 +122,9 @@ struct tws_s {
 	void(*trd_cb)(tws_t, tws_cb_t, struct tws_trd_clo_s);
 	void(*post_cb)(tws_t, tws_cb_t, struct tws_post_clo_s);
 	void(*infra_cb)(tws_t, tws_cb_t, struct tws_infra_clo_s);
+
+	/* flexible array at the end, so users can extend this */
+	char user[0];
 };
 
 

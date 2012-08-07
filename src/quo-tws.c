@@ -572,7 +572,7 @@ init_subs(const char *file)
 		error(0, "subscription file %s invalid", file);
 	} else if ((fd = open(file, O_RDONLY)) < 0) {
 		error(0, "cannot read subscription file %s", file);
-	} else if ((fp = mmap(NULL, fsz, PR, MS, 0, fd)) == MAP_FAILED) {
+	} else if ((fp = mmap(NULL, fsz, PR, MS, fd, 0)) == MAP_FAILED) {
 		error(0, "cannot read subscription file %s", file);
 	} else {
 		struct {

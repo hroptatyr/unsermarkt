@@ -80,6 +80,9 @@ typedef enum {
 	/* POSTs */
 	TWS_CB_POST_EXEC_DTL,
 	TWS_CB_POST_EXEC_DTL_END,
+	TWS_CB_POST_MNGD_AC,
+	TWS_CB_POST_ACUP,
+	TWS_CB_POST_ACUP_END,
 
 	/* INFRAs */
 	TWS_CB_INFRA_ERROR,
@@ -122,6 +125,22 @@ struct tws_s {
 	void(*trd_cb)(tws_t, tws_cb_t, struct tws_trd_clo_s);
 	void(*post_cb)(tws_t, tws_cb_t, struct tws_post_clo_s);
 	void(*infra_cb)(tws_t, tws_cb_t, struct tws_infra_clo_s);
+
+	/* flexible array at the end, so users can extend this */
+	char user[0];
+};
+
+
+/* structs specific to some callbacks data field */
+struct tws_post_acup_clo_s {
+	const char *ac_name;
+	const void *cont;
+	double pos;
+	double val;
+};
+
+struct tws_post_acup_end_clo_s {
+	const char *ac_name;
 };
 
 

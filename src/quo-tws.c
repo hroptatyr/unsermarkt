@@ -431,6 +431,33 @@ fix_quot(quo_qq_t UNUSED(qq_unused), struct quo_s q)
 }
 
 
+/* callbacks coming from the tws */
+static void
+infra_cb(tws_t tws, tws_cb_t what, struct tws_infra_clo_s clo)
+{
+	switch (what) {
+	case TWS_CB_INFRA_ERROR:
+		QUO_DEBUG("tws %p: oid %u  code %u: %s\n",
+			tws, clo.oid, clo.code, (const char*)clo.data);
+		break;
+	case TWS_CB_INFRA_CONN_CLOSED:
+		QUO_DEBUG("tws %p: connection closed\n", tws);
+		break;
+	default:
+		QUO_DEBUG("%p infra: what %u  oid %u  code %u  data %p\n",
+			tws, what, clo.oid, clo.code, clo.data);
+		break;
+	}
+	return;
+}
+
+static void
+pre_cb(tws_t tws, tws_cb_t what, struct tws_pre_clo_s clo)
+{
+	return;
+}
+
+
 static void
 beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
 {
@@ -877,7 +904,9 @@ main(int argc, char *argv[])
 		res = 1;
 		goto unroll;
 	}
-	/* prepare the context */
+	/* prepare the context and the tws */
+	ctx->tws->infra_cb = infra_cb;
+	ctx->tws->pre_cb = pre_cb;
 	ctx->tws_sock = -1;
 	/* pre and post poll hooks */
 	prp->data = ctx;

@@ -66,6 +66,7 @@
 
 /* the tws api */
 #include "gen-tws.h"
+#include "gen-tws-cont.h"
 #include "pf-tws-private.h"
 #include "nifty.h"
 #include "strops.h"
@@ -475,6 +476,20 @@ post_cb(tws_t tws, tws_cb_t what, struct tws_post_clo_s clo)
 		if (ctx->nac_names == 0UL) {
 			ctx->nac_names = 1;
 		}
+		break;
+	}
+	case TWS_CB_POST_ACUP: {
+		const struct tws_post_acup_clo_s *rclo = clo.data;
+		struct pf_pos_s pos;
+
+		PF_DEBUG("tws %p: post ACUP: %s %s <- %.4f  (%.4f)\n",
+			tws, rclo->ac_name, tws_cont_nick(rclo->cont),
+			rclo->pos, rclo->val);
+
+		pos.sym = tws_cont_nick(rclo->cont);
+		pos.lqty = rclo->pos > 0 ? rclo->pos : 0.0;
+		pos.sqty = rclo->pos < 0 ? -rclo->pos : 0.0;
+		fix_pos_rpt(NULL, rclo->ac_name, pos);
 		break;
 	}
 	case TWS_CB_POST_ACUP_END: {

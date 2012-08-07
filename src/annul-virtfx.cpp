@@ -77,8 +77,6 @@
 #include "nifty.h"
 #include "gq.h"
 
-#include "tws-cont.h"
-
 /* only recent ute versions (>=0.2.3) have this */
 #if !defined UO_NO_CREAT_TPC
 # define UO_NO_CREAT_TPC	(0)
@@ -97,6 +95,7 @@ void *logerr;
 
 typedef struct my_tws_s *my_tws_t;
 typedef void *tws_order_t;
+typedef void *tws_cont_t;
 
 typedef unsigned int tws_oid_t;
 

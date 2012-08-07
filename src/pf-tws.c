@@ -65,7 +65,7 @@
 #endif	/* HAVE_UTERUS_UTERUS_H || HAVE_UTERUS_H */
 
 /* the tws api */
-#include "pf-tws-wrapper.h"
+#include "gen-tws.h"
 #include "pf-tws-private.h"
 #include "nifty.h"
 #include "strops.h"
@@ -96,7 +96,7 @@ struct ctx_s {
 	int client;
 
 	/* dynamic context */
-	my_tws_t tws;
+	tws_t tws;
 	int tws_sock;
 };
 
@@ -327,7 +327,7 @@ ud_chan_send_ser_all(udpc_seria_t ser)
 }
 
 static void
-flush_queue(my_tws_t UNUSED(tws))
+flush_queue(tws_t UNUSED(tws))
 {
 	static size_t pno = 0;
 	char buf[UDPC_PKTLEN];
@@ -462,7 +462,7 @@ out_revok:
 static void
 cake_cb(EV_P_ ev_io *w, int revents)
 {
-	my_tws_t tws = w->data;
+	tws_t tws = w->data;
 
 	if (revents & EV_READ) {
 		if (tws_recv(tws) < 0) {
@@ -488,7 +488,7 @@ del_cake:
 static void
 req_cb(EV_P_ ev_timer *w, int UNUSED(revents))
 {
-	my_tws_t tws = w->data;
+	tws_t tws = w->data;
 
 	PF_DEBUG("req\n");
 	if (UNLIKELY(tws == NULL)) {
@@ -549,7 +549,7 @@ prep_cb(EV_P_ ev_prepare *w, int UNUSED(revents))
 	static ev_timer tm_req[1] = {{0}};
 	static ev_timer tm_reco[1] = {{0}};
 	ctx_t ctx = w->data;
-	my_tws_t tws = ctx->tws;
+	tws_t tws = ctx->tws;
 
 	/* check if the tws is there */
 	if (cake->fd <= 0 && ctx->tws_sock <= 0 && tm_reco->data == NULL) {
@@ -681,7 +681,7 @@ main(int argc, char *argv[])
 	ev_io ctrl[1];
 	ev_prepare prp[1];
 	/* tws stuff */
-	struct my_tws_s tws[1];
+	struct tws_s tws[1] = {{0}};
 	/* final result */
 	int res = 0;
 
@@ -757,7 +757,7 @@ main(int argc, char *argv[])
 		nbeef = 1;
 	}
 
-	if (init_tws(tws) < 0) {
+	if (init_tws(tws, -1, ctx->client) < 0) {
 		res = 1;
 		goto unroll;
 	}

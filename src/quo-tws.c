@@ -504,7 +504,7 @@ mmap_size(size_t nelem, size_t elemsz)
 	return ((nelem * elemsz) / pgsz + 1) * pgsz;
 }
 
-static void
+static int
 __cont_batch_cb(tws_cont_t ins, void *clo)
 {
 	struct {
@@ -515,12 +515,13 @@ __cont_batch_cb(tws_cont_t ins, void *clo)
 
 	if (UNLIKELY(ins == NULL)) {
 		error(0, "invalid contract");
+		return -1;
 	} else if (UNLIKELY((nick = tws_cont_nick(ins)) == NULL)) {
 		error(0, "warning, could not find a nick name for %p", ins);
-		return;
+		return -1;
 	} else if (UNLIKELY((iidx = ute_sym2idx(ctx->u, nick)) == 0)) {
 		error(0, "warning, cannot find suitable index for %s", nick);
-		return;
+		return -1;
 	}
 
 	if (iidx > subs.nsubs) {
@@ -553,7 +554,7 @@ __cont_batch_cb(tws_cont_t ins, void *clo)
 
 	subs.inss[iidx - 1] = ins;
 	QUO_DEBUG("reg'd %s %hu\n", nick, iidx);
-	return;
+	return 0;
 }
 
 static void

@@ -90,13 +90,14 @@ typedef struct ctx_s *ctx_t;
 typedef struct pf_pqpr_s *pf_pqpr_t;
 
 struct ctx_s {
+	struct tws_s tws[1];
+
 	/* static context */
 	const char *host;
 	uint16_t port;
 	int client;
 
 	/* dynamic context */
-	tws_t tws;
 	int tws_sock;
 };
 
@@ -536,9 +537,10 @@ reco_cb(EV_P_ ev_timer *w, int UNUSED(revents))
 {
 /* this is a do fuckall thing */
 	ctx_t p = w->data;
+	tws_t tws = w->data;
 	int s;
 
-	if ((s = tws_connect(p->tws, p->host, p->port, p->client)) < 0) {
+	if ((s = tws_connect(tws, p->host, p->port, p->client)) < 0) {
 		/* retry later */
 		return;
 	}
@@ -570,7 +572,7 @@ prep_cb(EV_P_ ev_prepare *w, int UNUSED(revents))
 	static ev_timer tm_req[1] = {{0}};
 	static ev_timer tm_reco[1] = {{0}};
 	ctx_t ctx = w->data;
-	tws_t tws = ctx->tws;
+	tws_t tws = w->data;
 
 	/* check if the tws is there */
 	if (cake->fd <= 0 && ctx->tws_sock <= 0 && tm_reco->data == NULL) {
@@ -594,7 +596,7 @@ prep_cb(EV_P_ ev_prepare *w, int UNUSED(revents))
 
 	} else if (cake->fd <= 0) {
 		/* ah, connection is back up, init the watcher */
-		cake->data = ctx->tws;
+		cake->data = tws;
 		ev_io_init(cake, cake_cb, ctx->tws_sock, EV_READ);
 		ev_io_start(EV_A_ cake);
 		PF_DEBUG("cake started\n");
@@ -613,7 +615,7 @@ prep_cb(EV_P_ ev_prepare *w, int UNUSED(revents))
 		check_pq();
 
 		/* maybe we've got something up our sleeve */
-		flush_queue(ctx->tws);
+		flush_queue(tws);
 	}
 
 	/* and check the queue's integrity again */
@@ -690,7 +692,7 @@ detach(void)
 int
 main(int argc, char *argv[])
 {
-	struct ctx_s ctx[1];
+	struct ctx_s ctx[1] = {{0}};
 	/* args */
 	struct pf_args_info argi[1];
 	/* use the default event loop unless you have special needs */
@@ -701,8 +703,6 @@ main(int argc, char *argv[])
 	ev_signal sigterm_watcher[1];
 	ev_io ctrl[1];
 	ev_prepare prp[1];
-	/* tws stuff */
-	struct tws_s tws[1] = {{0}};
 	/* final result */
 	int res = 0;
 
@@ -778,14 +778,12 @@ main(int argc, char *argv[])
 		nbeef = 1;
 	}
 
-	if (init_tws(tws, -1, ctx->client) < 0) {
+	if (init_tws(ctx->tws, -1, ctx->client) < 0) {
 		res = 1;
 		goto unroll;
 	}
-	/* prepare the tws */
-	tws->infra_cb = infra_cb;
-	/* prepare the context */
-	ctx->tws = tws;
+	/* prepare the tws and the context */
+	ctx->tws->infra_cb = infra_cb;
 	ctx->tws_sock = -1;
 	/* pre and post poll hooks */
 	prp->data = ctx;

@@ -49,6 +49,7 @@ extern "C" {
 #endif	/* __cplusplus */
 
 typedef void *tws_cont_t;
+typedef const void *tws_const_cont_t;
 
 /**
  * Context for chunk parser/printer.*/

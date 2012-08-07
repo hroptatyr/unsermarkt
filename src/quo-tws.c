@@ -454,6 +454,53 @@ infra_cb(tws_t tws, tws_cb_t what, struct tws_infra_clo_s clo)
 static void
 pre_cb(tws_t tws, tws_cb_t what, struct tws_pre_clo_s clo)
 {
+	struct quo_s q;
+
+	switch (what) {
+	case TWS_CB_PRE_PRICE:
+		switch (clo.tt) {
+			/* hardcoded non-sense here!!! */
+		case 1:
+		case 9:
+			q.typ = (quo_typ_t)clo.tt;
+			break;
+		case 2:
+		case 4:
+			q.typ = (quo_typ_t)(clo.tt + 1);
+			break;
+		default:
+			q.typ = QUO_TYP_UNK;
+			goto fucked;
+		}
+		q.idx = clo.oid;
+		q.val = clo.val;
+		break;
+	case TWS_CB_PRE_SIZE:
+		switch (clo.tt) {
+		case 0:
+			q.typ = QUO_TYP_BSZ;
+			break;
+		case 3:
+		case 5:
+			q.typ = (quo_typ_t)(clo.tt + 1);
+			break;
+		case 8:
+			q.typ = QUO_TYP_VOL;
+			break;
+		default:
+			q.typ = QUO_TYP_UNK;
+			goto fucked;
+		}
+		q.idx = clo.oid;
+		q.val = clo.val;
+		break;
+	default:
+	fucked:
+		QUO_DEBUG("%p pre: what %u  oid %u  tt %u  data %p\n",
+			tws, what, clo.oid, clo.tt, clo.data);
+		return;
+	}
+	fix_quot(NULL, q);
 	return;
 }
 

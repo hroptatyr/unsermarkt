@@ -422,6 +422,27 @@ fix_pos_rpt(pf_pq_t UNUSED(pf), const char *ac, struct pf_pos_s pos)
 }
 
 
+/* callbacks coming from the tws */
+static void
+infra_cb(tws_t tws, tws_cb_t what, struct tws_infra_clo_s clo)
+{
+	switch (what) {
+	case TWS_CB_INFRA_ERROR:
+		PF_DEBUG("tws %p: oid %u  code %u: %s\n",
+			tws, clo.oid, clo.code, (const char*)clo.data);
+		break;
+	case TWS_CB_INFRA_CONN_CLOSED:
+		PF_DEBUG("tws %p: connection closed\n", tws);
+		break;
+	default:
+		PF_DEBUG("%p infra called: what %u  oid %u  code %u  data %p\n",
+			tws, what, clo.oid, clo.code, clo.data);
+		break;
+	}
+	return;
+}
+
+
 static void
 beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
 {
@@ -761,6 +782,8 @@ main(int argc, char *argv[])
 		res = 1;
 		goto unroll;
 	}
+	/* prepare the tws */
+	tws->infra_cb = infra_cb;
 	/* prepare the context */
 	ctx->tws = tws;
 	ctx->tws_sock = -1;

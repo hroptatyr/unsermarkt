@@ -99,6 +99,9 @@ struct ctx_s {
 
 	/* dynamic context */
 	int tws_sock;
+	/* accounts under management */
+	char *ac_names;
+	size_t nac_names;
 };
 
 struct comp_s {
@@ -447,10 +450,33 @@ static void
 post_cb(tws_t tws, tws_cb_t what, struct tws_post_clo_s clo)
 {
 	switch (what) {
-	case TWS_CB_POST_MNGD_AC:
-		PF_DEBUG("tws %p post MNGD_AC: %s\n",
-			tws, (const char*)clo.data);
+	case TWS_CB_POST_MNGD_AC: {
+		ctx_t ctx = (void*)tws;
+		const char *str = clo.data;
+
+		PF_DEBUG("tws %p post MNGD_AC: %s\n", tws, str);
+
+		if (ctx->ac_names != NULL) {
+			free(ctx->ac_names);
+		}
+		if (UNLIKELY(str == NULL)) {
+			ctx->ac_names = NULL;
+			break;
+		}
+		ctx->ac_names = strdup(str);
+		ctx->nac_names = 0UL;
+		/* quick counting */
+		for (char *p = ctx->ac_names; *p; p++) {
+			if (*p == ',') {
+				*p = '\0';
+				ctx->nac_names++;
+			}
+		}
+		if (ctx->nac_names == 0UL) {
+			ctx->nac_names = 1;
+		}
 		break;
+	}
 	default:
 		PF_DEBUG("%p post called: what %u  oid %u  data %p\n",
 			tws, what, clo.oid, clo.data);
@@ -525,6 +551,7 @@ del_cake:
 static void
 req_cb(EV_P_ ev_timer *w, int UNUSED(revents))
 {
+	ctx_t ctx = w->data;
 	tws_t tws = w->data;
 
 	PF_DEBUG("req\n");
@@ -535,8 +562,13 @@ req_cb(EV_P_ ev_timer *w, int UNUSED(revents))
 
 #define TWS_ALL_ACCOUNTS	(NULL)
 	/* call the a/c requester */
-	if (tws_req_ac(tws, TWS_ALL_ACCOUNTS) < 0) {
-		goto del_req;
+	{
+		const char *acn = ctx->ac_names;
+
+		PF_DEBUG("subscribing to a/c %s\n", acn);
+		if (tws_req_ac(tws, acn) < 0) {
+			goto del_req;
+		}
 	}
 #undef TWS_ALL_ACCOUNTS
 	return;
@@ -594,6 +626,7 @@ prep_cb(EV_P_ ev_prepare *w, int UNUSED(revents))
 		/* uh oh! */
 		ev_timer_stop(EV_A_ tm_req);
 		ev_io_stop(EV_A_ cake);
+		cake->fd = -1;
 		cake->data = NULL;
 		tm_req->data = NULL;
 
@@ -616,14 +649,15 @@ prep_cb(EV_P_ ev_prepare *w, int UNUSED(revents))
 		ev_io_start(EV_A_ cake);
 		PF_DEBUG("cake started\n");
 
-		/* also set up the timer to emit the portfolio regularly */
-		ev_timer_init(tm_req, req_cb, 0.0, 60.0/*option?*/);
-		tm_req->data = tws;
-		ev_timer_start(EV_A_ tm_req);
-		PF_DEBUG("req started\n");
-
 		/* clear tws_sock */
 		ctx->tws_sock = -1;
+
+	} else if (tm_req->data == NULL && ctx->nac_names > 0) {
+		/* also set up the timer to emit the portfolio regularly */
+		ev_timer_init(tm_req, req_cb, 0.0, 60.0/*option?*/);
+		tm_req->data = ctx;
+		ev_timer_start(EV_A_ tm_req);
+		PF_DEBUG("req started\n");
 
 	} else {
 		/* check the queue integrity */

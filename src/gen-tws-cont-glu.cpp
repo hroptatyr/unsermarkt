@@ -140,10 +140,15 @@ tws_cont_nick(tws_const_cont_t cont)
 		const char *bas = c->symbol.c_str();
 		const char *trm = c->currency.c_str();
 
-		memcpy(nick, bas, 3);
-		nick[3] = '.';
-		memcpy(nick + 4, trm, 3);
-		nick[7] = '\0';
+		if (bas && *bas) {
+			memcpy(nick, bas, 3);
+			nick[3] = '.';
+			memcpy(nick + 4, trm, 3);
+			nick[7] = '\0';
+		} else if (trm && *trm) {
+			memcpy(nick, trm, 3);
+			nick[3] = '\0';
+		}
 		return nick;
 	}
 	return NULL;

@@ -419,18 +419,48 @@ __wrapper::execDetailsEnd(int req_id)
 
 void
 __wrapper::updateAccountValue(
-	const IB::IBString&, const IB::IBString&,
-	const IB::IBString&, const IB::IBString&)
+	const IB::IBString &key, const IB::IBString &val,
+	const IB::IBString &ccy, const IB::IBString &acn)
 {
+	tws_t tws = WRP_TWS(this);
+	const char *ck = key.c_str();
+
+	if (strcmp(ck, "CashBalance") == 0) {
+		static struct tws_post_acup_clo_s clo[1];
+		static IB::Contract cont;
+		static IB::IBString cash_sectyp = std::string("CASH");
+		const char *ca = acn.c_str();
+		const char *cv = val.c_str();
+
+		// contract with just the currency field set
+		cont.secType = cash_sectyp;
+		cont.currency = ccy;
+		// prepare the closure
+		clo->ac_name = ca;
+		clo->cont = &cont;
+		clo->pos = strtod(cv, NULL);
+		clo->val = 0.0;
+		POST_CB(tws, TWS_CB_POST_ACUP, (tws_oid_t)0, clo);
+	}
 	return;
 }
 
 void
 __wrapper::updatePortfolio(
-	const IB::Contract&, int,
-	double, double, double, double, double,
-	const IB::IBString&)
+	const IB::Contract &c, int pos,
+	double, double mkt_val, double, double, double,
+	const IB::IBString &acn)
 {
+	static struct tws_post_acup_clo_s clo[1];
+	tws_t tws = WRP_TWS(this);
+	const char *ca = acn.c_str();
+
+	// prepare the closure
+	clo->ac_name = ca;
+	clo->cont = &c;
+	clo->pos = (double)pos;
+	clo->val = mkt_val;
+	POST_CB(tws, TWS_CB_POST_ACUP, (tws_oid_t)0, clo);
 	return;
 }
 
@@ -441,8 +471,22 @@ __wrapper::updateAccountTime(const IB::IBString&)
 }
 
 void
-__wrapper::accountDownloadEnd(const IB::IBString&)
+__wrapper::accountDownloadEnd(const IB::IBString &name)
 {
+	static struct tws_post_acup_end_clo_s clo[1];
+	tws_t tws = WRP_TWS(this);
+
+	clo->ac_name = name.c_str();
+	POST_CB(tws, TWS_CB_POST_ACUP_END, (tws_oid_t)0, clo);
+	return;
+}
+
+void
+__wrapper::managedAccounts(const IB::IBString &ac)
+{
+	tws_t tws = WRP_TWS(this);
+
+	POST_CB(tws, TWS_CB_POST_MNGD_AC, (tws_oid_t)0, ac.c_str());
 	return;
 }
 
@@ -536,12 +580,6 @@ void
 __wrapper::updateNewsBulletin(
 	int, int,
 	const IB::IBString&, const IB::IBString&)
-{
-	return;
-}
-
-void
-__wrapper::managedAccounts(const IB::IBString&)
 {
 	return;
 }

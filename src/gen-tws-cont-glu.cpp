@@ -127,4 +127,31 @@ tws_cont_x(tws_cont_t tgt, unsigned int nsid, unsigned int aid, const char *val)
 	}
 }
 
+// until there's a better place
+const char*
+tws_cont_nick(tws_const_cont_t cont)
+{
+	static char nick[64];
+	const IB::Contract *c = (const IB::Contract*)cont;
+
+	if (c->localSymbol.length() > 0) {
+		return c->localSymbol.c_str();
+	} else if (c->secType == std::string("CASH")) {
+		const char *bas = c->symbol.c_str();
+		const char *trm = c->currency.c_str();
+
+		if (bas && *bas) {
+			memcpy(nick, bas, 3);
+			nick[3] = '.';
+			memcpy(nick + 4, trm, 3);
+			nick[7] = '\0';
+		} else if (trm && *trm) {
+			memcpy(nick, trm, 3);
+			nick[3] = '\0';
+		}
+		return nick;
+	}
+	return NULL;
+}
+
 // gen-tws-cont-glu.cpp ends here

@@ -65,7 +65,8 @@
 #endif	/* HAVE_UTERUS_UTERUS_H || HAVE_UTERUS_H */
 
 /* the tws api */
-#include "pf-tws-wrapper.h"
+#include "gen-tws.h"
+#include "gen-tws-cont.h"
 #include "pf-tws-private.h"
 #include "nifty.h"
 #include "strops.h"
@@ -90,14 +91,18 @@ typedef struct ctx_s *ctx_t;
 typedef struct pf_pqpr_s *pf_pqpr_t;
 
 struct ctx_s {
+	struct tws_s tws[1];
+
 	/* static context */
 	const char *host;
 	uint16_t port;
 	int client;
 
 	/* dynamic context */
-	my_tws_t tws;
 	int tws_sock;
+	/* accounts under management */
+	char *ac_names;
+	size_t nac_names;
 };
 
 struct comp_s {
@@ -327,7 +332,7 @@ ud_chan_send_ser_all(udpc_seria_t ser)
 }
 
 static void
-flush_queue(my_tws_t UNUSED(tws))
+flush_queue(tws_t UNUSED(tws))
 {
 	static size_t pno = 0;
 	char buf[UDPC_PKTLEN];
@@ -422,6 +427,99 @@ fix_pos_rpt(pf_pq_t UNUSED(pf), const char *ac, struct pf_pos_s pos)
 }
 
 
+/* callbacks coming from the tws */
+static void
+infra_cb(tws_t tws, tws_cb_t what, struct tws_infra_clo_s clo)
+{
+	switch (what) {
+	case TWS_CB_INFRA_ERROR:
+		PF_DEBUG("tws %p: oid %u  code %u: %s\n",
+			tws, clo.oid, clo.code, (const char*)clo.data);
+		break;
+	case TWS_CB_INFRA_CONN_CLOSED:
+		PF_DEBUG("tws %p: connection closed\n", tws);
+		break;
+	default:
+		PF_DEBUG("%p infra called: what %u  oid %u  code %u  data %p\n",
+			tws, what, clo.oid, clo.code, clo.data);
+		break;
+	}
+	return;
+}
+
+static void
+post_cb(tws_t tws, tws_cb_t what, struct tws_post_clo_s clo)
+{
+	switch (what) {
+	case TWS_CB_POST_MNGD_AC: {
+		ctx_t ctx = (void*)tws;
+		const char *str = clo.data;
+
+		PF_DEBUG("tws %p post MNGD_AC: %s\n", tws, str);
+
+		if (ctx->ac_names != NULL) {
+			free(ctx->ac_names);
+		}
+		if (UNLIKELY(str == NULL)) {
+			ctx->ac_names = NULL;
+			break;
+		}
+		ctx->ac_names = strdup(str);
+		ctx->nac_names = 0UL;
+		/* quick counting */
+		for (char *p = ctx->ac_names; *p; p++) {
+			if (*p == ',') {
+				*p = '\0';
+				ctx->nac_names++;
+			}
+		}
+		if (ctx->nac_names == 0UL) {
+			ctx->nac_names = 1;
+		}
+		break;
+	}
+	case TWS_CB_POST_ACUP: {
+		const struct tws_post_acup_clo_s *rclo = clo.data;
+		struct pf_pos_s pos;
+
+		PF_DEBUG("tws %p: post ACUP: %s %s <- %.4f  (%.4f)\n",
+			tws, rclo->ac_name, tws_cont_nick(rclo->cont),
+			rclo->pos, rclo->val);
+
+		pos.sym = tws_cont_nick(rclo->cont);
+		pos.lqty = rclo->pos > 0 ? rclo->pos : 0.0;
+		pos.sqty = rclo->pos < 0 ? -rclo->pos : 0.0;
+		fix_pos_rpt(NULL, rclo->ac_name, pos);
+		break;
+	}
+	case TWS_CB_POST_ACUP_END: {
+		static const char *nex = NULL;
+		ctx_t ctx = (void*)tws;
+
+		if (ctx->nac_names <= 1) {
+			/* nothing to wrap around */
+			PF_DEBUG("single a/c, no further subscriptions\n");
+			break;
+		} else if (nex == NULL) {
+			nex = ctx->ac_names;
+		}
+		if (*(nex += strlen(nex) + 1) == '\0') {
+			nex = ctx->ac_names;
+			PF_DEBUG("last a/c, no further subscriptions\n");
+			break;
+		}
+		PF_DEBUG("subscribing to a/c %s\n", nex);
+		tws_req_ac(tws, nex);
+		break;
+	}
+	default:
+		PF_DEBUG("%p post called: what %u  oid %u  data %p\n",
+			tws, what, clo.oid, clo.data);
+	}
+	return;
+}
+
+
 static void
 beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
 {
@@ -462,7 +560,7 @@ out_revok:
 static void
 cake_cb(EV_P_ ev_io *w, int revents)
 {
-	my_tws_t tws = w->data;
+	tws_t tws = w->data;
 
 	if (revents & EV_READ) {
 		if (tws_recv(tws) < 0) {
@@ -488,7 +586,8 @@ del_cake:
 static void
 req_cb(EV_P_ ev_timer *w, int UNUSED(revents))
 {
-	my_tws_t tws = w->data;
+	ctx_t ctx = w->data;
+	tws_t tws = w->data;
 
 	PF_DEBUG("req\n");
 	if (UNLIKELY(tws == NULL)) {
@@ -498,8 +597,13 @@ req_cb(EV_P_ ev_timer *w, int UNUSED(revents))
 
 #define TWS_ALL_ACCOUNTS	(NULL)
 	/* call the a/c requester */
-	if (tws_req_ac(tws, TWS_ALL_ACCOUNTS) < 0) {
-		goto del_req;
+	{
+		const char *acn = ctx->ac_names;
+
+		PF_DEBUG("subscribing to a/c %s\n", acn);
+		if (tws_req_ac(tws, acn) < 0) {
+			goto del_req;
+		}
 	}
 #undef TWS_ALL_ACCOUNTS
 	return;
@@ -515,9 +619,10 @@ reco_cb(EV_P_ ev_timer *w, int UNUSED(revents))
 {
 /* this is a do fuckall thing */
 	ctx_t p = w->data;
+	tws_t tws = w->data;
 	int s;
 
-	if ((s = tws_connect(p->tws, p->host, p->port, p->client)) < 0) {
+	if ((s = tws_connect(tws, p->host, p->port, p->client)) < 0) {
 		/* retry later */
 		return;
 	}
@@ -549,13 +654,14 @@ prep_cb(EV_P_ ev_prepare *w, int UNUSED(revents))
 	static ev_timer tm_req[1] = {{0}};
 	static ev_timer tm_reco[1] = {{0}};
 	ctx_t ctx = w->data;
-	my_tws_t tws = ctx->tws;
+	tws_t tws = w->data;
 
 	/* check if the tws is there */
 	if (cake->fd <= 0 && ctx->tws_sock <= 0 && tm_reco->data == NULL) {
 		/* uh oh! */
 		ev_timer_stop(EV_A_ tm_req);
 		ev_io_stop(EV_A_ cake);
+		cake->fd = -1;
 		cake->data = NULL;
 		tm_req->data = NULL;
 
@@ -573,26 +679,27 @@ prep_cb(EV_P_ ev_prepare *w, int UNUSED(revents))
 
 	} else if (cake->fd <= 0) {
 		/* ah, connection is back up, init the watcher */
-		cake->data = ctx->tws;
+		cake->data = tws;
 		ev_io_init(cake, cake_cb, ctx->tws_sock, EV_READ);
 		ev_io_start(EV_A_ cake);
 		PF_DEBUG("cake started\n");
 
-		/* also set up the timer to emit the portfolio regularly */
-		ev_timer_init(tm_req, req_cb, 0.0, 60.0/*option?*/);
-		tm_req->data = tws;
-		ev_timer_start(EV_A_ tm_req);
-		PF_DEBUG("req started\n");
-
 		/* clear tws_sock */
 		ctx->tws_sock = -1;
+
+	} else if (tm_req->data == NULL && ctx->nac_names > 0) {
+		/* also set up the timer to emit the portfolio regularly */
+		ev_timer_init(tm_req, req_cb, 0.0, 60.0/*option?*/);
+		tm_req->data = ctx;
+		ev_timer_start(EV_A_ tm_req);
+		PF_DEBUG("req started\n");
 
 	} else {
 		/* check the queue integrity */
 		check_pq();
 
 		/* maybe we've got something up our sleeve */
-		flush_queue(ctx->tws);
+		flush_queue(tws);
 	}
 
 	/* and check the queue's integrity again */
@@ -669,7 +776,7 @@ detach(void)
 int
 main(int argc, char *argv[])
 {
-	struct ctx_s ctx[1];
+	struct ctx_s ctx[1] = {{0}};
 	/* args */
 	struct pf_args_info argi[1];
 	/* use the default event loop unless you have special needs */
@@ -680,8 +787,6 @@ main(int argc, char *argv[])
 	ev_signal sigterm_watcher[1];
 	ev_io ctrl[1];
 	ev_prepare prp[1];
-	/* tws stuff */
-	struct my_tws_s tws[1];
 	/* final result */
 	int res = 0;
 
@@ -757,12 +862,13 @@ main(int argc, char *argv[])
 		nbeef = 1;
 	}
 
-	if (init_tws(tws) < 0) {
+	if (init_tws(ctx->tws, -1, ctx->client) < 0) {
 		res = 1;
 		goto unroll;
 	}
-	/* prepare the context */
-	ctx->tws = tws;
+	/* prepare the tws and the context */
+	ctx->tws->infra_cb = infra_cb;
+	ctx->tws->post_cb = post_cb;
 	ctx->tws_sock = -1;
 	/* pre and post poll hooks */
 	prp->data = ctx;

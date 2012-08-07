@@ -49,6 +49,7 @@ extern "C" {
 #endif	/* __cplusplus */
 
 typedef void *tws_cont_t;
+typedef const void *tws_const_cont_t;
 
 /**
  * Context for chunk parser/printer.*/
@@ -70,6 +71,10 @@ extern int
 tws_batch_cont(
 	const char *xml, size_t len,
 	int(*cb)(tws_cont_t, void*), void *clo);
+
+/**
+ * Return a nick name for given contract. */
+extern const char *tws_cont_nick(tws_const_cont_t);
 
 /* chunkwise readers/printers */
 extern tws_cont_t

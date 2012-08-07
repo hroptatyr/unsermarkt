@@ -477,6 +477,26 @@ post_cb(tws_t tws, tws_cb_t what, struct tws_post_clo_s clo)
 		}
 		break;
 	}
+	case TWS_CB_POST_ACUP_END: {
+		static const char *nex = NULL;
+		ctx_t ctx = (void*)tws;
+
+		if (ctx->nac_names <= 1) {
+			/* nothing to wrap around */
+			PF_DEBUG("single a/c, no further subscriptions\n");
+			break;
+		} else if (nex == NULL) {
+			nex = ctx->ac_names;
+		}
+		if (*(nex += strlen(nex) + 1) == '\0') {
+			nex = ctx->ac_names;
+			PF_DEBUG("last a/c, no further subscriptions\n");
+			break;
+		}
+		PF_DEBUG("subscribing to a/c %s\n", nex);
+		tws_req_ac(tws, nex);
+		break;
+	}
 	default:
 		PF_DEBUG("%p post called: what %u  oid %u  data %p\n",
 			tws, what, clo.oid, clo.data);

@@ -897,7 +897,7 @@ tws_cont(const char *UNUSED(xml), size_t UNUSED(len))
 int
 tws_batch_cont(
 	const char *UNUSED(xml), size_t UNUSED(len),
-	int(*UNUSED(cb))(tws_cont_t, void*), void *UNUSED(cbclo))
+	UNUSED(int(*cb)(tws_cont_t, void*)), void *UNUSED(cbclo))
 {
 	return -1;
 }

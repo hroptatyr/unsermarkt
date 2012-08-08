@@ -187,11 +187,11 @@ parse_req_typ(const char *typ)
 	return rtc->rtid;
 }
 
-static tws_nsid_t
+static tx_nsid_t
 __tx_nsid_from_href(const char *href)
 {
 	size_t hlen = strlen(href);
-	const struct tx_nsuri_s *n = __nsiddify(href, ulen);
+	const struct tx_nsuri_s *n = __nsiddify(href, hlen);
 	return n != NULL ? n->nsid : TX_NS_UNK;
 }
 
@@ -237,7 +237,7 @@ sax_fix_aid_from_attr(const char *attr)
 static fixml_aid_t
 __fix_aid_from_attr_l(const char *attr, size_t len)
 {
-	const struct fix_xml_attr_s *a = __fix_aiddify(attr, len);
+	const struct fixml_attr_s *a = __fix_aiddify(attr, len);
 	return a ? a->aid : FIX_ATTR_UNK;
 }
 
@@ -897,7 +897,7 @@ tws_cont(const char *UNUSED(xml), size_t UNUSED(len))
 int
 tws_batch_cont(
 	const char *UNUSED(xml), size_t UNUSED(len),
-	int(*UNUSED(cb))(tws_cont_t, void*), void *UNUSED(cbclo))
+	UNUSED(int(*cb)(tws_cont_t, void*)), void *UNUSED(cbclo))
 {
 	return -1;
 }

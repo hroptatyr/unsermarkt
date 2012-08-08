@@ -237,7 +237,7 @@ sax_fix_aid_from_attr(const char *attr)
 static fixml_aid_t
 __fix_aid_from_attr_l(const char *attr, size_t len)
 {
-	const struct fix_xml_attr_s *a = __fix_aiddify(attr, len);
+	const struct fixml_attr_s *a = __fix_aiddify(attr, len);
 	return a ? a->aid : FIX_ATTR_UNK;
 }
 

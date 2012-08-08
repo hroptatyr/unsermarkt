@@ -187,7 +187,7 @@ parse_req_typ(const char *typ)
 	return rtc->rtid;
 }
 
-static tws_nsid_t
+static tx_nsid_t
 __tx_nsid_from_href(const char *href)
 {
 	size_t hlen = strlen(href);

@@ -129,6 +129,9 @@ AM_CONDITIONAL([HAVE_EXPAT], [test "${have_expat}" = "yes"])
 
 AC_CHECK_TOOL([GPERF], [gperf])
 AM_CONDITIONAL([HAVE_GPERF], [test -n "${GPERF}"])
+if test -n "${GPERF}"; then
+	AC_DEFINE([HAVE_GPERF], [1], [define when gperf tool is present])
+fi
 
 ## check for twstools
 PKG_CHECK_MODULES([twstools], [twstools >= 0.4.0],

@@ -227,6 +227,10 @@ extern const_iso_4217_t find_iso_4217_by_name(const char *name);
 #define ISO_4217_XPT_IDX	((iso_4217_id_t)165)
 #define ISO_4217_XPT		(ISO_4217(ISO_4217_XPT_IDX))
 #define ISO_4217_XPT_SYM	(ISO_4217_SYM(ISO_4217_XPT_IDX))
+/* palladium */
+#define ISO_4217_XPD_IDX	((iso_4217_id_t)163)
+#define ISO_4217_XPD		(ISO_4217(ISO_4217_XPD_IDX))
+#define ISO_4217_XPD_SYM	(ISO_4217_SYM(ISO_4217_XPD_IDX))
 
 #ifdef __cplusplus
 }

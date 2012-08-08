@@ -39,6 +39,7 @@
 #endif	// HAVE_CONFIG_H
 #include <string.h>
 #include <twsapi/Contract.h>
+#include "iso4217.h"
 
 #include "proto-tx-ns.h"
 #include "proto-fixml-attr.h"
@@ -98,6 +99,96 @@ tws_cont_fix(tws_cont_t tgt, unsigned int aid, const char *val)
 	return 0;
 }
 
+static int
+tws_cont_symstr(tws_cont_t tgt, unsigned int, const char *val)
+{
+// this one only supports FX pairs and metals at the moment
+	static const char fxvirt[] = "IDEALPRO";
+	static const char fxconv[] = "FXCONV";
+	IB::Contract *c = (IB::Contract*)tgt;
+	const_iso_4217_t bas;
+	const_iso_4217_t trm;
+	const char *exch = fxvirt;;
+
+	if ((bas = find_iso_4217_by_name(val)) == NULL) {
+		return -1;
+	}
+	switch (*(val += 3)) {
+	case '\000':
+		/* oooh, just one ccy */
+		exch = fxconv;
+
+		switch (iso_4217_id(bas)) {
+		case ISO_4217_EUR_IDX:
+		case ISO_4217_GBP_IDX:
+		case ISO_4217_AUD_IDX:
+		case ISO_4217_NZD_IDX:
+			trm = ISO_4217_USD;
+			break;
+		case ISO_4217_USD_IDX:
+			// um, USDUSD?  make it EURUSD
+			bas = ISO_4217_EUR;
+			trm = ISO_4217_USD;
+			break;
+		default:
+			// assume USDxxx
+			trm = bas;
+			bas = ISO_4217_USD;
+			break;
+		}
+		goto special;
+	case '.':
+	case '/':
+		// stuff like EUR/USD or EUR.USD
+		val++;
+		break;
+	default:
+		break;
+	}
+	if ((trm = find_iso_4217_by_name(val)) == NULL) {
+		return -1;
+	}
+
+	switch (iso_4217_id(bas)) {
+	case ISO_4217_XAU_IDX:
+	case ISO_4217_XAG_IDX:
+	case ISO_4217_XPT_IDX:
+	case ISO_4217_XPD_IDX:
+		// make sure its XXXUSD
+		if (iso_4217_id(trm) != ISO_4217_USD_IDX) {
+			return -1;
+		}
+		switch (iso_4217_id(bas)) {
+		case ISO_4217_XAU_IDX:
+			c->symbol = std::string("XAUUSD");
+			break;
+		case ISO_4217_XAG_IDX:
+			c->symbol = std::string("XAGUSD");
+			break;
+		case ISO_4217_XPT_IDX:
+			c->symbol = std::string("XPTUSD");
+			break;
+		case ISO_4217_XPD_IDX:
+			c->symbol = std::string("XPDUSD");
+			break;
+		}
+		c->currency = std::string("USD");
+		c->secType = std::string("CMDTY");
+		c->exchange = std::string("");
+		break;
+
+	default:
+	special:
+		// otherwise we're pretty well off with a ccy pair
+		c->symbol = std::string(bas->sym);
+		c->currency = std::string(trm->sym);
+		c->secType = std::string("CASH");
+		c->exchange = std::string(exch);
+		break;
+	}
+	return 0;
+}
+
 
 tws_cont_t
 tws_make_cont(void)
@@ -122,6 +213,8 @@ tws_cont_x(tws_cont_t tgt, unsigned int nsid, unsigned int aid, const char *val)
 		return tws_cont_tx(tgt, aid, val);
 	case TX_NS_FIXML_5_0:
 		return tws_cont_fix(tgt, aid, val);
+	case TX_NS_SYMSTR:
+		return tws_cont_symstr(tgt, aid, val);
 	default:
 		return -1;
 	}

@@ -307,6 +307,7 @@ ccy_graph_CPPFLAGS = $(AM_CPPFLAGS) -DSTANDALONE
 if HAVE_TWSAPI
 noinst_LTLIBRARIES += libtwscapi.la
 libtwscapi_la_SOURCES = gen-tws.c gen-tws.h
+libtwscapi_la_SOURCES += iso4217.c iso4217.h
 libtwscapi_la_SOURCES += gen-tws-wrapper.cpp
 libtwscapi_la_SOURCES += gen-tws-cont.c gen-tws-cont.h
 libtwscapi_la_SOURCES += gen-tws-cont-glu.cpp gen-tws-cont-glu.h

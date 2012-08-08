@@ -588,6 +588,11 @@ send_order(tws_t tws, ox_oq_item_t i)
 		tws_free_order(o);
 		OX_DEBUG("cannot glue order from l1t %p\n", i->l1t);
 		return;
+	} else if (tws_check_order(o, i->cl->ins) < 0) {
+		tws_free_order(o);
+		OX_DEBUG("order %p (of l1t %p) did not pass sanity check\n",
+			o, i->l1t);
+		return;
 	}
 
 	OX_DEBUG("ORDER %p -> %p\n", i, o);

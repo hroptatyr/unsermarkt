@@ -854,6 +854,7 @@ int
 tws_req_quo(my_tws_t foo, unsigned int idx, tws_cont_t ins)
 {
 	IB::EPosixClientSocket *cli = (IB::EPosixClientSocket*)foo->cli;
+	IB::Contract ibc = *(IB::Contract*)ins;
 	long int real_idx;
 
 	if (foo->next_oid == 0) {
@@ -862,8 +863,10 @@ tws_req_quo(my_tws_t foo, unsigned int idx, tws_cont_t ins)
 	}
 	// we request idx + next_oid
 	real_idx = foo->next_oid + idx;
-	// we just have to assume it works
-	cli->reqMktData(real_idx, *(IB::Contract*)ins, std::string(""), false);
+	// change the contract's exchange to ANYEXCH here,
+	// means we care fuckall where the quotes come from
+	ibc.exchange = std::string("ANYEXCH");
+	cli->reqMktData(real_idx, ibc, std::string(""), false);
 	return cli->isSocketOK() ? 0 : -1;
 }
 
@@ -1148,14 +1151,58 @@ q30_sl1t_typ(q30_t q)
 }
 
 static double
-calc_qty(double pos)
+calc_qty(double pos, double lot_size)
 {
-#define LOT_SIZE	(100000.0)
-	double res = fmod(pos, LOT_SIZE);
-	if (res < 60000.0) {
-		res += LOT_SIZE;
+	double res = fmod(pos, lot_size);
+	if (res < lot_size * 0.6) {
+		res += lot_size;
 	}
 	return res;
+}
+
+static tws_order_t
+calc_order(tws_cont_t ins, double lqty, double sqty)
+{
+	IB::Contract *ibc = (IB::Contract*)ins;
+	const char *nick = tws_cont_nick(ins);
+	IB::Order *res = NULL;
+	double lot_sz;
+
+	if (ibc->secType == std::string("CMDTY")) {
+		// aaah
+		lot_sz = 1000.0;
+		ibc->exchange = std::string("SMART");
+	} else {
+		lot_sz = 100000.0;
+	}
+
+	if (lqty >= lot_sz / 10.0) {
+		lqty = calc_qty(lqty, lot_sz);
+		ANN_DEBUG("SELL %.4f %s\n", lqty, nick);
+
+		res = new IB::Order;
+		if (nick[0] == 'c') {
+			res->action = std::string("BUY");
+		} else {
+			res->action = std::string("SELL");
+		}
+		res->orderType = std::string("MKT");
+		res->totalQuantity = (long int)lqty;
+
+	} else if (sqty >= lot_sz / 10.0) {
+		sqty = calc_qty(sqty, lot_sz);
+		ANN_DEBUG("BUY  %.4f %s\n", sqty, nick);
+
+		res = new IB::Order;
+		if (nick[0] == 'c') {
+			res->action = std::string("SELL");
+		} else {
+			res->action = std::string("BUY");
+		}
+		res->orderType = std::string("MKT");
+		res->totalQuantity = (long int)sqty;
+	}
+	return (void*)res;
 }
 
 static void
@@ -1232,38 +1279,13 @@ flush_queue(my_tws_t tws)
 		} else if (UNLIKELY((o = subs.ords[i - 1]) == NULL)) {
 			double lqty = subs.qtys[i - 1][0];
 			double sqty = subs.qtys[i - 1][1];
-			const char *nick = tws_cont_nick(subs.inss[i - 1]);
-			IB::Order *x;
+			tws_cont_t foo = subs.inss[i - 1];
 
-			if (lqty >= 10000.0) {
-				lqty = calc_qty(lqty);
-				ANN_DEBUG("SELL %zu %.4f %s\n", i, lqty, nick);
-
-				x = new IB::Order;
-				if (nick[0] == 'c') {
-					x->action = std::string("BUY");
-				} else {
-					x->action = std::string("SELL");
-				}
-				x->orderType = std::string("MKT");
-				x->totalQuantity = (long int)lqty;
-			} else if (sqty >= 10000.0) {
-				sqty = calc_qty(sqty);
-				ANN_DEBUG("BUY  %zu %.4f %s\n", i, sqty, nick);
-
-				x = new IB::Order;
-				if (nick[0] == 'c') {
-					x->action = std::string("SELL");
-				} else {
-					x->action = std::string("BUY");
-				}
-				x->orderType = std::string("MKT");
-				x->totalQuantity = (long int)sqty;
-			} else {
+			if ((o = calc_order(foo, lqty, sqty)) == NULL) {
 				continue;
 			}
 			/* place order */
-			subs.ords[i - 1] = o = (tws_order_t)x;
+			subs.ords[i - 1] = o;
 			tws_put_order(tws, c, o);
 		} else {
 			IB::Order *x = (IB::Order*)o;
@@ -1436,7 +1458,7 @@ fix_pos_rpt(pf_pq_t the_q, const char*, struct pf_pos_s pos)
 }
 
 void
-fix_alloc_rpt(void*, tws_oid_t oid, unsigned int msg, tws_oid_t perm)
+fix_alloc_rpt(void*, tws_oid_t oid, unsigned int msg, tws_oid_t)
 {
 	if (msg != 1/*FILL*/) {
 		return;

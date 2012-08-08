@@ -67,10 +67,13 @@
 /* the tws api */
 #include "gen-tws.h"
 #include "gen-tws-cont.h"
+#include "gen-tws-cont-glu.h"
 #include "gen-tws-order.h"
 #include "ox-tws-private.h"
 #include "gq.h"
 #include "nifty.h"
+
+#include "proto-tx-ns.h"
 
 #if defined __INTEL_COMPILER
 # pragma warning (disable:981)
@@ -559,7 +562,17 @@ snarf_meta(job_t j, ud_chan_t c)
 		/* we used to build an instrument here from the name via
 		 *   tws_assemble_instr(CL(cl)->sym);
 		 * but this can't go on like that */
-		CL(cl)->ins = NULL;
+		{
+			tws_cont_t try = tws_make_cont();
+			const char *symstr = CL(cl)->sym;
+
+			if (tws_cont_x(try, TX_NS_SYMSTR, 0, symstr) < 0) {
+				/* we fucked it */
+				tws_free_cont(try);
+				try = NULL;
+			}
+			CL(cl)->ins = try;
+		}
 		CL(cl)->ch = c;
 	}
 	return;

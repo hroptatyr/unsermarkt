@@ -74,30 +74,6 @@ union tx_tid_u {
 	fixml_tid_t fix;
 };
 
-#if 0
-union tws_xml_qry_u {
-	/* mkt data */
-	struct {
-		tws_cont_t ins;
-	} mkt_data;
-	struct {
-		tws_cont_t ins;
-	} hist_data;
-	struct {
-		tws_cont_t ins;
-	} con_dtls;
-};
-
-union tws_xml_rsp_u {
-};
-
-struct tws_xml_req_s {
-	tws_xml_req_typ_t typ;
-	union tws_xml_qry_u qry;
-	union tws_xml_rsp_u rsp;
-};
-#endif
-
 struct ptx_ns_s {
 	char *pref;
 	char *href;

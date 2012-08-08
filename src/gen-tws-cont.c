@@ -191,7 +191,7 @@ static tx_nsid_t
 __tx_nsid_from_href(const char *href)
 {
 	size_t hlen = strlen(href);
-	const struct tx_nsuri_s *n = __nsiddify(href, ulen);
+	const struct tx_nsuri_s *n = __nsiddify(href, hlen);
 	return n != NULL ? n->nsid : TX_NS_UNK;
 }
 

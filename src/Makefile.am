@@ -174,8 +174,6 @@ if HAVE_LIBEV
 noinst_PROGRAMS += ox-tws
 EXTRA_ox_tws_SOURCES =
 ox_tws_SOURCES = ox-tws.c ox-tws-clo.ggo
-ox_tws_SOURCES += ox-tws-wrapper.cpp ox-tws-wrapper.h
-ox_tws_SOURCES += ox-tws-contract-glue.cpp
 ox_tws_SOURCES += iso4217.c iso4217.h
 ox_tws_SOURCES += ox-tws-private.h
 ox_tws_SOURCES += wrp-debug.h
@@ -189,6 +187,7 @@ ox_tws_LDFLAGS = $(AM_LDFLAGS)
 ox_tws_LDFLAGS += $(unserding_LIBS)
 ox_tws_LDFLAGS += $(twsapi_LIBS) -lstdc++
 ox_tws_LDFLAGS += $(libev_LIBS)
+ox_tws_LDADD = libtwscapi.la
 ox_tws_LINK = $(LINK) $(ox_tws_LDFLAGS)
 
 noinst_PROGRAMS += pf-tws
@@ -215,7 +214,6 @@ if HAVE_GPERF
 noinst_PROGRAMS += quo-tws
 EXTRA_quo_tws_SOURCES =
 quo_tws_SOURCES = quo-tws.c quo-tws-clo.ggo
-quo_tws_SOURCES += ox-tws-contract-glue.cpp
 quo_tws_SOURCES += iso4217.c iso4217.h
 quo_tws_SOURCES += strops.h
 quo_tws_SOURCES += quo-tws-private.h

@@ -38,6 +38,8 @@
 #define INCLUDED_gen_tws_order_glu_h_
 
 #include <unistd.h>
+#include "gen-tws-order.h"
+#include "gen-tws-cont.h"
 
 #if defined __cplusplus
 extern "C" {
@@ -53,6 +55,9 @@ tws_order_x(tws_order_t tgt, unsigned int ns, unsigned int aid, const char *v);
 
 extern int
 tws_order_sl1t(tws_order_t tgt, const void *data);
+
+extern int
+tws_check_order(tws_order_t, tws_const_cont_t);
 
 #if defined __cplusplus
 }

@@ -571,7 +571,7 @@ send_order(tws_t tws, ox_oq_item_t i)
 	tws_order_t o = NULL;
 
 	OX_DEBUG("ORDER %p %u\n", i, i->oid);
-	if (!(i->oid = tws_put_order(tws, i->oid, i->cl->ins, o))) {
+	if (!(i->oid = tws_gen_order(tws, i->cl->ins, o))) {
 		OX_DEBUG("unusable: %p %p\n", i->cl->ins, o);
 	}
 	OX_DEBUG("ORDER %p <-> oid %u\n", i, i->oid);

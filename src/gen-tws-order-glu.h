@@ -1,4 +1,4 @@
-/*** gen-tws-order.h -- generic tws c api order builder
+/*** gen-tws-order-glu.h -- generic tws c api order builder
  *
  * Copyright (C) 2012 Sebastian Freundt
  *
@@ -34,8 +34,8 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  ***/
-#if !defined INCLUDED_gen_tws_order_h_
-#define INCLUDED_gen_tws_order_h_
+#if !defined INCLUDED_gen_tws_order_glu_h_
+#define INCLUDED_gen_tws_order_glu_h_
 
 #include <unistd.h>
 
@@ -48,28 +48,14 @@ extern "C" {
 # endif
 #endif	/* __cplusplus */
 
-typedef void *tws_order_t;
-typedef const void *tws_const_order_t;
-
-extern tws_order_t tws_make_order(void);
-extern void tws_free_order(tws_order_t);
-
-extern tws_order_t tws_order(const char *xml, size_t len);
-extern ssize_t tws_order_xml(char *restrict buf, size_t bsz, tws_const_order_t);
-
-/* batch reader */
-/**
- * For every occurrence of a contract call CB with the contract and
- * a custom pointer as specified by CLO.
- * If CB return value is <0 the contract will be freed, otherwise the
- * caller is responsible for freeing the contract. */
 extern int
-tws_batch_order(
-	const char *xml, size_t len,
-	int(*cb)(tws_order_t, void*), void *clo);
+tws_order_x(tws_order_t tgt, unsigned int ns, unsigned int aid, const char *v);
+
+extern int
+tws_order_sl1t(tws_order_t tgt, const void *data);
 
 #if defined __cplusplus
 }
 #endif	/* __cplusplus */
 
-#endif	/* INCLUDED_gen_tws_order_h_ */
+#endif	/* INCLUDED_gen_tws_order_glu_h_ */

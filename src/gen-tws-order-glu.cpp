@@ -39,7 +39,7 @@
 #endif	// HAVE_CONFIG_H
 #include <string.h>
 #include <twsapi/Order.h>
-#include "iso4217.h"
+#include <twsapi/Contract.h>
 
 #if defined HAVE_UTERUS_UTERUS_H
 # include <uterus/uterus.h>
@@ -52,6 +52,7 @@
 #endif	/* HAVE_UTERUS_UTERUS_H || HAVE_UTERUS_H */
 
 #include "gen-tws-order.h"
+#include "gen-tws-cont.h"
 #include "gen-tws-order-glu.h"
 
 
@@ -120,6 +121,23 @@ tws_order_sl1t(tws_order_t o, const void *data)
 		/* cancel? */
 		ibo->action = "CANCEL";
 		ibo->totalQuantity = 0;
+	}
+	return 0;
+}
+
+int
+tws_check_order(tws_order_t order, tws_const_cont_t cont)
+{
+// grrrr
+// quick sanity check, mainly for fx lots
+	const IB::Contract *ib_c = (const IB::Contract*)cont;
+	IB::Order *ib_o = (IB::Order*)order;
+
+	if (strcmp(ib_c->secType.c_str(), "CASH") == 0) {
+		if (ib_o->totalQuantity < 1000) {
+			// they probably mean lots
+			ib_o->totalQuantity *= 100000;
+		}
 	}
 	return 0;
 }

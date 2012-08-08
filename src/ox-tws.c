@@ -69,6 +69,7 @@
 #include "gen-tws-cont.h"
 #include "gen-tws-cont-glu.h"
 #include "gen-tws-order.h"
+#include "gen-tws-order-glu.h"
 #include "ox-tws-private.h"
 #include "gq.h"
 #include "nifty.h"
@@ -581,9 +582,15 @@ snarf_meta(job_t j, ud_chan_t c)
 static void
 send_order(tws_t tws, ox_oq_item_t i)
 {
-	tws_order_t o = NULL;
+	tws_order_t o = tws_make_order();
 
-	OX_DEBUG("ORDER %p %u\n", i, i->oid);
+	if (tws_order_sl1t(o, i->l1t) < 0) {
+		tws_free_order(o);
+		OX_DEBUG("cannot glue order from l1t %p\n", i->l1t);
+		return;
+	}
+
+	OX_DEBUG("ORDER %p -> %p\n", i, o);
 	if (!(i->oid = tws_gen_order(tws, i->cl->ins, o))) {
 		OX_DEBUG("unusable: %p %p\n", i->cl->ins, o);
 	}

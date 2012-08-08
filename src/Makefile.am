@@ -308,8 +308,6 @@ if HAVE_TWSAPI
 noinst_LTLIBRARIES += libtwscapi.la
 libtwscapi_la_SOURCES = gen-tws.c gen-tws.h
 libtwscapi_la_SOURCES += gen-tws-wrapper.cpp
-if HAVE_EXPAT
-if HAVE_GPERF
 libtwscapi_la_SOURCES += gen-tws-cont.c gen-tws-cont.h
 libtwscapi_la_SOURCES += gen-tws-cont-glu.cpp gen-tws-cont-glu.h
 libtwscapi_la_SOURCES += proto-twsxml-tag.gperf proto-twsxml-tag.h
@@ -318,8 +316,6 @@ libtwscapi_la_SOURCES += proto-tx-ns.gperf proto-tx-ns.h
 libtwscapi_la_SOURCES += proto-twsxml-reqtyp.gperf proto-twsxml-reqtyp.h
 libtwscapi_la_SOURCES += proto-fixml-tag.gperf proto-fixml-tag.h
 libtwscapi_la_SOURCES += proto-fixml-attr.gperf proto-fixml-attr.h
-endif  HAVE_GPERF
-endif  HAVE_EXPAT
 libtwscapi_la_SOURCES +=
 libtwscapi_la_CPPFLAGS = $(AM_CPPFLAGS)
 libtwscapi_la_CPPFLAGS += $(twsapi_CFLAGS)

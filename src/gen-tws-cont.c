@@ -41,7 +41,9 @@
 #include <string.h>
 #include <stdbool.h>
 #include <stdio.h>
-#include <expat.h>
+#if defined HAVE_EXPAT_H
+# include <expat.h>
+#endif	/* HAVE_EXPAT_H */
 #include "nifty.h"
 
 #include "gen-tws-cont.h"
@@ -115,6 +117,7 @@ struct __ctx_s {
 };
 
 
+#if defined HAVE_GPERF
 /* all the generated stuff */
 #if defined __INTEL_COMPILER
 # pragma warning (disable:869)
@@ -131,16 +134,10 @@ struct __ctx_s {
 #if defined __INTEL_COMPILER
 # pragma warning (default:869)
 #endif	/* __INTEL_COMPILER */
+#endif	/* HAVE_GPERF */
 
 
-static __attribute__((unused)) tws_xml_req_typ_t
-parse_req_typ(const char *typ)
-{
-	const struct tws_xml_rtcell_s *rtc = __rtiddify(typ, strlen(typ));
-
-	return rtc->rtid;
-}
-
+#if defined HAVE_EXPAT_H
 static const char*
 tag_massage(const char *tag)
 {
@@ -181,6 +178,23 @@ __pref_to_ns(__ctx_t ctx, const char *pref, size_t pref_len)
 	return NULL;
 }
 
+#if defined HAVE_GPERF
+static __attribute__((unused)) tws_xml_req_typ_t
+parse_req_typ(const char *typ)
+{
+	const struct tws_xml_rtcell_s *rtc = __rtiddify(typ, strlen(typ));
+
+	return rtc->rtid;
+}
+
+static tws_nsid_t
+__tx_nsid_from_href(const char *href)
+{
+	size_t hlen = strlen(href);
+	const struct tx_nsuri_s *n = __nsiddify(href, ulen);
+	return n != NULL ? n->nsid : TX_NS_UNK;
+}
+
 static tws_xml_tid_t
 sax_tx_tid_from_tag(const char *tag)
 {
@@ -194,6 +208,13 @@ sax_tx_aid_from_attr(const char *attr)
 {
 	size_t alen = strlen(attr);
 	const struct tws_xml_attr_s *a = __aiddify(attr, alen);
+	return a ? a->aid : TX_ATTR_UNK;
+}
+
+static tws_xml_aid_t
+__tx_aid_from_attr_l(const char *attr, size_t len)
+{
+	const struct tws_xml_attr_s *a = __aiddify(attr, len);
 	return a ? a->aid : TX_ATTR_UNK;
 }
 
@@ -212,6 +233,63 @@ sax_fix_aid_from_attr(const char *attr)
 	const struct fixml_attr_s *a = __fix_aiddify(attr, alen);
 	return a ? a->aid : FIX_ATTR_UNK;
 }
+
+static fixml_aid_t
+__fix_aid_from_attr_l(const char *attr, size_t len)
+{
+	const struct fix_xml_attr_s *a = __fix_aiddify(attr, len);
+	return a ? a->aid : FIX_ATTR_UNK;
+}
+
+#else  /* !HAVE_GPERF */
+static __attribute__((unused)) tws_xml_req_typ_t
+parse_req_typ(const char *UNUSED(typ))
+{
+	return TWS_XML_REQ_TYP_UNK;
+}
+
+static tx_nsid_t
+__tx_nsid_from_href(const char *UNUSED(href))
+{
+	return TX_NS_UNK;
+}
+
+static tws_xml_tid_t
+sax_tx_tid_from_tag(const char *UNUSED(tag))
+{
+	return TX_TAG_UNK;
+}
+
+static tws_xml_aid_t
+sax_tx_aid_from_attr(const char *UNUSED(attr))
+{
+	return TX_ATTR_UNK;
+}
+
+static tws_xml_aid_t
+__tx_aid_from_attr_l(const char *UNUSED(attr), size_t UNUSED(len))
+{
+	return TX_ATTR_UNK;
+}
+
+static fixml_tid_t
+sax_fix_tid_from_tag(const char *UNUSED(tag))
+{
+	return FIX_TAG_UNK;
+}
+
+static fixml_aid_t
+sax_fix_aid_from_attr(const char *UNUSED(attr))
+{
+	return FIX_ATTR_UNK;
+}
+
+static fixml_aid_t
+__fix_aid_from_attr_l(const char *UNUSED(attr), size_t UNUSED(len))
+{
+	return FIX_ATTR_UNK;
+}
+#endif	/* HAVE_GPERF */
 
 static void* __attribute__((unused))
 get_state_object(__ctx_t ctx)
@@ -308,9 +386,7 @@ ptx_reg_ns(__ctx_t ctx, const char *pref, const char *href)
 
 	/* get us those lovely ns ids */
 	{
-		size_t ulen = strlen(href);
-		const struct tx_nsuri_s *n = __nsiddify(href, ulen);
-		const tx_nsid_t nsid = n ? n->nsid : TX_NS_UNK;
+		const tx_nsid_t nsid = __tx_nsid_from_href(href);
 
 		switch (nsid) {
 			size_t i;
@@ -410,9 +486,7 @@ proc_UNK_attr(__ctx_t ctx, const char *attr, const char *value)
 	tws_xml_aid_t aid;
 
 	if (UNLIKELY(rattr > attr && !ptx_pref_p(ctx, attr, rattr - attr))) {
-		const struct tws_xml_attr_s *a =
-			__aiddify(attr, rattr - attr - 1);
-		aid = a ? a->aid : TX_ATTR_UNK;
+		aid = __tx_aid_from_attr_l(attr, rattr - attr - 1);
 	} else {
 		aid = sax_tx_aid_from_attr(rattr);
 	}
@@ -434,9 +508,7 @@ proc_TWSXML_attr(__ctx_t ctx, const char *attr, const char *value)
 	tws_xml_aid_t aid;
 
 	if (UNLIKELY(rattr > attr && !ptx_pref_p(ctx, attr, rattr - attr))) {
-		const struct tws_xml_attr_s *a =
-			__aiddify(attr, rattr - attr - 1);
-		aid = a ? a->aid : TX_ATTR_UNK;
+		aid = __tx_aid_from_attr_l(attr, rattr - attr - 1);
 	} else {
 		aid = sax_tx_aid_from_attr(rattr);
 	}
@@ -459,9 +531,7 @@ proc_FIXML_attr(__ctx_t ctx, const char *attr, const char *value)
 	fixml_aid_t aid;
 
 	if (UNLIKELY(rattr > attr && !ptx_pref_p(ctx, attr, rattr - attr))) {
-		const struct fixml_attr_s *a =
-			__fix_aiddify(attr, rattr - attr - 1);
-		aid = a ? a->aid : FIX_ATTR_UNK;
+		aid = __fix_aid_from_attr_l(attr, rattr - attr - 1);
 	} else {
 		aid = sax_fix_aid_from_attr(rattr);
 	}
@@ -746,9 +816,11 @@ el_end(void *clo, const char *elem)
 	}
 	return;
 }
+#endif	/* HAVE_EXPAT_H */
 
 
 /* public funs */
+#if defined HAVE_EXPAT_H
 static int
 priv_cont_cb(tws_cont_t c, void *clo)
 {
@@ -765,8 +837,8 @@ priv_cont_cb(tws_cont_t c, void *clo)
 tws_cont_t
 tws_cont(const char *xml, size_t len)
 {
-	XML_Parser hdl;
 	struct __ctx_s clo = {0};
+	XML_Parser hdl;
 	tws_cont_t res = NULL;
 
 	if ((hdl = XML_ParserCreate(NULL)) == NULL) {
@@ -814,6 +886,22 @@ tws_batch_cont(
 	XML_ParserFree(hdl);
 	return 0;
 }
+
+#else  /* HAVE_EXPAT_H */
+tws_cont_t
+tws_cont(const char *UNUSED(xml), size_t UNUSED(len))
+{
+	return NULL;
+}
+
+int
+tws_batch_cont(
+	const char *UNUSED(xml), size_t UNUSED(len),
+	int(*UNUSED(cb))(tws_cont_t, void*), void *UNUSED(cbclo))
+{
+	return -1;
+}
+#endif	/* HAVE_EXPAT_H */
 
 ssize_t
 tws_cont_xml(char *UNUSED(buf), size_t UNUSED(bsz), tws_cont_t UNUSED(c))

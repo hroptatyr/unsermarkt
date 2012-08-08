@@ -9,6 +9,7 @@ typedef enum {
 	TX_NS_FIXML_5_0,
 	TX_NS_TWSXML_0_1,
 	TX_NS_MDDL_3_0,
+	TX_NS_SYMSTR,
 
 } tx_nsid_t;
 

@@ -90,6 +90,21 @@ typedef enum {
 	TWS_CB_INFRA_READY,
 } tws_cb_t;
 
+/* tick types */
+#define TWS_TICK_TYPE_BID	(1)
+#define TWS_TICK_TYPE_BSZ	(0)
+#define TWS_TICK_TYPE_ASK	(2)
+#define TWS_TICK_TYPE_ASZ	(3)
+#define TWS_TICK_TYPE_TRA	(4)
+#define TWS_TICK_TYPE_TSZ	(5)
+#define TWS_TICK_TYPE_HIGH	(6)
+#define TWS_TICK_TYPE_LOW	(7)
+#define TWS_TICK_TYPE_VOL	(8)
+/* close price at the end of day */
+#define TWS_TICK_TYPE_CLOSE	(9)
+/* opening price at the beginning of the day */
+#define TWS_TICK_TYPE_OPEN	(14)
+
 /* we split the callbacks into 4 big groups, just like fix:
  * pre_trade, trade, post_trade, infra */
 struct tws_pre_clo_s {

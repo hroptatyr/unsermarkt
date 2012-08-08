@@ -1,4 +1,4 @@
-/*** ox-tws-wrapper.h -- order execution through tws
+/*** gen-tws-order.h -- generic tws c api order builder
  *
  * Copyright (C) 2012 Sebastian Freundt
  *
@@ -34,61 +34,42 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  ***/
-#if !defined INCLUDED_ox_tws_wrapper_h_
-#define INCLUDED_ox_tws_wrapper_h_
+#if !defined INCLUDED_gen_tws_order_h_
+#define INCLUDED_gen_tws_order_h_
+
+#include <unistd.h>
 
 #if defined __cplusplus
 extern "C" {
+# if defined __GNUC__
+#  define restrict	__restrict__
+# else
+#  define restrict
+# endif
 #endif	/* __cplusplus */
 
-typedef struct my_tws_s *my_tws_t;
-typedef struct tws_order_s *tws_order_t;
-/* abstract type for ib contracts */
-typedef void *tws_instr_t;
+typedef void *tws_order_t;
+typedef const void *tws_const_order_t;
 
-typedef unsigned int tws_oid_t;
+extern tws_order_t tws_make_order(void);
+extern void tws_free_order(tws_order_t);
 
-struct my_tws_s {
-	tws_oid_t next_oid;
-	unsigned int time;
-	void *wrp;
-	void *cli;
-	void *oq;
-};
+extern tws_order_t tws_order(const char *xml, size_t len);
+extern ssize_t tws_order_xml(char *restrict buf, size_t bsz, tws_const_order_t);
 
-struct tws_order_s {
-	/** 0 means let the tws decide */
-	tws_oid_t oid;
-	/** ib's notion of this order */
-	tws_instr_t c;
-	/** this will be generally a sl1t_t */
-	void *o;
-};
-
-
-extern void *logerr;
-
-extern int init_tws(my_tws_t);
-extern int fini_tws(my_tws_t);
-
-extern int tws_connect(my_tws_t, const char *host, uint16_t port, int client);
-extern int tws_disconnect(my_tws_t);
-
-extern int tws_recv(my_tws_t);
-extern int tws_send(my_tws_t);
-
-/* testing */
-extern int tws_put_order(my_tws_t, tws_order_t);
-extern int tws_get_order(my_tws_t, tws_order_t, tws_oid_t oid);
-
-/* builder and dismantler for ib contracts */
-extern tws_instr_t tws_assemble_instr(const char *sym);
-extern void tws_disassemble_instr(tws_instr_t);
-
-extern int tws_reconcile(my_tws_t);
+/* batch reader */
+/**
+ * For every occurrence of a contract call CB with the contract and
+ * a custom pointer as specified by CLO.
+ * If CB return value is <0 the contract will be freed, otherwise the
+ * caller is responsible for freeing the contract. */
+extern int
+tws_batch_order(
+	const char *xml, size_t len,
+	int(*cb)(tws_order_t, void*), void *clo);
 
 #if defined __cplusplus
 }
 #endif	/* __cplusplus */
 
-#endif	/* INCLUDED_ox_tws_wrapper_h_ */
+#endif	/* INCLUDED_gen_tws_order_h_ */

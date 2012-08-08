@@ -174,8 +174,6 @@ if HAVE_LIBEV
 noinst_PROGRAMS += ox-tws
 EXTRA_ox_tws_SOURCES =
 ox_tws_SOURCES = ox-tws.c ox-tws-clo.ggo
-ox_tws_SOURCES += ox-tws-wrapper.cpp ox-tws-wrapper.h
-ox_tws_SOURCES += ox-tws-contract-glue.cpp
 ox_tws_SOURCES += iso4217.c iso4217.h
 ox_tws_SOURCES += ox-tws-private.h
 ox_tws_SOURCES += wrp-debug.h
@@ -189,6 +187,7 @@ ox_tws_LDFLAGS = $(AM_LDFLAGS)
 ox_tws_LDFLAGS += $(unserding_LIBS)
 ox_tws_LDFLAGS += $(twsapi_LIBS) -lstdc++
 ox_tws_LDFLAGS += $(libev_LIBS)
+ox_tws_LDADD = libtwscapi.la
 ox_tws_LINK = $(LINK) $(ox_tws_LDFLAGS)
 
 noinst_PROGRAMS += pf-tws
@@ -215,7 +214,6 @@ if HAVE_GPERF
 noinst_PROGRAMS += quo-tws
 EXTRA_quo_tws_SOURCES =
 quo_tws_SOURCES = quo-tws.c quo-tws-clo.ggo
-quo_tws_SOURCES += ox-tws-contract-glue.cpp
 quo_tws_SOURCES += iso4217.c iso4217.h
 quo_tws_SOURCES += strops.h
 quo_tws_SOURCES += quo-tws-private.h
@@ -307,19 +305,18 @@ ccy_graph_CPPFLAGS = $(AM_CPPFLAGS) -DSTANDALONE
 if HAVE_TWSAPI
 noinst_LTLIBRARIES += libtwscapi.la
 libtwscapi_la_SOURCES = gen-tws.c gen-tws.h
+libtwscapi_la_SOURCES += iso4217.c iso4217.h
 libtwscapi_la_SOURCES += gen-tws-wrapper.cpp
-if HAVE_EXPAT
-if HAVE_GPERF
 libtwscapi_la_SOURCES += gen-tws-cont.c gen-tws-cont.h
 libtwscapi_la_SOURCES += gen-tws-cont-glu.cpp gen-tws-cont-glu.h
+libtwscapi_la_SOURCES += gen-tws-order.h
+libtwscapi_la_SOURCES += gen-tws-order-glu.cpp gen-tws-order-glu.h
 libtwscapi_la_SOURCES += proto-twsxml-tag.gperf proto-twsxml-tag.h
 libtwscapi_la_SOURCES += proto-twsxml-attr.gperf proto-twsxml-attr.h
 libtwscapi_la_SOURCES += proto-tx-ns.gperf proto-tx-ns.h
 libtwscapi_la_SOURCES += proto-twsxml-reqtyp.gperf proto-twsxml-reqtyp.h
 libtwscapi_la_SOURCES += proto-fixml-tag.gperf proto-fixml-tag.h
 libtwscapi_la_SOURCES += proto-fixml-attr.gperf proto-fixml-attr.h
-endif  HAVE_GPERF
-endif  HAVE_EXPAT
 libtwscapi_la_SOURCES +=
 libtwscapi_la_CPPFLAGS = $(AM_CPPFLAGS)
 libtwscapi_la_CPPFLAGS += $(twsapi_CFLAGS)

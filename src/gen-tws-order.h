@@ -55,7 +55,7 @@ extern tws_order_t tws_make_order(void);
 extern void tws_free_order(tws_order_t);
 
 extern tws_order_t tws_order(const char *xml, size_t len);
-extern ssize_t tws_order_xml(char *restrict buf, size_t bsz, tws_cont_t);
+extern ssize_t tws_order_xml(char *restrict buf, size_t bsz, tws_const_order_t);
 
 /* batch reader */
 /**

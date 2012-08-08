@@ -65,7 +65,9 @@
 #include "match.h"
 
 /* the tws api */
-#include "ox-tws-wrapper.h"
+#include "gen-tws.h"
+#include "gen-tws-cont.h"
+#include "gen-tws-order.h"
 #include "ox-tws-private.h"
 #include "gq.h"
 #include "nifty.h"
@@ -99,7 +101,7 @@ struct ctx_s {
 	int client;
 
 	/* dynamic context */
-	my_tws_t tws;
+	tws_t tws;
 	int tws_sock;
 };
 
@@ -136,7 +138,7 @@ struct ox_cl_s {
 
 	struct umm_agt_s agt;
 	/* ib contract */
-	tws_instr_t ins;
+	tws_cont_t ins;
 	/* channel we're talking */
 	ud_chan_t ch;
 	/* number of relevant orders */
@@ -552,37 +554,32 @@ snarf_meta(job_t j, ud_chan_t c)
 
 		/* bother the ib factory to get us a contract */
 		if (CL(cl)->ins) {
-			tws_disassemble_instr(CL(cl)->ins);
+			tws_free_cont(CL(cl)->ins);
 		}
-		CL(cl)->ins = tws_assemble_instr(CL(cl)->sym);
+		/* we used to build an instrument here from the name via
+		 *   tws_assemble_instr(CL(cl)->sym);
+		 * but this can't go on like that */
+		CL(cl)->ins = NULL;
 		CL(cl)->ch = c;
 	}
 	return;
 }
 
 static void
-send_order(my_tws_t tws, ox_oq_item_t i)
+send_order(tws_t tws, ox_oq_item_t i)
 {
-	struct tws_order_s foo = {
-		/* let the tws decide */
-		.oid = i->oid,
-		/* instrument, fuck checking */
-		.c = i->cl->ins,
-		/* good god, can we uphold this? */
-		.o = i->l1t,
-	};
+	tws_order_t o = NULL;
 
-	OX_DEBUG("ORDER %p %u\n", i, foo.oid);
-	if (tws_put_order(tws, &foo) < 0) {
-		OX_DEBUG("unusable: %p %p\n", foo.c, foo.o);
+	OX_DEBUG("ORDER %p %u\n", i, i->oid);
+	if (!(i->oid = tws_put_order(tws, i->oid, i->cl->ins, o))) {
+		OX_DEBUG("unusable: %p %p\n", i->cl->ins, o);
 	}
-	i->oid = foo.oid;
 	OX_DEBUG("ORDER %p <-> oid %u\n", i, i->oid);
 	return;
 }
 
 static void
-flush_queue(my_tws_t tws)
+flush_queue(tws_t tws)
 {
 	size_t nsnt = 0;
 
@@ -740,7 +737,7 @@ out_revok:
 static void
 cake_cb(EV_P_ ev_io *w, int revents)
 {
-	my_tws_t tws = w->data;
+	tws_t tws = w->data;
 
 	if (revents & EV_READ) {
 		if (tws_recv(tws) < 0) {
@@ -800,7 +797,7 @@ prep_cb(EV_P_ ev_prepare *w, int UNUSED(revents))
 	static ev_io cake[1] = {{0}};
 	static ev_timer tm_reco[1] = {{0}};
 	ctx_t ctx = w->data;
-	my_tws_t tws = ctx->tws;
+	tws_t tws = ctx->tws;
 
 	/* check if the tws is there */
 	if (cake->fd <= 0 && ctx->tws_sock <= 0 && tm_reco->data == NULL) {
@@ -928,7 +925,7 @@ main(int argc, char *argv[])
 	size_t nbeef = 0;
 	ev_io *beef = NULL;
 	/* tws stuff */
-	struct my_tws_s tws[1];
+	struct tws_s tws[1] = {{0}};
 	/* final result */
 	int res = 0;
 
@@ -1010,12 +1007,10 @@ main(int argc, char *argv[])
 		ev_io_start(EV_A_ beef + i + 1);
 	}
 
-	if (init_tws(tws) < 0) {
+	if (init_tws(tws, -1, ctx->client) < 0) {
 		res = 1;
 		goto unroll;
 	}
-	/* make sure we know about the global order queue */
-	tws->oq = &oq;
 	/* prepare the context */
 	ctx->tws = tws;
 	ctx->tws_sock = -1;

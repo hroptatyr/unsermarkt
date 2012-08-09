@@ -51,9 +51,62 @@
 # error uterus headers are mandatory
 #endif	/* HAVE_UTERUS_UTERUS_H || HAVE_UTERUS_H */
 
-#include "gen-tws-order.h"
+#include "proto-tx-ns.h"
+#include "proto-fixml-attr.h"
+#include "proto-twsxml-attr.h"
+
 #include "gen-tws-cont.h"
+#include "gen-tws-order.h"
 #include "gen-tws-order-glu.h"
+
+static int
+tws_order_tx(tws_order_t tgt, unsigned int aid, const char *val)
+{
+	IB::Order *o = (IB::Order*)tgt;
+
+	switch ((tws_xml_aid_t)aid) {
+	case TX_ATTR_ACTION:
+		o->action = std::string(val);
+		break;
+	case TX_ATTR_TIF:
+		o->tif = std::string(val);
+		break;
+	case TX_ATTR_ORDERTYPE:
+		o->orderType = std::string(val);
+		break;
+	case TX_ATTR_OCAGROUP:
+		o->ocaGroup = std::string(val);
+		break;
+	case TX_ATTR_ACCOUNT:
+		o->account = std::string(val);
+		break;
+
+	case TX_ATTR_TOTALQUANTITY: {
+		char *p;
+		if (!(o->totalQuantity = strtol(val, &p, 10)) && p == NULL) {
+			return -1;
+		}
+		break;
+	}
+	case TX_ATTR_AUXPRICE: {
+		char *p;
+		if (!(o->auxPrice = strtod(val, &p)) && p == NULL) {
+			return -1;
+		}
+		break;
+	}
+	case TX_ATTR_LMTPRICE: {
+		char *p;
+		if (!(o->lmtPrice = strtod(val, &p)) && p == NULL) {
+			return -1;
+		}
+		break;
+	}
+	default:
+		return -1;
+	}
+	return 0;
+}
 
 
 tws_order_t
@@ -72,9 +125,15 @@ tws_free_order(tws_order_t o)
 }
 
 int
-tws_order_x(tws_order_t, unsigned int, unsigned int, const char*)
+tws_order_x(tws_order_t tgt, unsigned int nsid, unsigned int aid, const char *v)
 {
-	return -1;
+	switch ((tx_nsid_t)nsid) {
+	case TX_NS_TWSXML_0_1:
+		return tws_order_tx(tgt, aid, v);
+	case TX_NS_FIXML_5_0:
+	default:
+		return -1;
+	}
 }
 
 int

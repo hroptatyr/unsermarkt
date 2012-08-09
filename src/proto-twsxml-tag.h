@@ -6,7 +6,9 @@ typedef enum {
 	/* must be first */
 	TX_TAG_UNK,
 	/* alphabetic list of tags */
+	TX_TAG_CONTRACT,
 	TX_TAG_CONTRACTDETAILS,
+	TX_TAG_ORDER,
 	TX_TAG_QUERY,
 	TX_TAG_REQCONTRACT,
 	TX_TAG_REQUEST,

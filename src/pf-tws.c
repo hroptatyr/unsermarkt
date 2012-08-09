@@ -103,6 +103,8 @@ struct ctx_s {
 	/* accounts under management */
 	char *ac_names;
 	size_t nac_names;
+	/* the default guy */
+	const char *ac_name;
 };
 
 struct comp_s {
@@ -598,7 +600,7 @@ req_cb(EV_P_ ev_timer *w, int UNUSED(revents))
 #define TWS_ALL_ACCOUNTS	(NULL)
 	/* call the a/c requester */
 	{
-		const char *acn = ctx->ac_names;
+		const char *acn = ctx->ac_name ?: ctx->ac_names;
 
 		PF_DEBUG("subscribing to a/c %s\n", acn);
 		if (tws_req_ac(tws, acn) < 0) {
@@ -821,6 +823,9 @@ main(int argc, char *argv[])
 
 		(void)gettimeofday(now, NULL);
 		ctx->client = now->tv_sec;
+	}
+	if (argi->tws_account_given) {
+		ctx->ac_name = argi->tws_account_arg;
 	}
 
 	/* initialise the main loop */

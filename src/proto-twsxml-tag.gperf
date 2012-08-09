@@ -20,7 +20,9 @@ struct tws_xml_tag_s {
 
 %%
 TWSXML, TX_TAG_TWSXML
+contract, TX_TAG_CONTRACT
 contractDetails, TX_TAG_CONTRACTDETAILS
+order, TX_TAG_ORDER
 query, TX_TAG_QUERY
 reqContract, TX_TAG_REQCONTRACT
 request, TX_TAG_REQUEST

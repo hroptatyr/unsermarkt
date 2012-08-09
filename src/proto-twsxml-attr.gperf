@@ -20,9 +20,19 @@ struct tws_xml_attr_s {
 };
 
 %%
+account, TX_ATTR_ACCOUNT
+action, TX_ATTR_ACTION
+auxPrice, TX_ATTR_AUXPRICE
 currency, TX_ATTR_CURRENCY,
 exchange, TX_ATTR_EXCHANGE
+lmtPrice, TX_ATTR_LMTPRICE
+ocaGroup, TX_ATTR_OCAGROUP
+orderExchange, TX_ATTR_ORDEREXCHANGE
+orderId, TX_ATTR_ORDERID
+orderType, TX_ATTR_ORDERTYPE
 secType, TX_ATTR_SECTYPE
 symbol, TX_ATTR_SYMBOL
+tif, TX_ATTR_TIF
+totalQuantity, TX_ATTR_TOTALQUANTITY
 type, TX_ATTR_TYPE
 xmlns,	TX_ATTR_XMLNS

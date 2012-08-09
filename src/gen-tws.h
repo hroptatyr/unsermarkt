@@ -76,10 +76,10 @@ typedef enum {
 	TWS_CB_TRD_ORD_STATUS,
 	TWS_CB_TRD_OPEN_ORD,
 	TWS_CB_TRD_OPEN_ORD_END,
+	TWS_CB_TRD_EXEC_DTL,
+	TWS_CB_TRD_EXEC_DTL_END,
 
 	/* POSTs */
-	TWS_CB_POST_EXEC_DTL,
-	TWS_CB_POST_EXEC_DTL_END,
 	TWS_CB_POST_MNGD_AC,
 	TWS_CB_POST_ACUP,
 	TWS_CB_POST_ACUP_END,
@@ -156,6 +156,71 @@ struct tws_post_acup_clo_s {
 
 struct tws_post_acup_end_clo_s {
 	const char *ac_name;
+};
+
+/* used in TRD_ORD_STATUS and TRD_EXEC_DTL */
+typedef enum {
+	EXEC_TYP_UNK,
+	EXEC_TYP_NEW = '0',
+	ORD_ST_PFILL = '1',
+	ORD_ST_FILL = '2',
+	EXEC_TYP_DONE_FOR_DAY = '3',
+	EXEC_TYP_CANCELLED = '4',
+	EXEC_TYP_REPLACED = '5',
+	EXEC_TYP_PENDING_CNC = '6',
+	EXEC_TYP_STOPPED = '7',
+	EXEC_TYP_REJECTED = '8',
+	EXEC_TYP_SUSPENDED = '9',
+	EXEC_TYP_PENDING_NEW = 'A',
+	EXEC_TYP_CALCULATED = 'B',
+	EXEC_TYP_EXPIRED = 'C',
+	EXEC_TYP_RESTATED = 'D',
+	EXEC_TYP_PENDING_RPLC = 'E',
+	EXEC_TYP_TRADE = 'F',
+	EXEC_TYP_TRADE_CORRECT = 'G',
+	EXEC_TYP_TRADE_CANCEL = 'H',
+	EXEC_TYP_ORDER_STATUS = 'I',
+	EXEC_TYP_IN_CLEARING_HOLD = 'J',
+} fix_st_t;
+
+struct fix_exec_rpt_s {
+	fix_st_t exec_typ;
+	fix_st_t ord_status;
+
+	double last_qty;
+	double last_prc;
+	double cum_qty;
+	double leaves_qty;
+
+	/** IB's order id */
+	tws_oid_t ord_id;
+	/** IB's perm id */
+	tws_oid_t exec_id;
+	/** IB's parent id */
+	tws_oid_t exec_ref_id;
+	/** IB's client id? */
+	tws_oid_t party_id;
+};
+
+struct tws_trd_ord_status_clo_s {
+	struct fix_exec_rpt_s er;
+
+	const char *yheld;
+};
+
+struct tws_trd_exec_dtl_clo_s {
+	struct fix_exec_rpt_s er;
+
+	const void *cont;
+	const char *exch;
+	const char *ac_name;
+	const char *ex_time;
+};
+
+struct tws_trd_open_ord_clo_s {
+	const void *cont;
+	const void *order;
+	unsigned int state;
 };
 
 

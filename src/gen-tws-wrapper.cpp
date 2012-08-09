@@ -47,6 +47,7 @@
 #include <twsapi/EWrapper.h>
 #include <twsapi/EPosixClientSocket.h>
 #include <twsapi/Order.h>
+#include <twsapi/OrderState.h>
 #include <twsapi/Execution.h>
 #include <twsapi/Contract.h>
 
@@ -404,12 +405,26 @@ __wrapper::orderStatus(
 
 void
 __wrapper::openOrder(
-	IB::OrderId id, const IB::Contract&,
-	const IB::Order&, const IB::OrderState&)
+	IB::OrderId id, const IB::Contract &c,
+	const IB::Order &o, const IB::OrderState &s)
 {
+	static struct tws_trd_open_ord_clo_s clo[1];
 	tws_t tws = WRP_TWS(this);
 
-	TRD_CB(tws, TWS_CB_TRD_OPEN_ORD, (tws_oid_t)id, NULL);
+	clo->cont = &c;
+	clo->order = &o;
+
+	clo->st.state = __anal_state(s.status.c_str());
+	clo->st.ini_mrgn = s.initMargin.c_str();
+	clo->st.mnt_mrgn = s.maintMargin.c_str();
+	clo->st.eqty_w_loan = s.equityWithLoan.c_str();
+	clo->st.commission = s.commission;
+	clo->st.min_comm = s.minCommission;
+	clo->st.max_comm = s.maxCommission;
+	clo->st.comm_ccy = s.commissionCurrency.c_str();
+	clo->st.warn = s.warningText.c_str();
+
+	TRD_CB(tws, TWS_CB_TRD_OPEN_ORD, (tws_oid_t)id, clo);
 	return;
 }
 

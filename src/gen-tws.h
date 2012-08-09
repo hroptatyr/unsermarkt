@@ -220,7 +220,21 @@ struct tws_trd_exec_dtl_clo_s {
 struct tws_trd_open_ord_clo_s {
 	const void *cont;
 	const void *order;
-	unsigned int state;
+
+	struct {
+		fix_st_t state;
+
+		const char *ini_mrgn;
+		const char *mnt_mrgn;
+		const char *eqty_w_loan;
+
+		double commission;
+		double min_comm;
+		double max_comm;
+		const char *comm_ccy;
+
+		const char *warn;
+	} st;
 };
 
 

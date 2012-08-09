@@ -99,13 +99,14 @@ typedef struct ox_cl_s *ox_cl_t;
 #define CL(x)		(x)
 
 struct ctx_s {
+	struct tws_s tws[1];
+
 	/* static context */
 	const char *host;
 	uint16_t port;
 	int client;
 
 	/* dynamic context */
-	tws_t tws;
 	int tws_sock;
 };
 
@@ -936,7 +937,7 @@ detach(void)
 int
 main(int argc, char *argv[])
 {
-	struct ctx_s ctx[1];
+	struct ctx_s ctx[1] = {{0}};
 	/* args */
 	struct ox_args_info argi[1];
 	/* use the default event loop unless you have special needs */
@@ -949,8 +950,6 @@ main(int argc, char *argv[])
 	/* our beef channels */
 	size_t nbeef = 0;
 	ev_io *beef = NULL;
-	/* tws stuff */
-	struct tws_s tws[1] = {{0}};
 	/* final result */
 	int res = 0;
 
@@ -1032,12 +1031,11 @@ main(int argc, char *argv[])
 		ev_io_start(EV_A_ beef + i + 1);
 	}
 
-	if (init_tws(tws, -1, ctx->client) < 0) {
+	if (init_tws(ctx->tws, -1, ctx->client) < 0) {
 		res = 1;
 		goto unroll;
 	}
 	/* prepare the context */
-	ctx->tws = tws;
 	ctx->tws_sock = -1;
 	/* pre and post poll hooks */
 	prp->data = ctx;

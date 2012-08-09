@@ -47,7 +47,8 @@
 #include <twsapi/EWrapper.h>
 #include <twsapi/EPosixClientSocket.h>
 #include <twsapi/Order.h>
-#include <twsapi/Order.h>
+#include <twsapi/OrderState.h>
+#include <twsapi/Execution.h>
 #include <twsapi/Contract.h>
 
 #include "gen-tws.h"
@@ -354,27 +355,76 @@ static struct tws_trd_clo_s trd_clo;
 	} else while (0)
 #define TRD_CB(x, what, args...)	__TRD_CB(x, what, args)
 
+static fix_st_t
+__anal_state(const char *str)
+{
+	if (0) {
+		;
+	} else if (!strcmp(str, "Filled")) {
+		return EXEC_TYP_TRADE;
+	} else if (!strcmp(str, "PreSubmitted")) {
+		return EXEC_TYP_NEW;
+	} else if (!strcmp(str, "Submitted")) {
+		return EXEC_TYP_PENDING_NEW;
+	} else if (!strcmp(str, "Cancelled")) {
+		return EXEC_TYP_CANCELLED;
+	} else if (!strcmp(str, "Inactive")) {
+		return EXEC_TYP_SUSPENDED;
+	}
+	return EXEC_TYP_UNK;
+}
+
 void
 __wrapper::orderStatus(
-	IB::OrderId id, const IB::IBString&,
-	int, int, double, int,
-	int, double, int,
-	const IB::IBString&)
+	IB::OrderId id, const IB::IBString &state,
+	int flld, int remn, double,
+	int perm_id, int parent_id, double prc, int cli,
+	const IB::IBString &yheld)
 {
+	static struct tws_trd_ord_status_clo_s clo[1];
 	tws_t tws = WRP_TWS(this);
 
-	TRD_CB(tws, TWS_CB_TRD_ORD_STATUS, (tws_oid_t)id, NULL);
+	clo->er.exec_typ = EXEC_TYP_ORDER_STATUS;
+	clo->er.ord_status = __anal_state(state.c_str());
+	clo->er.last_qty = (double)flld;
+	clo->er.last_prc = (double)prc;
+	clo->er.cum_qty = 0.0;
+	clo->er.leaves_qty = (double)remn;
+
+	clo->er.ord_id = (tws_oid_t)id;
+	clo->er.exec_id = perm_id;
+	clo->er.exec_ref_id = parent_id;
+	clo->er.party_id = cli;
+
+	clo->yheld = yheld.c_str();
+
+	// corresponds to FIX' ExecRpt, msgtyp 8
+	TRD_CB(tws, TWS_CB_TRD_ORD_STATUS, (tws_oid_t)id, clo);
 	return;
 }
 
 void
 __wrapper::openOrder(
-	IB::OrderId id, const IB::Contract&,
-	const IB::Order&, const IB::OrderState&)
+	IB::OrderId id, const IB::Contract &c,
+	const IB::Order &o, const IB::OrderState &s)
 {
+	static struct tws_trd_open_ord_clo_s clo[1];
 	tws_t tws = WRP_TWS(this);
 
-	TRD_CB(tws, TWS_CB_TRD_OPEN_ORD, (tws_oid_t)id, NULL);
+	clo->cont = &c;
+	clo->order = &o;
+
+	clo->st.state = __anal_state(s.status.c_str());
+	clo->st.ini_mrgn = s.initMargin.c_str();
+	clo->st.mnt_mrgn = s.maintMargin.c_str();
+	clo->st.eqty_w_loan = s.equityWithLoan.c_str();
+	clo->st.commission = s.commission;
+	clo->st.min_comm = s.minCommission;
+	clo->st.max_comm = s.maxCommission;
+	clo->st.comm_ccy = s.commissionCurrency.c_str();
+	clo->st.warn = s.warningText.c_str();
+
+	TRD_CB(tws, TWS_CB_TRD_OPEN_ORD, (tws_oid_t)id, clo);
 	return;
 }
 
@@ -384,6 +434,44 @@ __wrapper::openOrderEnd(void)
 	tws_t tws = WRP_TWS(this);
 
 	TRD_CB(tws, TWS_CB_TRD_OPEN_ORD_END, 0, NULL);
+	return;
+}
+
+void
+__wrapper::execDetails(int rid, const IB::Contract &c, const IB::Execution &ex)
+{
+	static struct tws_trd_exec_dtl_clo_s clo[1];
+	tws_t tws = WRP_TWS(this);
+
+	clo->er.exec_typ = EXEC_TYP_TRADE;
+	clo->er.ord_status = EXEC_TYP_DONE_FOR_DAY;
+
+	clo->er.last_qty = (double)ex.shares;
+	clo->er.last_prc = (double)ex.price;
+	clo->er.cum_qty = (double)ex.cumQty;
+	clo->er.leaves_qty = 0.0;
+
+	clo->er.ord_id = ex.orderId;
+	clo->er.exec_id = ex.permId;
+	clo->er.exec_ref_id = ex.orderId;
+	clo->er.party_id = ex.clientId;
+
+	clo->cont = &c;
+	clo->exch = ex.exchange.c_str();
+	clo->ac_name = ex.acctNumber.c_str();
+	clo->ex_time = ex.time.c_str();
+
+	// corresponds to FIX' ExecRpt, msgtyp 8
+	TRD_CB(tws, TWS_CB_TRD_EXEC_DTL, (tws_oid_t)rid, clo);
+	return;
+}
+
+void
+__wrapper::execDetailsEnd(int req_id)
+{
+	tws_t tws = WRP_TWS(this);
+
+	TRD_CB(tws, TWS_CB_TRD_EXEC_DTL_END, (tws_oid_t)req_id, NULL);
 	return;
 }
 
@@ -398,24 +486,6 @@ static struct tws_post_clo_s post_clo;
 		x->post_cb(x, what, post_clo);		\
 	} else while (0)
 #define POST_CB(x, what, args...)	__POST_CB(x, what, args)
-
-void
-__wrapper::execDetails(int req_id, const IB::Contract&, const IB::Execution&)
-{
-	tws_t tws = WRP_TWS(this);
-
-	POST_CB(tws, TWS_CB_POST_EXEC_DTL, (tws_oid_t)req_id, NULL);
-	return;
-}
-
-void
-__wrapper::execDetailsEnd(int req_id)
-{
-	tws_t tws = WRP_TWS(this);
-
-	POST_CB(tws, TWS_CB_POST_EXEC_DTL_END, (tws_oid_t)req_id, NULL);
-	return;
-}
 
 void
 __wrapper::updateAccountValue(

@@ -41,6 +41,7 @@
 /* for gettimeofday() */
 #include <sys/time.h>
 #include <fcntl.h>
+#include <float.h>
 #if defined HAVE_EV_H
 # include <ev.h>
 # undef EV_P
@@ -99,13 +100,14 @@ typedef struct ox_cl_s *ox_cl_t;
 #define CL(x)		(x)
 
 struct ctx_s {
+	struct tws_s tws[1];
+
 	/* static context */
 	const char *host;
 	uint16_t port;
 	int client;
 
 	/* dynamic context */
-	tws_t tws;
 	int tws_sock;
 };
 
@@ -248,6 +250,17 @@ find_match_oid(ox_oq_dll_t dll, tws_oid_t oid)
 		}
 	}
 	return NULL;
+}
+
+static ox_oq_item_t
+pop_match_oid(ox_oq_dll_t dll, tws_oid_t oid)
+{
+	ox_oq_item_t ip;
+
+	if ((ip = find_match_oid(dll, oid))) {
+		oq_pop_item(dll, ip);
+	}
+	return ip;
 }
 
 /* client queue implemented through gq */
@@ -718,6 +731,179 @@ flush_flld(void)
 	return;
 }
 
+static void
+handle_cancel(tws_oid_t oid)
+{
+	ox_oq_item_t ip;
+
+	if ((ip = pop_match_oid(oq.ackd, oid)) ||
+	    (ip = pop_match_oid(oq.sent, oid))) {
+		OX_DEBUG("CNCD %p <-> %u\n", ip, oid);
+		oq_push_tail(oq.cncd, ip);
+	}
+	return;
+}
+
+static void
+handle_fill(tws_oid_t oid, const struct fix_exec_rpt_s *er)
+{
+	ox_oq_item_t ip;
+	ox_oq_dll_t dll;
+
+	// we must not change the order of the orders
+	if ((ip = find_match_oid(dll = oq.ackd, oid)) ||
+	    (ip = find_match_oid(dll = oq.sent, oid))) {
+		ox_oq_item_t nu_ip;
+
+		OX_DEBUG("FLLD %p <-> %u\n", ip, oid);
+
+		if (er->leaves_qty < DBL_EPSILON) {
+			/* pop it, so it's out of our ackd queue */
+			oq_pop_item(dll, nu_ip = ip);
+			OX_DEBUG("FILL COMPLETE\n");
+		} else {
+			/* split the order */
+			nu_ip = clone_item(ip);
+			set_qty(ip, er->leaves_qty);
+			OX_DEBUG("FILL PARTIAL: %.4f remn\n", er->leaves_qty);
+		}
+		set_qty(nu_ip, er->last_qty);
+		set_prc(nu_ip, er->last_prc);
+		oq_push_tail(oq.flld, nu_ip);
+	} else {
+		OX_DEBUG("FILL for unknown order %u\nBIG BUGGER INNIT?\n", oid);
+	}
+	return;
+}
+
+static void
+handle_ack(tws_oid_t oid)
+{
+	ox_oq_item_t ip;
+
+	if ((ip = pop_match_oid(oq.sent, oid))) {
+		OX_DEBUG("ACKD %p <-> %u\n", ip, oid);
+		oq_push_tail(oq.ackd, ip);
+	}
+	return;
+}
+
+static void
+handle_open_ord(const struct tws_trd_open_ord_clo_s *oo)
+{
+	OX_DEBUG("\
+* st: %c\n  ini: %s\n  mnt: %s\n  ewl: %s\n\
+  comm: %.4g %.4g %.4g %s\n  warn: %s\n",
+		 (char)oo->st.state,
+		 oo->st.ini_mrgn,
+		 oo->st.mnt_mrgn,
+		 oo->st.eqty_w_loan,
+		 oo->st.commission,
+		 oo->st.min_comm,
+		 oo->st.max_comm,
+		 oo->st.comm_ccy,
+		 oo->st.warn);
+	return;
+}
+
+static void
+handle_exec_dtl(const struct tws_trd_exec_dtl_clo_s *ed)
+{
+	OX_DEBUG("\
+* st %c  %c\n\
+  last %.4f @ %.4f  in %.4f out %.4f\n\
+  %u  %u  %u  %u\n\
+  exch %s\n\
+  a/c  %s\n\
+  time %s\n",
+		 (char)ed->er.exec_typ, (char)ed->er.ord_status,
+		 ed->er.last_qty, ed->er.last_prc,
+		 ed->er.cum_qty, ed->er.leaves_qty,
+		 ed->er.ord_id, ed->er.exec_id,
+		 ed->er.exec_ref_id, ed->er.party_id,
+		 ed->exch, ed->ac_name, ed->ex_time);
+	return;
+}
+
+
+/* callbacks coming from the tws */
+static void
+infra_cb(tws_t tws, tws_cb_t what, struct tws_infra_clo_s clo)
+{
+	switch (what) {
+	case TWS_CB_INFRA_ERROR:
+		OX_DEBUG("tws %p: oid %u  code %u: %s\n",
+			tws, clo.oid, clo.code, (const char*)clo.data);
+		break;
+	case TWS_CB_INFRA_CONN_CLOSED:
+		OX_DEBUG("tws %p: connection closed\n", tws);
+		break;
+	default:
+		OX_DEBUG("%p infra called: what %u  oid %u  code %u  data %p\n",
+			tws, what, clo.oid, clo.code, clo.data);
+		break;
+	}
+	return;
+}
+
+static void
+trd_cb(tws_t tws, tws_cb_t what, struct tws_trd_clo_s clo)
+{
+	switch (what) {
+	case TWS_CB_TRD_ORD_STATUS: {
+		const struct tws_trd_ord_status_clo_s *os = clo.data;
+		OX_DEBUG("%p trd: ord_status %u  state %c (%s)\n",
+			 tws, clo.oid, (char)os->er.ord_status, os->yheld);
+
+		OX_DEBUG("\
+* %c %c\n\
+  %.4f %.4f %.4f %.4f\n\
+  %u %u %u %u\n",
+			 (char)os->er.exec_typ, (char)os->er.ord_status,
+			 os->er.last_qty, os->er.last_prc,
+			 os->er.cum_qty, os->er.leaves_qty,
+			 os->er.ord_id, os->er.exec_id,
+			 os->er.exec_ref_id, os->er.party_id);
+
+		switch (os->er.ord_status) {
+		case EXEC_TYP_CANCELLED:
+		case EXEC_TYP_SUSPENDED:
+			handle_cancel(clo.oid);
+			break;
+		case EXEC_TYP_TRADE:
+			handle_fill(clo.oid, clo.data);
+			break;
+		case EXEC_TYP_NEW:
+		case EXEC_TYP_PENDING_NEW:
+			handle_ack(clo.oid);
+			break;
+		default:
+			/* do fuckall */
+			OX_DEBUG("unknown order status\n");
+			break;
+		}
+		break;
+	}
+	case TWS_CB_TRD_OPEN_ORD:
+		OX_DEBUG("%p trd: open_ord %u\n", tws, clo.oid);
+		handle_open_ord(clo.data);
+		break;
+	case TWS_CB_TRD_OPEN_ORD_END:
+		OX_DEBUG("%p trd: open_ord_end %u\n", tws, clo.oid);
+		break;
+	case TWS_CB_TRD_EXEC_DTL:
+		OX_DEBUG("%p trd: exec_dtl %u\n", tws, clo.oid);
+		handle_exec_dtl(clo.data);
+		break;
+	case TWS_CB_TRD_EXEC_DTL_END:
+		OX_DEBUG("%p trd: exec_dtl_end %u\n", tws, clo.oid);
+		break;
+	default:
+		break;
+	}
+	return;
+}
+
 
 static void
 beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
@@ -936,7 +1122,7 @@ detach(void)
 int
 main(int argc, char *argv[])
 {
-	struct ctx_s ctx[1];
+	struct ctx_s ctx[1] = {{0}};
 	/* args */
 	struct ox_args_info argi[1];
 	/* use the default event loop unless you have special needs */
@@ -949,8 +1135,6 @@ main(int argc, char *argv[])
 	/* our beef channels */
 	size_t nbeef = 0;
 	ev_io *beef = NULL;
-	/* tws stuff */
-	struct tws_s tws[1] = {{0}};
 	/* final result */
 	int res = 0;
 
@@ -1032,12 +1216,13 @@ main(int argc, char *argv[])
 		ev_io_start(EV_A_ beef + i + 1);
 	}
 
-	if (init_tws(tws, -1, ctx->client) < 0) {
+	if (init_tws(ctx->tws, -1, ctx->client) < 0) {
 		res = 1;
 		goto unroll;
 	}
 	/* prepare the context */
-	ctx->tws = tws;
+	ctx->tws->infra_cb = infra_cb;
+	ctx->tws->trd_cb = trd_cb;
 	ctx->tws_sock = -1;
 	/* pre and post poll hooks */
 	prp->data = ctx;

@@ -76,6 +76,7 @@
 #include "nifty.h"
 
 #include "proto-tx-ns.h"
+#include "proto-twsxml-attr.h"
 
 #if defined __INTEL_COMPILER
 # pragma warning (disable:981)
@@ -106,6 +107,7 @@ struct ctx_s {
 	const char *host;
 	uint16_t port;
 	int client;
+	const char *ac_name;
 
 	/* dynamic context */
 	int tws_sock;
@@ -596,6 +598,12 @@ static void
 send_order(tws_t tws, ox_oq_item_t i)
 {
 	tws_order_t o = tws_make_order();
+
+	/* enrich order manually */
+	if (((ctx_t)tws)->ac_name) {
+		const char *ac_name = ((ctx_t)tws)->ac_name;
+		tws_order_x(o, TX_NS_TWSXML_0_1, TX_ATTR_ACCOUNT, ac_name);
+	}
 
 	if (tws_order_sl1t(o, i->l1t) < 0) {
 		tws_free_order(o);
@@ -1169,6 +1177,9 @@ main(int argc, char *argv[])
 
 		(void)gettimeofday(now, NULL);
 		ctx->client = now->tv_sec;
+	}
+	if (argi->tws_account_given) {
+		ctx->ac_name = argi->tws_account_arg;
 	}
 
 	/* make some room for the control channel and the beef chans */

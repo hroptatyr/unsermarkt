@@ -28,3 +28,7 @@ option "tws-port" -
 option "tws-client-id" -
 	"TWS client connection id (default: current unix time)"
 	int optional
+
+option "tws-account" -
+	"TWS account name for multi-account set ups"
+	string typestr="NAME" optional

@@ -462,7 +462,7 @@ __wrapper::execDetails(int rid, const IB::Contract &c, const IB::Execution &ex)
 	clo->ex_time = ex.time.c_str();
 
 	// corresponds to FIX' ExecRpt, msgtyp 8
-	TRD_CB(tws, TWS_CB_TRD_EXEC_DTL, (tws_oid_t)rid, NULL);
+	TRD_CB(tws, TWS_CB_TRD_EXEC_DTL, (tws_oid_t)rid, clo);
 	return;
 }
 

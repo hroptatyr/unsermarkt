@@ -121,7 +121,10 @@ struct __ctx_s {
 /* all the generated stuff */
 #if defined __INTEL_COMPILER
 # pragma warning (disable:869)
-#endif	/* __INTEL_COMPILER */
+#elif defined __GNUC_STDC_INLINE__
+# define HAD_STDC_INLINE
+# undef __GNUC_STDC_INLINE__
+#endif	/* __INTEL_COMPILER || __GNUC_STDC_INLINE__ */
 
 #include "proto-twsxml-tag.c"
 #include "proto-twsxml-attr.c"
@@ -133,7 +136,10 @@ struct __ctx_s {
 
 #if defined __INTEL_COMPILER
 # pragma warning (default:869)
-#endif	/* __INTEL_COMPILER */
+#elif defined HAD_STDC_INLINE
+/* redefine the guy again */
+# define __GNUC_STDC_INLINE__
+#endif	/* __INTEL_COMPILER || __GNUC_STDC_INLINE__ */
 #endif	/* HAVE_GPERF */
 
 

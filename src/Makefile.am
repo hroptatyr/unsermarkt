@@ -348,7 +348,7 @@ endif  HAVE_TWSAPI
 
 ## our rule for gperf
 %.c: %.gperf
-	$(AM_V_GEN) $(GPERF) --language=C $< --output-file $@
+	$(AM_V_GEN) $(GPERF) $< --output-file $@
 
 # 
 # Help the developers get nice post-processed source files

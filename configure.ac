@@ -148,7 +148,7 @@ fi
 AM_CONDITIONAL([HAVE_TWSTOOLS], [test "${have_twstools}" = "yes"])
 
 ## check for twsapi
-PKG_CHECK_MODULES([twsapi], [twsapi >= 0.4.0],
+PKG_CHECK_MODULES([twsapi], [twsapi >= 0.4.1],
 	[have_twsapi="yes"], [have_twsapi="no"])
 if test "${have_twsapi}" = "yes"; then
 	## check for handshake functions in there

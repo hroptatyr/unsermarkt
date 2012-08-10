@@ -344,7 +344,7 @@ endif  HAVE_TWSAPI
 
 ## our rule for gengetopt
 %.c %.h: %.ggo
-	gengetopt -l -i $< -F $*
+	$(AM_V_GEN) gengetopt -l -i $< -F $*
 
 ## our rule for gperf
 %.c: %.gperf

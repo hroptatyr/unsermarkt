@@ -6,6 +6,7 @@ typedef struct fixml_tag_s *fixml_tag_t;
 %}
 %7bit
 %readonly-tables
+%enum
 %struct-type
 %define slot-name tag
 %define hash-function-name __fix_tid_hash

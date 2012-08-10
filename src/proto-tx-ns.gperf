@@ -6,6 +6,7 @@ typedef struct tx_nsuri_s *tx_nsuri_t;
 %}
 %7bit
 %readonly-tables
+%enum
 %struct-type
 %define slot-name nsuri
 %define hash-function-name __nsid_hash

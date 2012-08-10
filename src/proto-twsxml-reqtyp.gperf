@@ -6,6 +6,7 @@ typedef struct tws_xml_rtcell_s *tws_xml_rtcell_t;
 %}
 %7bit
 %readonly-tables
+%enum
 %struct-type
 %define slot-name rt
 %define hash-function-name __rtid_hash

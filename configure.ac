@@ -127,7 +127,7 @@ if test "${have_expat}" = "yes"; then
 fi
 AM_CONDITIONAL([HAVE_EXPAT], [test "${have_expat}" = "yes"])
 
-AC_CHECK_TOOL([GPERF], [gperf])
+AM_MISSING_PROG([GPERF], [gperf])
 AM_CONDITIONAL([HAVE_GPERF], [test -n "${GPERF}"])
 if test -n "${GPERF}"; then
 	AC_DEFINE([HAVE_GPERF], [1], [define when gperf tool is present])

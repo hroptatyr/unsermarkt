@@ -6,6 +6,7 @@ typedef struct tws_xml_tag_s *tws_xml_tag_t;
 %}
 %7bit
 %readonly-tables
+%enum
 %struct-type
 %define slot-name tag
 %define hash-function-name __tid_hash

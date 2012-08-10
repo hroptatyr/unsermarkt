@@ -5,6 +5,7 @@ typedef struct tws_xml_attr_s *tws_xml_attr_t;
 %}
 %7bit
 %readonly-tables
+%enum
 %struct-type
 %define slot-name attr
 %define hash-function-name __aid_hash

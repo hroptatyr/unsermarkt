@@ -127,7 +127,7 @@ if test "${have_expat}" = "yes"; then
 fi
 AM_CONDITIONAL([HAVE_EXPAT], [test "${have_expat}" = "yes"])
 
-AC_CHECK_TOOL([GPERF], [gperf])
+AM_MISSING_PROG([GPERF], [gperf])
 AM_CONDITIONAL([HAVE_GPERF], [test -n "${GPERF}"])
 if test -n "${GPERF}"; then
 	AC_DEFINE([HAVE_GPERF], [1], [define when gperf tool is present])
@@ -148,7 +148,7 @@ fi
 AM_CONDITIONAL([HAVE_TWSTOOLS], [test "${have_twstools}" = "yes"])
 
 ## check for twsapi
-PKG_CHECK_MODULES([twsapi], [twsapi >= 0.4.0],
+PKG_CHECK_MODULES([twsapi], [twsapi >= 0.4.1],
 	[have_twsapi="yes"], [have_twsapi="no"])
 if test "${have_twsapi}" = "yes"; then
 	## check for handshake functions in there

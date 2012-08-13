@@ -29,9 +29,9 @@ __chain_mmls(mmls_t m, size_t len, size_t cell_size)
 {
 	size_t cszp = cell_size / sizeof(void*);
 	mmls_cell_t p = m->head;
-	void *ep = (char*)m + len;
 
-	for (mmls_cell_t o = p + cszp; o < ep; p->next = o, p = o, o += cszp);
+	for (mmls_cell_t o = p + cszp, ep = (void*)((char*)m + len);
+		o < ep; p->next = o, p = o, o += cszp);
 	p->next = NULL;
 	return;
 }

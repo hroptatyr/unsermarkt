@@ -575,14 +575,14 @@ __wrapper::updatePortfolio(
 {
 	my_tws_t tws = this->ctx;
 	const char *ac = acct_name.c_str();
-	const char *sym = tws_cont_nick((tws_cont_t)&c);
 	struct pf_pos_s p;
 
 	p.cont = (void*)&c;
 	p.lqty = pos > 0 ? pos : 0.0;
 	p.sqty = pos < 0 ? -pos : 0.0;
 
-	WRP_DEBUG("acct %s: portfolio %s -> %d", ac, sym, pos);
+	WRP_DEBUG("acct %s: portfolio %s -> %d",
+		ac, tws_cont_nick((tws_cont_t)&c), pos);
 	fix_pos_rpt(tws->pq, ac, p);
 	return;
 }

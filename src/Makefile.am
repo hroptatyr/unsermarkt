@@ -171,7 +171,7 @@ endif  ## HAVE_TWSTOOLS
 
 if HAVE_TWSAPI
 if HAVE_LIBEV
-noinst_PROGRAMS += ox-tws
+bin_PROGRAMS += ox-tws
 EXTRA_ox_tws_SOURCES =
 ox_tws_SOURCES = ox-tws.c ox-tws-clo.ggo
 ox_tws_SOURCES += iso4217.c iso4217.h
@@ -189,7 +189,7 @@ ox_tws_LDFLAGS += $(libev_LIBS)
 ox_tws_LDADD = libtwscapi.la
 ox_tws_LINK = $(LINK) $(ox_tws_LDFLAGS)
 
-noinst_PROGRAMS += pf-tws
+bin_PROGRAMS += pf-tws
 EXTRA_pf_tws_SOURCES =
 pf_tws_SOURCES = pf-tws.c pf-tws-clo.ggo
 pf_tws_SOURCES += iso4217.c iso4217.h
@@ -209,7 +209,7 @@ pf_tws_LINK = $(LINK) $(pf_tws_LDFLAGS)
 
 if HAVE_EXPAT
 if HAVE_GPERF
-noinst_PROGRAMS += quo-tws
+bin_PROGRAMS += quo-tws
 EXTRA_quo_tws_SOURCES =
 quo_tws_SOURCES = quo-tws.c quo-tws-clo.ggo
 quo_tws_SOURCES += iso4217.c iso4217.h
@@ -300,7 +300,7 @@ ccy_graph_SOURCES += iso4217.c iso4217.h
 ccy_graph_CPPFLAGS = $(AM_CPPFLAGS) -DSTANDALONE
 
 if HAVE_TWSAPI
-noinst_LTLIBRARIES += libtwscapi.la
+lib_LTLIBRARIES += libtwscapi.la
 libtwscapi_la_SOURCES = gen-tws.c gen-tws.h
 libtwscapi_la_SOURCES += iso4217.c iso4217.h
 libtwscapi_la_SOURCES += gen-tws-wrapper.cpp

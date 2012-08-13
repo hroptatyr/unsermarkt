@@ -312,7 +312,7 @@ prune_clis(void)
 		assert(consec <= i);
 		if (consec && i <= ncli) {
 			/* shrink */
-			size_t nmv = CLI(i) - CLI(i - consec);
+			size_t nmv = ncli - i;
 
 			UMQD_DEBUG("condensing %zu/%zu clis\n", nmv, ncli);
 			memcpy(CLI(i - consec), CLI(i), nmv * sizeof(*cli));

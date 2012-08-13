@@ -568,7 +568,7 @@ del_cake:
 	return;
 }
 
-static inline size_t
+static size_t
 mmap_size(size_t nelem, size_t elemsz)
 {
 	static size_t pgsz = 0;

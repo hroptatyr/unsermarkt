@@ -585,15 +585,10 @@ sax_eo_TWSXML_elt(__ctx_t ctx, const char *elem)
 		/* top-levels */
 	case TX_TAG_TWSXML:
 		break;
-	case TX_TAG_REQUEST: {
-		void *req = pop_state(ctx);
-
-		TX_DEBUG("/req %p\n", req);
-		break;
-	}
+	case TX_TAG_REQUEST:
 	case TX_TAG_QUERY:
 	case TX_TAG_RESPONSE:
-		pop_state(ctx);
+		(void)pop_state(ctx);
 		break;
 
 	case TX_TAG_CONTRACT:

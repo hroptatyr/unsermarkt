@@ -483,10 +483,17 @@ load_inventory(uschi_t h, agtid_t a, insid_t i)
 	sqlite3_bind_int(h->linvent, 2, i);
 	switch (sqlite3_step(h->linvent)) {
 	case SQLITE_ROW:
-		res->lpos.mant = sqlite3_column_int64(h->linvent, 0);
+#if defined M62_SET_MANT
+		M62_SET_MANT(res->lpos, sqlite3_column_int64(h->linvent, 0));
+		M62_SET_EXPO(res->lpos, 1);
+		M62_SET_MANT(res->spos, sqlite3_column_int64(h->linvent, 1));
+		M62_SET_EXPO(res->spos, 1);
+#else  /* !M62_SET_MANT */
+		res->lpos.mant = sqlite3_column_int64(h->linvent, 0));
 		res->lpos.expo = 1;
 		res->spos.mant = sqlite3_column_int64(h->linvent, 1);
 		res->spos.expo = 1;
+#endif	/* M62_SET_MANT */
 		break;
 	case SQLITE_MISUSE:
 		abort();
@@ -502,8 +509,13 @@ push_inventory(uschi_t h, agtid_t a, insid_t i, inv_t pf)
 {
 	sqlite3_bind_int(h->iinvent, 1, a);
 	sqlite3_bind_int(h->iinvent, 2, i);
+#if defined M62_MANT
+	sqlite3_bind_int64(h->iinvent, 3, M62_MANT(pf->lpos));
+	sqlite3_bind_int64(h->iinvent, 4, M62_MANT(pf->spos));
+#else  /* !M62_MANT */
 	sqlite3_bind_int64(h->iinvent, 3, pf->lpos.mant);
 	sqlite3_bind_int64(h->iinvent, 4, pf->spos.mant);
+#endif	/* M62_MANT */
 	sqlite3_step(h->iinvent);
 	sqlite3_reset(h->iinvent);
 	return;

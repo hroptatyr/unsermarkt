@@ -575,7 +575,7 @@ work(const struct xmpl_s *ctx)
 
 
 int
-main(int argc, char *argv[])
+main(int UNUSED(argc), char *UNUSED(argv[]))
 {
 	short unsigned int port = 4942;
 	struct xmpl_s ctx[1];

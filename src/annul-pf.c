@@ -325,7 +325,7 @@ pr_pos_rpt(char *buf, size_t bsz)
 	for (char *p = buf, *ep = buf + bsz;
 	     p && p < ep && (p = find_fix_eofld(p, fix_pos_rpt));
 	     p = find_fix_eofld(p, fix_chksum)) {
-		__pos_t pos;
+		__pos_t pos = NULL;
 		size_t tmp;
 		char *sym;
 		char *lqty;

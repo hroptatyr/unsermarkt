@@ -479,10 +479,20 @@ stamp_match(umm_t m)
 	return;
 }
 
+static __attribute__((pure)) long unsigned int
+const_strtoul(const char *str, const char **rp, int base)
+{
+	char *p;
+	long unsigned int res = strtoul(str, &p, base);
+
+	*rp = p;
+	return res;
+}
+
 static int
 handle_ORDER(int fd, agtid_t a, char *msg, size_t msglen)
 {
-	char *cursor;
+	const char *cursor;
 	char *tmp;
 	struct umo_s o[1] = {0};
 	oid_t oid;
@@ -497,7 +507,7 @@ handle_ORDER(int fd, agtid_t a, char *msg, size_t msglen)
 		*tmp = '\0';
 	}
 
-	if ((o->instr_id = strtoul(cursor, &cursor, 10)) != 0 ||
+	if ((o->instr_id = const_strtoul(cursor, &cursor, 10)) != 0 ||
 	    (o->instr_id = uschi_get_instr(h, cursor)) != 0) {
 		/* position the cursor correctly */
 		cursor = tmp + 1;
@@ -530,7 +540,7 @@ handle_ORDER(int fd, agtid_t a, char *msg, size_t msglen)
 	for (; *cursor && (*cursor == ' ' || *cursor == '\t'); cursor++);
 
 	/* must be quantity */
-	o->q = strtoul(cursor, &cursor, 10);
+	o->q = const_strtoul(cursor, &cursor, 10);
 
 	/* zap to next thing beyond that space */
 	for (; *cursor && (*cursor == ' ' || *cursor == '\t'); cursor++);
@@ -543,7 +553,7 @@ handle_ORDER(int fd, agtid_t a, char *msg, size_t msglen)
 		/* market to limit order, what a shame */
 		o->p.v = 0;
 		o->type = OTYPE_MTL;
-	} else if ((o->p = ffff_m30_get_s((const char**)&cursor)).v != 0) {
+	} else if ((o->p = ffff_m30_get_s(&cursor)).v != 0) {
 		/* limit order, p should point to the price now */
 		o->type = OTYPE_LIM;
 	} else {

@@ -128,7 +128,7 @@ find_instr_by_id(uschi_t h, insid_t id)
 }
 
 static uschi_i_t
-find_instr_by_sym(uschi_t h, char *sym)
+find_instr_by_sym(uschi_t h, const char *sym)
 {
 	for (uschi_i_t i = h->i->next; i; i = i->next) {
 		if (strcmp(i->i->sym, sym) == 0) {
@@ -321,7 +321,7 @@ free_uschi(uschi_t h)
 
 /* agent opers */
 agtid_t
-uschi_add_agent(uschi_t h, char *nick)
+uschi_add_agent(uschi_t h, const char *nick)
 {
 /* new agent gets 1 million UMDs */
 #if defined USE_SQLITE
@@ -348,7 +348,7 @@ uschi_add_agent(uschi_t h, char *nick)
 }
 
 agtid_t
-uschi_get_agent(uschi_t h, char *nick)
+uschi_get_agent(uschi_t h, const char *nick)
 {
 	agtid_t res = 0;
 #if defined USE_SQLITE
@@ -365,7 +365,7 @@ uschi_get_agent(uschi_t h, char *nick)
 }
 
 insid_t
-uschi_get_instr(uschi_t h, char *sym)
+uschi_get_instr(uschi_t h, const char *sym)
 {
 	uschi_i_t i;
 	insid_t res = 0;
@@ -428,7 +428,7 @@ uschi_get_instr_ins(uschi_t h, insid_t id)
 
 /* instr opers */
 insid_t
-uschi_add_instr(uschi_t h, char *sym, char *descr)
+uschi_add_instr(uschi_t h, const char *sym, const char *descr)
 {
 /* new agent gets 1 million UMDs */
 #if defined USE_SQLITE

@@ -15,6 +15,7 @@
 #include <uterus/m62.h>
 /* very abstract list provider */
 #include "mmls.c"
+#include "nifty.h"
 
 #define USE_SQLITE	(1)
 #define INITIAL_NAGT	(256)
@@ -24,19 +25,6 @@
 # include <sqlite3.h>
 # include <stdio.h>
 #endif	/* USE_SQLITE */
-
-#if !defined LIKELY
-# define LIKELY(_x)	__builtin_expect((_x), 1)
-#endif
-#if !defined UNLIKELY
-# define UNLIKELY(_x)	__builtin_expect((_x), 0)
-#endif	/* !UNLIKELY */
-#if !defined UNUSED
-# define UNUSED(_x)	__attribute__((unused)) _x
-#endif	/* !UNUSED */
-
-#define xnew(_x)	(malloc(sizeof(_x)))
-#define xfree(_x)	(free(_x))
 
 /* agent structure within uschi */
 typedef struct agt_s *agt_t;

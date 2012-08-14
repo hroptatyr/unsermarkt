@@ -317,7 +317,7 @@ libtwscapi_la_SOURCES += proto-fixml-attr.gperf proto-fixml-attr.h
 libtwscapi_la_SOURCES +=
 libtwscapi_la_CPPFLAGS = $(AM_CPPFLAGS)
 libtwscapi_la_CPPFLAGS += $(twsapi_CFLAGS)
-libtwscapi_la_LDFLAGS = $(AM_LDFLAGS) -rpath /none
+libtwscapi_la_LDFLAGS = $(AM_LDFLAGS)
 libtwscapi_la_LDFLAGS += $(twsapi_LIBS) -lstdc++
 if HAVE_EXPAT
 libtwscapi_la_CPPFLAGS += $(expat_CFLAGS)

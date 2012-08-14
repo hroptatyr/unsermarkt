@@ -15,6 +15,7 @@
 #include <uterus/m62.h>
 /* very abstract list provider */
 #include "mmls.c"
+#include "nifty.h"
 
 #define USE_SQLITE	(1)
 #define INITIAL_NAGT	(256)
@@ -24,19 +25,6 @@
 # include <sqlite3.h>
 # include <stdio.h>
 #endif	/* USE_SQLITE */
-
-#if !defined LIKELY
-# define LIKELY(_x)	__builtin_expect((_x), 1)
-#endif
-#if !defined UNLIKELY
-# define UNLIKELY(_x)	__builtin_expect((_x), 0)
-#endif	/* !UNLIKELY */
-#if !defined UNUSED
-# define UNUSED(_x)	__attribute__((unused)) _x
-#endif	/* !UNUSED */
-
-#define xnew(_x)	(malloc(sizeof(_x)))
-#define xfree(_x)	(free(_x))
 
 /* agent structure within uschi */
 typedef struct agt_s *agt_t;
@@ -128,7 +116,7 @@ find_instr_by_id(uschi_t h, insid_t id)
 }
 
 static uschi_i_t
-find_instr_by_sym(uschi_t h, char *sym)
+find_instr_by_sym(uschi_t h, const char *sym)
 {
 	for (uschi_i_t i = h->i->next; i; i = i->next) {
 		if (strcmp(i->i->sym, sym) == 0) {
@@ -321,7 +309,7 @@ free_uschi(uschi_t h)
 
 /* agent opers */
 agtid_t
-uschi_add_agent(uschi_t h, char *nick)
+uschi_add_agent(uschi_t h, const char *nick)
 {
 /* new agent gets 1 million UMDs */
 #if defined USE_SQLITE
@@ -348,7 +336,7 @@ uschi_add_agent(uschi_t h, char *nick)
 }
 
 agtid_t
-uschi_get_agent(uschi_t h, char *nick)
+uschi_get_agent(uschi_t h, const char *nick)
 {
 	agtid_t res = 0;
 #if defined USE_SQLITE
@@ -365,7 +353,7 @@ uschi_get_agent(uschi_t h, char *nick)
 }
 
 insid_t
-uschi_get_instr(uschi_t h, char *sym)
+uschi_get_instr(uschi_t h, const char *sym)
 {
 	uschi_i_t i;
 	insid_t res = 0;
@@ -428,7 +416,7 @@ uschi_get_instr_ins(uschi_t h, insid_t id)
 
 /* instr opers */
 insid_t
-uschi_add_instr(uschi_t h, char *sym, char *descr)
+uschi_add_instr(uschi_t h, const char *sym, const char *descr)
 {
 /* new agent gets 1 million UMDs */
 #if defined USE_SQLITE
@@ -598,7 +586,7 @@ uschi_add_match(uschi_t h, umm_t m)
 #include <stdio.h>
 
 int
-main(int argc, char *argv[])
+main(int UNUSED(argc), char *UNUSED(argv[]))
 {
 	uschi_t h;
 	agtid_t a1, a2;

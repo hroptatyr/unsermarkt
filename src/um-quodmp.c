@@ -314,9 +314,9 @@ prune_clis(void)
 			/* shrink */
 			size_t nmv = ncli - i;
 
-			UMQD_DEBUG("condensing %zu/%zu clis\n", nmv, ncli);
+			UMQD_DEBUG("condensing %zu/%zu clis\n", consec, ncli);
 			memcpy(CLI(i - consec), CLI(i), nmv * sizeof(*cli));
-			nu_ncli -= nmv;
+			nu_ncli -= consec;
 		} else if (consec) {
 			UMQD_DEBUG("condensing %zu/%zu clis\n", consec, ncli);
 			nu_ncli -= consec;

@@ -586,7 +586,7 @@ uschi_add_match(uschi_t h, umm_t m)
 #include <stdio.h>
 
 int
-main(int argc, char *argv[])
+main(int UNUSED(argc), char *UNUSED(argv[]))
 {
 	uschi_t h;
 	agtid_t a1, a2;

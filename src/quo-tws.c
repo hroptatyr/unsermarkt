@@ -280,6 +280,31 @@ ud_chan_send_ser_all(udpc_seria_t ser)
 	return;
 }
 
+static int
+brag(udpc_seria_t ser, uint16_t idx)
+{
+	const char *sym = ute_idx2sym(uu, idx);
+	size_t len;
+
+	len = strlen(sym);
+
+	if (UNLIKELY(!udpc_seria_fits_dsm_p(ser, sym, tot))) {
+		ud_packet_t pkt = {UDPC_PKTLEN, /*hack*/ser->msg - UDPC_HDRLEN};
+		ud_pkt_no_t pno = udpc_pkt_pno(pkt);
+
+		ud_chan_send_ser_all(ser);
+
+		/* hack hack hack
+		 * reset the packet */
+		udpc_make_pkt(pkt, 0, pno + 2, UDPC_PKT_RPL(UTE_QMETA));
+		ser->msgoff = 0;
+	}
+	/* add this guy */
+	udpc_seria_add_ui16(ser, idx);
+	udpc_seria_add_str(ser, sym, len);
+	return 0;
+}
+
 static void
 flush_queue(tws_t UNUSED(tws))
 {
@@ -338,16 +363,7 @@ flush_queue(tws_t UNUSED(tws))
 
 		/* i think it's worth checking when we last disseminated this */
 		if (now->tv_sec - subs.last_dsm[tblidx - 1] >= BRAG_INTV) {
-			const char *sym = ute_idx2sym(uu, tblidx);
-			size_t len = len = strlen(sym);
-
-			if (UNLIKELY(!udpc_seria_fits_dsm_p(ser, sym, len))) {
-				ud_chan_send_ser_all(ser);
-				MAKE_DSM_PKT;
-			}
-			/* add this guy */
-			udpc_seria_add_ui16(ser, tblidx);
-			udpc_seria_add_str(ser, sym, len);
+			brag(ser, tblidx);
 			subs.last_dsm[tblidx - 1] = now->tv_sec;
 		}
 	}

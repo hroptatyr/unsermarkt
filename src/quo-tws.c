@@ -75,6 +75,7 @@
 #include "nifty.h"
 #include "strops.h"
 #include "gq.h"
+#include "ud-sock.h"
 
 #include "proto-twsxml-reqtyp.h"
 
@@ -213,6 +214,62 @@ static inline unsigned int
 q30_sl1t_typ(q30_t q)
 {
 	return q30_typ(q) / 2 + SL1T_TTF_BID;
+}
+
+
+/* networking */
+static int
+make_dccp(void)
+{
+	int s;
+
+	if ((s = socket(PF_INET6, SOCK_DCCP, IPPROTO_DCCP)) < 0) {
+		return s;
+	}
+	/* mark the address as reusable */
+	setsock_reuseaddr(s);
+	/* impose a sockopt service, we just use 1 for now */
+	set_dccp_service(s, 1);
+	/* make a timeout for the accept call below */
+	setsock_rcvtimeo(s, 1000);
+	/* make socket non blocking */
+	setsock_nonblock(s);
+	/* turn off nagle'ing of data */
+	setsock_nodelay(s);
+	return s;
+}
+
+static int
+make_tcp(void)
+{
+	int s;
+
+	if ((s = socket(PF_INET6, SOCK_STREAM, IPPROTO_TCP)) < 0) {
+		return s;
+	}
+	return s;
+}
+
+static int
+sock_listener(int s, short unsigned int port)
+{
+	union ud_sockaddr_u sa = {
+		.sa6 = {
+			.sin6_family = AF_INET6,
+			.sin6_addr = in6addr_any,
+			.sin6_port = htons(port),
+		},
+	};
+
+	if (s < 0) {
+		return s;
+	}
+
+	if (bind(s, &sa.sa, sizeof(sa)) < 0) {
+		return -1;
+	}
+
+	return listen(s, MAX_DCCP_CONNECTION_BACK_LOG);
 }
 
 
@@ -584,6 +641,65 @@ del_cake:
 	return;
 }
 
+/* fdfs */
+static ev_io conns[8];
+static size_t nconns = 0;
+
+static void
+ev_io_shut(EV_P_ ev_io *w)
+{
+	int fd = w->fd;
+
+	ev_io_stop(EV_A_ w);
+	shutdown(fd, SHUT_RDWR);
+	close(fd);
+	w->fd = -1;
+	return;
+}
+
+static void
+dccp_data_cb(EV_P_ ev_io *w, int UNUSED(re))
+{
+	char buf[4096];
+	ssize_t nrd;
+
+	if ((nrd = read(w->fd, buf, sizeof(buf))) < 0) {
+		goto clo;
+	}
+
+	return;
+
+clo:
+	ev_io_shut(EV_A_ w);
+	return;
+}
+
+static void
+dccp_cb(EV_P_ ev_io *w, int UNUSED(re))
+{
+	union ud_sockaddr_u sa;
+	socklen_t sasz = sizeof(sa);
+	int s;
+
+	QUO_DEBUG("interesting activity on %d\n", w->fd);
+
+	if ((s = accept(w->fd, &sa.sa, &sasz)) < 0) {
+		return;
+	}
+
+	if (conns[nconns].fd > 0) {
+		ev_io_shut(EV_A_ conns + nconns);
+	}
+
+	ev_io_init(conns + nconns, dccp_data_cb, s, EV_READ);
+	conns[nconns].data = NULL;
+	ev_io_start(EV_A_ conns + nconns);
+	if (++nconns >= countof(conns)) {
+		nconns = 0;
+	}
+	return;
+}
+
 static size_t
 mmap_size(size_t nelem, size_t elemsz)
 {
@@ -888,6 +1004,7 @@ main(int argc, char *argv[])
 	ev_signal sighup_watcher[1];
 	ev_signal sigterm_watcher[1];
 	ev_io ctrl[1];
+	ev_io dccp[2];
 	ev_prepare prp[1];
 	/* final result */
 	int res = 0;
@@ -949,6 +1066,39 @@ main(int argc, char *argv[])
 		ev_io_start(EV_A_ ctrl);
 	}
 
+	/* make a channel for http/dccp requests */
+	{
+		int s;
+
+		if ((s = make_dccp()) < 0) {
+			/* just to indicate we have no socket */
+			dccp[0].fd = -1;
+		} else if (sock_listener(s, 9090) < 0) {
+			/* grrr, whats wrong now */
+			close(s);
+			dccp[0].fd = -1;
+		} else {
+			/* everything's brilliant */
+			ev_io_init(dccp, dccp_cb, s, EV_READ);
+			ev_io_start(EV_A_ dccp);
+		}
+
+		if (countof(dccp) < 2) {
+			;
+		} else if ((s = make_tcp()) < 0) {
+			/* just to indicate we have no socket */
+			dccp[1].fd = -1;
+		} else if (sock_listener(s, 9090) < 0) {
+			/* bugger */
+			close(s);
+			dccp[1].fd = -1;
+		} else {
+			/* yay */
+			ev_io_init(dccp + 1, dccp_cb, s, EV_READ);
+			ev_io_start(EV_A_ dccp + 1);
+		}
+	}
+
 	/* go through all beef channels */
 	if (argi->beef_given) {
 		union __chan_u x = {ud_chan_init(argi->beef_arg)};
@@ -1004,6 +1154,7 @@ main(int argc, char *argv[])
 	fini_gq(qq.q);
 	ute_free(uu);
 
+unroll:
 	/* detaching beef and ctrl channels */
 	if (argi->beef_given) {
 		ud_chan_t c = beef->data;
@@ -1018,7 +1169,17 @@ main(int argc, char *argv[])
 		ud_chan_fini(c);
 	}
 
-unroll:
+	/* detach http/dccp */
+	for (size_t i = 0; i < countof(dccp); i++) {
+		int s = dccp[i].fd;
+
+		if ((s = dccp[0].fd) > 0) {
+			ev_io_stop(EV_A_ dccp + i);
+			shutdown(s, SHUT_RDWR);
+			close(s);
+		}
+	}
+
 	/* destroy the default evloop */
 	ev_default_destroy();
 out:

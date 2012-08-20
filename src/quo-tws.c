@@ -340,10 +340,11 @@ ud_chan_send_ser_all(udpc_seria_t ser)
 static int
 brag(udpc_seria_t ser, uint16_t idx)
 {
+	static char uri[] = "dccp://localhost:00000/secdef?idx=00000";
 	const char *sym = ute_idx2sym(uu, idx);
-	size_t len;
+	size_t len, tot;
 
-	len = strlen(sym);
+	tot = (len = strlen(sym)) + sizeof(uri);
 
 	if (UNLIKELY(!udpc_seria_fits_dsm_p(ser, sym, tot))) {
 		ud_packet_t pkt = {UDPC_PKTLEN, /*hack*/ser->msg - UDPC_HDRLEN};
@@ -359,6 +360,11 @@ brag(udpc_seria_t ser, uint16_t idx)
 	/* add this guy */
 	udpc_seria_add_ui16(ser, idx);
 	udpc_seria_add_str(ser, sym, len);
+	/* put stuff in our uri */
+	len = snprintf(
+		uri, sizeof(uri),
+		"dccp://%s:%hu/secdef?idx=%hu", "quant", 8080, idx);
+	udpc_seria_add_str(ser, uri, len);
 	return 0;
 }
 
@@ -427,6 +433,82 @@ flush_queue(tws_t UNUSED(tws))
 	ud_chan_send_ser_all(ser);
 	ud_chan_send_ser_all(ser + 1);
 	return;
+}
+
+
+/* web services */
+typedef enum {
+	WEBSVC_F_UNK,
+	WEBSVC_F_SECDEF,
+} websvc_f_t;
+
+struct websvc_s {
+	websvc_f_t ty;
+
+	union {
+		struct {
+			uint16_t idx;
+		} secdef;
+	};
+};
+
+static websvc_f_t
+websvc_from_request(struct websvc_s *tgt, const char *req, size_t UNUSED(len))
+{
+	static const char get_slash[] = "GET /";
+	const char *p;
+
+	if ((p = strstr(req, get_slash))) {
+		if (strncmp(p += sizeof(get_slash) - 1, "secdef?", 7) == 0) {
+			const char *q;
+
+			tgt->ty = WEBSVC_F_SECDEF;
+			if ((q = strstr(p += 7, "idx="))) {
+				/* let's see what idx they want */
+				long unsigned int idx = strtoul(q, NULL, 10);
+
+				tgt->secdef.idx = (uint16_t)idx;
+			}
+		}
+		return tgt->ty;
+	}
+	return WEBSVC_F_UNK;
+}
+
+static size_t
+websvc_secdef(char *restrict tgt, size_t tsz, struct websvc_s sd)
+{
+	static char hdr[] = "\
+<?xml version=\"1.0\"?>\n\
+<FIXML xmlns=\"http://www.fixprotocol.org/FIXML-5-0-SP2\"/>\n\
+";
+	static char ftr[] = "\
+</FIXML>\n\
+";
+	char  *restrict p = tgt;
+
+	/* always start out with the hdr,
+	 * which for efficiency contains the empty case already */
+	strncpy(p, hdr, tsz);
+
+	if (tsz < sizeof(hdr)) {
+		/* completely fucked */
+		return 0;
+	} else if (sd.secdef.idx > subs.nsubs) {
+		/* weird */
+		return sizeof(hdr) - 1;
+	}
+	/* modify the contents so far */
+	tgt[sizeof(hdr) - 4] = '>';
+	tgt[sizeof(hdr) - 3] = '\n';
+	p += sizeof(hdr) - 1 /* the / */ - 1/* the \0 */;
+
+	/* and the footer now */
+	if (p + sizeof(ftr) < tgt + tsz) {
+		strncpy(p, ftr, tsz - (p - tgt));
+		p += sizeof(ftr) - 1;
+	}
+	return p - tgt;
 }
 
 
@@ -660,13 +742,48 @@ ev_io_shut(EV_P_ ev_io *w)
 static void
 dccp_data_cb(EV_P_ ev_io *w, int UNUSED(re))
 {
+	/* the final \n will be subst'd later on */
+	static const char hdr[] = "\
+HTTP/1.1 200 OK\r\n\
+Server: quo-tws\r\n\
+Content-Length: % 5zu\r\n\
+Content-Type: text/xml\r\n\
+\r";
+	/* hdr is a format string and hdr_len is as wide as the result printed
+	 * later on */
+	static const size_t hdr_len = sizeof(hdr);
 	char buf[4096];
+	char *rsp = buf + hdr_len;
+	const size_t rsp_len = sizeof(buf) - hdr_len;
 	ssize_t nrd;
+	size_t cont_len;
+	struct websvc_s voodoo;
 
 	if ((nrd = read(w->fd, buf, sizeof(buf))) < 0) {
 		goto clo;
+	} else if ((size_t)nrd < sizeof(buf)) {
+		buf[nrd] = '\0';
+	} else {
+		/* uh oh, mega request, wtf? */
+		buf[sizeof(buf) - 1] = '\0';
 	}
 
+	switch (websvc_from_request(&voodoo, buf, nrd)) {
+	default:
+	case WEBSVC_F_UNK:
+		goto clo;
+
+	case WEBSVC_F_SECDEF:
+		cont_len = websvc_secdef(rsp, rsp_len, voodoo);
+		break;
+	}
+
+	/* prepare the header */
+	(void)snprintf(buf, sizeof(buf), hdr, cont_len);
+	buf[hdr_len] = '\n';
+
+	/* and append the actual contents */
+	send(w->fd, buf, hdr_len + cont_len, 0);
 	return;
 
 clo:

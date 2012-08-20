@@ -214,6 +214,7 @@ EXTRA_quo_tws_SOURCES =
 quo_tws_SOURCES = quo-tws.c quo-tws-clo.ggo
 quo_tws_SOURCES += iso4217.c iso4217.h
 quo_tws_SOURCES += strops.h
+quo_tws_SOURCES += ud-sock.h
 quo_tws_SOURCES += quo-tws-private.h
 quo_tws_SOURCES += wrp-debug.h
 quo_tws_SOURCES += prchunk.c prchunk.h

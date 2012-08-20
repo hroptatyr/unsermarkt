@@ -75,6 +75,7 @@
 #include "nifty.h"
 #include "strops.h"
 #include "gq.h"
+#include "ud-sock.h"
 
 #include "proto-twsxml-reqtyp.h"
 
@@ -216,6 +217,62 @@ q30_sl1t_typ(q30_t q)
 }
 
 
+/* networking */
+static int
+make_dccp(void)
+{
+	int s;
+
+	if ((s = socket(PF_INET6, SOCK_DCCP, IPPROTO_DCCP)) < 0) {
+		return s;
+	}
+	/* mark the address as reusable */
+	setsock_reuseaddr(s);
+	/* impose a sockopt service, we just use 1 for now */
+	set_dccp_service(s, 1);
+	/* make a timeout for the accept call below */
+	setsock_rcvtimeo(s, 1000);
+	/* make socket non blocking */
+	setsock_nonblock(s);
+	/* turn off nagle'ing of data */
+	setsock_nodelay(s);
+	return s;
+}
+
+static int
+make_tcp(void)
+{
+	int s;
+
+	if ((s = socket(PF_INET6, SOCK_STREAM, IPPROTO_TCP)) < 0) {
+		return s;
+	}
+	return s;
+}
+
+static int
+sock_listener(int s, short unsigned int port)
+{
+	union ud_sockaddr_u sa = {
+		.sa6 = {
+			.sin6_family = AF_INET6,
+			.sin6_addr = in6addr_any,
+			.sin6_port = htons(port),
+		},
+	};
+
+	if (s < 0) {
+		return s;
+	}
+
+	if (bind(s, &sa.sa, sizeof(sa)) < 0) {
+		return -1;
+	}
+
+	return listen(s, MAX_DCCP_CONNECTION_BACK_LOG);
+}
+
+
 /* the actual core, ud and fix stuff */
 #define POS_RPT		(0x757a)
 #define POS_RPT_RPL	(UDPC_PKT_RPL(POS_RPT))
@@ -280,6 +337,37 @@ ud_chan_send_ser_all(udpc_seria_t ser)
 	return;
 }
 
+static int
+brag(udpc_seria_t ser, uint16_t idx)
+{
+	static char uri[] = "dccp://localhost:00000/secdef?idx=00000";
+	const char *sym = ute_idx2sym(uu, idx);
+	size_t len, tot;
+
+	tot = (len = strlen(sym)) + sizeof(uri);
+
+	if (UNLIKELY(!udpc_seria_fits_dsm_p(ser, sym, tot))) {
+		ud_packet_t pkt = {UDPC_PKTLEN, /*hack*/ser->msg - UDPC_HDRLEN};
+		ud_pkt_no_t pno = udpc_pkt_pno(pkt);
+
+		ud_chan_send_ser_all(ser);
+
+		/* hack hack hack
+		 * reset the packet */
+		udpc_make_pkt(pkt, 0, pno + 2, UDPC_PKT_RPL(UTE_QMETA));
+		ser->msgoff = 0;
+	}
+	/* add this guy */
+	udpc_seria_add_ui16(ser, idx);
+	udpc_seria_add_str(ser, sym, len);
+	/* put stuff in our uri */
+	len = snprintf(
+		uri, sizeof(uri),
+		"dccp://%s:%hu/secdef?idx=%hu", "quant", 8080, idx);
+	udpc_seria_add_str(ser, uri, len);
+	return 0;
+}
+
 static void
 flush_queue(tws_t UNUSED(tws))
 {
@@ -338,22 +426,89 @@ flush_queue(tws_t UNUSED(tws))
 
 		/* i think it's worth checking when we last disseminated this */
 		if (now->tv_sec - subs.last_dsm[tblidx - 1] >= BRAG_INTV) {
-			const char *sym = ute_idx2sym(uu, tblidx);
-			size_t len = len = strlen(sym);
-
-			if (UNLIKELY(!udpc_seria_fits_dsm_p(ser, sym, len))) {
-				ud_chan_send_ser_all(ser);
-				MAKE_DSM_PKT;
-			}
-			/* add this guy */
-			udpc_seria_add_ui16(ser, tblidx);
-			udpc_seria_add_str(ser, sym, len);
+			brag(ser, tblidx);
 			subs.last_dsm[tblidx - 1] = now->tv_sec;
 		}
 	}
 	ud_chan_send_ser_all(ser);
 	ud_chan_send_ser_all(ser + 1);
 	return;
+}
+
+
+/* web services */
+typedef enum {
+	WEBSVC_F_UNK,
+	WEBSVC_F_SECDEF,
+} websvc_f_t;
+
+struct websvc_s {
+	websvc_f_t ty;
+
+	union {
+		struct {
+			uint16_t idx;
+		} secdef;
+	};
+};
+
+static websvc_f_t
+websvc_from_request(struct websvc_s *tgt, const char *req, size_t UNUSED(len))
+{
+	static const char get_slash[] = "GET /";
+	const char *p;
+
+	if ((p = strstr(req, get_slash))) {
+		if (strncmp(p += sizeof(get_slash) - 1, "secdef?", 7) == 0) {
+			const char *q;
+
+			tgt->ty = WEBSVC_F_SECDEF;
+			if ((q = strstr(p += 7, "idx="))) {
+				/* let's see what idx they want */
+				long unsigned int idx = strtoul(q, NULL, 10);
+
+				tgt->secdef.idx = (uint16_t)idx;
+			}
+		}
+		return tgt->ty;
+	}
+	return WEBSVC_F_UNK;
+}
+
+static size_t
+websvc_secdef(char *restrict tgt, size_t tsz, struct websvc_s sd)
+{
+	static char hdr[] = "\
+<?xml version=\"1.0\"?>\n\
+<FIXML xmlns=\"http://www.fixprotocol.org/FIXML-5-0-SP2\"/>\n\
+";
+	static char ftr[] = "\
+</FIXML>\n\
+";
+	char  *restrict p = tgt;
+
+	/* always start out with the hdr,
+	 * which for efficiency contains the empty case already */
+	strncpy(p, hdr, tsz);
+
+	if (tsz < sizeof(hdr)) {
+		/* completely fucked */
+		return 0;
+	} else if (sd.secdef.idx > subs.nsubs) {
+		/* weird */
+		return sizeof(hdr) - 1;
+	}
+	/* modify the contents so far */
+	tgt[sizeof(hdr) - 4] = '>';
+	tgt[sizeof(hdr) - 3] = '\n';
+	p += sizeof(hdr) - 1 /* the / */ - 1/* the \0 */;
+
+	/* and the footer now */
+	if (p + sizeof(ftr) < tgt + tsz) {
+		strncpy(p, ftr, tsz - (p - tgt));
+		p += sizeof(ftr) - 1;
+	}
+	return p - tgt;
 }
 
 
@@ -565,6 +720,100 @@ del_cake:
 	w->fd = -1;
 	w->data = NULL;
 	QUO_DEBUG("cake stopped\n");
+	return;
+}
+
+/* fdfs */
+static ev_io conns[8];
+static size_t nconns = 0;
+
+static void
+ev_io_shut(EV_P_ ev_io *w)
+{
+	int fd = w->fd;
+
+	ev_io_stop(EV_A_ w);
+	shutdown(fd, SHUT_RDWR);
+	close(fd);
+	w->fd = -1;
+	return;
+}
+
+static void
+dccp_data_cb(EV_P_ ev_io *w, int UNUSED(re))
+{
+	/* the final \n will be subst'd later on */
+	static const char hdr[] = "\
+HTTP/1.1 200 OK\r\n\
+Server: quo-tws\r\n\
+Content-Length: % 5zu\r\n\
+Content-Type: text/xml\r\n\
+\r";
+	/* hdr is a format string and hdr_len is as wide as the result printed
+	 * later on */
+	static const size_t hdr_len = sizeof(hdr);
+	char buf[4096];
+	char *rsp = buf + hdr_len;
+	const size_t rsp_len = sizeof(buf) - hdr_len;
+	ssize_t nrd;
+	size_t cont_len;
+	struct websvc_s voodoo;
+
+	if ((nrd = read(w->fd, buf, sizeof(buf))) < 0) {
+		goto clo;
+	} else if ((size_t)nrd < sizeof(buf)) {
+		buf[nrd] = '\0';
+	} else {
+		/* uh oh, mega request, wtf? */
+		buf[sizeof(buf) - 1] = '\0';
+	}
+
+	switch (websvc_from_request(&voodoo, buf, nrd)) {
+	default:
+	case WEBSVC_F_UNK:
+		goto clo;
+
+	case WEBSVC_F_SECDEF:
+		cont_len = websvc_secdef(rsp, rsp_len, voodoo);
+		break;
+	}
+
+	/* prepare the header */
+	(void)snprintf(buf, sizeof(buf), hdr, cont_len);
+	buf[hdr_len] = '\n';
+
+	/* and append the actual contents */
+	send(w->fd, buf, hdr_len + cont_len, 0);
+	return;
+
+clo:
+	ev_io_shut(EV_A_ w);
+	return;
+}
+
+static void
+dccp_cb(EV_P_ ev_io *w, int UNUSED(re))
+{
+	union ud_sockaddr_u sa;
+	socklen_t sasz = sizeof(sa);
+	int s;
+
+	QUO_DEBUG("interesting activity on %d\n", w->fd);
+
+	if ((s = accept(w->fd, &sa.sa, &sasz)) < 0) {
+		return;
+	}
+
+	if (conns[nconns].fd > 0) {
+		ev_io_shut(EV_A_ conns + nconns);
+	}
+
+	ev_io_init(conns + nconns, dccp_data_cb, s, EV_READ);
+	conns[nconns].data = NULL;
+	ev_io_start(EV_A_ conns + nconns);
+	if (++nconns >= countof(conns)) {
+		nconns = 0;
+	}
 	return;
 }
 
@@ -872,6 +1121,7 @@ main(int argc, char *argv[])
 	ev_signal sighup_watcher[1];
 	ev_signal sigterm_watcher[1];
 	ev_io ctrl[1];
+	ev_io dccp[2];
 	ev_prepare prp[1];
 	/* final result */
 	int res = 0;
@@ -933,6 +1183,39 @@ main(int argc, char *argv[])
 		ev_io_start(EV_A_ ctrl);
 	}
 
+	/* make a channel for http/dccp requests */
+	{
+		int s;
+
+		if ((s = make_dccp()) < 0) {
+			/* just to indicate we have no socket */
+			dccp[0].fd = -1;
+		} else if (sock_listener(s, 9090) < 0) {
+			/* grrr, whats wrong now */
+			close(s);
+			dccp[0].fd = -1;
+		} else {
+			/* everything's brilliant */
+			ev_io_init(dccp, dccp_cb, s, EV_READ);
+			ev_io_start(EV_A_ dccp);
+		}
+
+		if (countof(dccp) < 2) {
+			;
+		} else if ((s = make_tcp()) < 0) {
+			/* just to indicate we have no socket */
+			dccp[1].fd = -1;
+		} else if (sock_listener(s, 9090) < 0) {
+			/* bugger */
+			close(s);
+			dccp[1].fd = -1;
+		} else {
+			/* yay */
+			ev_io_init(dccp + 1, dccp_cb, s, EV_READ);
+			ev_io_start(EV_A_ dccp + 1);
+		}
+	}
+
 	/* go through all beef channels */
 	if (argi->beef_given) {
 		union __chan_u x = {ud_chan_init(argi->beef_arg)};
@@ -988,6 +1271,7 @@ main(int argc, char *argv[])
 	fini_gq(qq.q);
 	ute_free(uu);
 
+unroll:
 	/* detaching beef and ctrl channels */
 	if (argi->beef_given) {
 		ud_chan_t c = beef->data;
@@ -1002,7 +1286,17 @@ main(int argc, char *argv[])
 		ud_chan_fini(c);
 	}
 
-unroll:
+	/* detach http/dccp */
+	for (size_t i = 0; i < countof(dccp); i++) {
+		int s = dccp[i].fd;
+
+		if ((s = dccp[0].fd) > 0) {
+			ev_io_stop(EV_A_ dccp + i);
+			shutdown(s, SHUT_RDWR);
+			close(s);
+		}
+	}
+
 	/* destroy the default evloop */
 	ev_default_destroy();
 out:

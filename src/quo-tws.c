@@ -247,6 +247,10 @@ make_tcp(void)
 	if ((s = socket(PF_INET6, SOCK_STREAM, IPPROTO_TCP)) < 0) {
 		return s;
 	}
+	/* reuse addr in case we quickly need to turn the server off and on */
+	setsock_reuseaddr(s);
+	/* turn lingering on */
+	setsock_linger(s, 1);
 	return s;
 }
 
@@ -289,6 +293,8 @@ static struct quo_sub_s subs = {0};
 /* the sender buffer queue */
 static struct quo_qq_s qq = {0};
 static utectx_t uu = NULL;
+
+#define INS(i)		(subs.inss[i - 1])
 
 /* ute services come in 2 flavours little endian "ut" and big endian "UT" */
 #define UTE_CMD_LE	0x7574
@@ -465,7 +471,7 @@ websvc_from_request(struct websvc_s *tgt, const char *req, size_t UNUSED(len))
 			tgt->ty = WEBSVC_F_SECDEF;
 			if ((q = strstr(p += 7, "idx="))) {
 				/* let's see what idx they want */
-				long unsigned int idx = strtoul(q, NULL, 10);
+				long int idx = strtol(q + 4, NULL, 10);
 
 				tgt->secdef.idx = (uint16_t)idx;
 			}
@@ -478,37 +484,18 @@ websvc_from_request(struct websvc_s *tgt, const char *req, size_t UNUSED(len))
 static size_t
 websvc_secdef(char *restrict tgt, size_t tsz, struct websvc_s sd)
 {
-	static char hdr[] = "\
-<?xml version=\"1.0\"?>\n\
-<FIXML xmlns=\"http://www.fixprotocol.org/FIXML-5-0-SP2\"/>\n\
-";
-	static char ftr[] = "\
-</FIXML>\n\
-";
-	char  *restrict p = tgt;
+	tws_cont_t c = NULL;
+	ssize_t res;
 
-	/* always start out with the hdr,
-	 * which for efficiency contains the empty case already */
-	strncpy(p, hdr, tsz);
-
-	if (tsz < sizeof(hdr)) {
-		/* completely fucked */
-		return 0;
-	} else if (sd.secdef.idx > subs.nsubs) {
-		/* weird */
-		return sizeof(hdr) - 1;
+	QUO_DEBUG("printing secdef idx %hu\n", sd.secdef.idx);
+	if ((size_t)(sd.secdef.idx - 1) < subs.nsubs) {
+		c = INS(sd.secdef.idx);
 	}
-	/* modify the contents so far */
-	tgt[sizeof(hdr) - 4] = '>';
-	tgt[sizeof(hdr) - 3] = '\n';
-	p += sizeof(hdr) - 1 /* the / */ - 1/* the \0 */;
 
-	/* and the footer now */
-	if (p + sizeof(ftr) < tgt + tsz) {
-		strncpy(p, ftr, tsz - (p - tgt));
-		p += sizeof(ftr) - 1;
+	if ((res = tws_cont_xml(tgt, tsz, c)) < 0) {
+		res = 0;
 	}
-	return p - tgt;
+	return res;
 }
 
 
@@ -649,6 +636,16 @@ pre_cb(tws_t tws, tws_cb_t what, struct tws_pre_clo_s clo)
 		q.idx = clo.oid;
 		q.val = clo.val;
 		break;
+
+	case TWS_CB_PRE_CONT_DTL:
+		QUO_DEBUG("sdef coming back %p\n", clo.data);
+		if (clo.oid && clo.oid <= subs.nsubs && clo.data) {
+			tws_free_cont(INS(clo.oid));
+			INS(clo.oid) = tws_dup_cont(tws_sdef_get_cont(clo.data));
+		}
+	case TWS_CB_PRE_CONT_DTL_END:
+		break;
+
 	default:
 	fucked:
 		QUO_DEBUG("%p pre: what %u  oid %u  tt %u  data %p\n",
@@ -780,11 +777,10 @@ Content-Type: text/xml\r\n\
 
 	/* prepare the header */
 	(void)snprintf(buf, sizeof(buf), hdr, cont_len);
-	buf[hdr_len] = '\n';
+	buf[hdr_len - 1] = '\n';
 
 	/* and append the actual contents */
 	send(w->fd, buf, hdr_len + cont_len, 0);
-	return;
 
 clo:
 	ev_io_shut(EV_A_ w);
@@ -876,7 +872,7 @@ __cont_batch_cb(tws_cont_t ins, void *clo)
 			sizeof(*subs.quos) - 1;
 	}
 
-	subs.inss[iidx - 1] = ins;
+	INS(iidx) = ins;
 	QUO_DEBUG("reg'd %s %hu\n", nick, iidx);
 	return 0;
 }
@@ -919,9 +915,11 @@ redo_subs(tws_t tws)
 
 	/* and finally call the a/c requester */
 	for (unsigned int i = 1; i <= subs.nsubs; i++) {
-		if (subs.inss[i - 1] == NULL) {
+		if (INS(i) == NULL) {
 			;
-		} else if (tws_req_quo(tws, i, subs.inss[i - 1]) < 0) {
+		} else if (tws_req_sdef(tws, i, INS(i)) < 0) {
+			error(0, "cannot acquire secdefs of ins %u\n", i);
+		} else if (tws_req_quo(tws, i, INS(i)) < 0) {
 			error(0, "cannot (re)subscribe to ins %u\n", i);
 		} else {
 			QUO_DEBUG("sub'd %s\n", ute_idx2sym(uu, i));
@@ -1290,10 +1288,8 @@ unroll:
 	for (size_t i = 0; i < countof(dccp); i++) {
 		int s = dccp[i].fd;
 
-		if ((s = dccp[0].fd) > 0) {
-			ev_io_stop(EV_A_ dccp + i);
-			shutdown(s, SHUT_RDWR);
-			close(s);
+		if (s > 0) {
+			ev_io_shut(EV_A_ dccp + i);
 		}
 	}
 

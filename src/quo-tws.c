@@ -484,37 +484,18 @@ websvc_from_request(struct websvc_s *tgt, const char *req, size_t UNUSED(len))
 static size_t
 websvc_secdef(char *restrict tgt, size_t tsz, struct websvc_s sd)
 {
-	static char hdr[] = "\
-<?xml version=\"1.0\"?>\n\
-<FIXML xmlns=\"http://www.fixprotocol.org/FIXML-5-0-SP2\"/>\n\
-";
-	static char ftr[] = "\
-</FIXML>\n\
-";
-	char  *restrict p = tgt;
+	tws_cont_t c = NULL;
+	ssize_t res;
 
-	/* always start out with the hdr,
-	 * which for efficiency contains the empty case already */
-	strncpy(p, hdr, tsz);
-
-	if (tsz < sizeof(hdr)) {
-		/* completely fucked */
-		return 0;
-	} else if (sd.secdef.idx > subs.nsubs) {
-		/* weird */
-		return sizeof(hdr) - 1;
+	QUO_DEBUG("printing secdef idx %hu\n", sd.secdef.idx);
+	if ((size_t)(sd.secdef.idx - 1) < subs.nsubs) {
+		c = INS(sd.secdef.idx);
 	}
-	/* modify the contents so far */
-	tgt[sizeof(hdr) - 4] = '>';
-	tgt[sizeof(hdr) - 3] = '\n';
-	p += sizeof(hdr) - 1 /* the / */ - 1/* the \0 */;
 
-	/* and the footer now */
-	if (p + sizeof(ftr) < tgt + tsz) {
-		strncpy(p, ftr, tsz - (p - tgt));
-		p += sizeof(ftr) - 1;
+	if ((res = tws_cont_xml(tgt, tsz, c)) < 0) {
+		res = 0;
 	}
-	return p - tgt;
+	return res;
 }
 
 

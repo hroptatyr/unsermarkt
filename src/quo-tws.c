@@ -294,6 +294,8 @@ static struct quo_sub_s subs = {0};
 static struct quo_qq_s qq = {0};
 static utectx_t uu = NULL;
 
+#define INS(i)		(subs.inss[i - 1])
+
 /* ute services come in 2 flavours little endian "ut" and big endian "UT" */
 #define UTE_CMD_LE	0x7574
 #define UTE_CMD_BE	0x5554
@@ -880,7 +882,7 @@ __cont_batch_cb(tws_cont_t ins, void *clo)
 			sizeof(*subs.quos) - 1;
 	}
 
-	subs.inss[iidx - 1] = ins;
+	INS(iidx) = ins;
 	QUO_DEBUG("reg'd %s %hu\n", nick, iidx);
 	return 0;
 }
@@ -923,9 +925,9 @@ redo_subs(tws_t tws)
 
 	/* and finally call the a/c requester */
 	for (unsigned int i = 1; i <= subs.nsubs; i++) {
-		if (subs.inss[i - 1] == NULL) {
+		if (INS(i) == NULL) {
 			;
-		} else if (tws_req_quo(tws, i, subs.inss[i - 1]) < 0) {
+		} else if (tws_req_quo(tws, i, INS(i)) < 0) {
 			error(0, "cannot (re)subscribe to ins %u\n", i);
 		} else {
 			QUO_DEBUG("sub'd %s\n", ute_idx2sym(uu, i));

@@ -38,6 +38,7 @@
 # include "config.h"
 #endif	// HAVE_CONFIG_H
 #include <string.h>
+#include <stdio.h>
 #include <twsapi/Contract.h>
 #include "iso4217.h"
 
@@ -190,10 +191,40 @@ tws_cont_symstr(tws_cont_t tgt, unsigned int, const char *val)
 }
 
 
+// out converters
+static ssize_t
+tws_cont_to_fix(char *restrict buf, size_t bsz, tws_cont_t src)
+{
+	IB::Contract *c = (IB::Contract*)src;
+	const char *sym = c->localSymbol.c_str();
+	const long int conid = c->conId;
+	const char *sectyp = c->secType.c_str();
+	const char *exch = c->exchange.c_str();
+
+	return snprintf(buf, bsz, "\
+<SecDef><Instrmt\
+ Sym=\"%s\"\
+ ID=\"%ld\" Src='M'\
+ SecTyp=\"%s\"\
+ Exch=\"%s\"/>\
+</SecDef>", sym, conid, sectyp, exch);
+}
+
+
 tws_cont_t
 tws_make_cont(void)
 {
 	return (tws_cont_t)new IB::Contract;
+}
+
+tws_cont_t
+tws_dup_cont(tws_const_cont_t x)
+{
+	const IB::Contract *ibc = (const IB::Contract*)x;
+	IB::Contract *res = new IB::Contract;
+
+	*res = *ibc;
+	return (tws_cont_t)res;
 }
 
 void
@@ -204,6 +235,39 @@ tws_free_cont(tws_cont_t c)
 	}
 	return;
 }
+
+tws_sdef_t
+tws_make_sdef(void)
+{
+	return (tws_sdef_t)new IB::ContractDetails;
+}
+
+void
+tws_free_sdef(tws_sdef_t cd)
+{
+	if (cd) {
+		delete (IB::ContractDetails*)cd;
+	}
+	return;
+}
+
+tws_sdef_t
+tws_dup_sdef(tws_const_sdef_t x)
+{
+	const IB::ContractDetails *ibc = (const IB::ContractDetails*)x;
+	IB::ContractDetails *res = new IB::ContractDetails;
+
+	*res = *ibc;
+	return (tws_sdef_t)res;
+}
+
+tws_const_cont_t
+tws_sdef_get_cont(tws_const_sdef_t x)
+{
+	const IB::ContractDetails *ibcd = (const IB::ContractDetails*)x;
+	return (tws_const_cont_t)&ibcd->summary;
+}
+
 
 int
 tws_cont_x(tws_cont_t tgt, unsigned int nsid, unsigned int aid, const char *val)
@@ -245,6 +309,21 @@ tws_cont_nick(tws_const_cont_t cont)
 		return nick;
 	}
 	return NULL;
+}
+
+ssize_t
+tws_cont_y(char *restrict buf, size_t bsz, unsigned int nsid, tws_cont_t c)
+{
+	switch ((tx_nsid_t)nsid) {
+	case TX_NS_TWSXML_0_1:
+		return 0;
+	case TX_NS_FIXML_5_0:
+		return tws_cont_to_fix(buf, bsz, c);
+	case TX_NS_SYMSTR:
+		return 0;
+	default:
+		return -1;
+	}
 }
 
 // gen-tws-cont-glu.cpp ends here

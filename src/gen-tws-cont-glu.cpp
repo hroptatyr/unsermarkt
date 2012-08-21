@@ -236,6 +236,24 @@ tws_free_cont(tws_cont_t c)
 	return;
 }
 
+tws_sdef_t
+tws_dup_sdef(tws_const_sdef_t x)
+{
+	const IB::ContractDetails *ibc = (const IB::ContractDetails*)x;
+	IB::ContractDetails *res = new IB::ContractDetails;
+
+	*res = *ibc;
+	return (tws_sdef_t)res;
+}
+
+tws_const_cont_t
+tws_sdef_get_cont(tws_const_sdef_t x)
+{
+	const IB::ContractDetails *ibcd = (const IB::ContractDetails*)x;
+	return (tws_const_cont_t)&ibcd->summary;
+}
+
+
 int
 tws_cont_x(tws_cont_t tgt, unsigned int nsid, unsigned int aid, const char *val)
 {

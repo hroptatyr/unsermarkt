@@ -781,7 +781,6 @@ Content-Type: text/xml\r\n\
 
 	/* and append the actual contents */
 	send(w->fd, buf, hdr_len + cont_len, 0);
-	return;
 
 clo:
 	ev_io_shut(EV_A_ w);

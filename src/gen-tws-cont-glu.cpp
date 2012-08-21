@@ -237,6 +237,21 @@ tws_free_cont(tws_cont_t c)
 }
 
 tws_sdef_t
+tws_make_sdef(void)
+{
+	return (tws_sdef_t)new IB::ContractDetails;
+}
+
+void
+tws_free_sdef(tws_sdef_t cd)
+{
+	if (cd) {
+		delete (IB::ContractDetails*)cd;
+	}
+	return;
+}
+
+tws_sdef_t
 tws_dup_sdef(tws_const_sdef_t x)
 {
 	const IB::ContractDetails *ibc = (const IB::ContractDetails*)x;

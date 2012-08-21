@@ -66,6 +66,9 @@ extern tws_cont_t tws_dup_cont(tws_const_cont_t);
 extern tws_cont_t tws_cont(const char *xml, size_t len);
 extern ssize_t tws_cont_xml(char *restrict buf, size_t bsz, tws_cont_t);
 
+extern tws_sdef_t tws_make_sdef(void);
+extern void tws_free_sdef(tws_sdef_t);
+
 extern tws_sdef_t tws_dup_sdef(tws_const_sdef_t);
 extern tws_const_cont_t tws_sdef_get_cont(tws_const_sdef_t);
 

@@ -636,6 +636,16 @@ pre_cb(tws_t tws, tws_cb_t what, struct tws_pre_clo_s clo)
 		q.idx = clo.oid;
 		q.val = clo.val;
 		break;
+
+	case TWS_CB_PRE_CONT_DTL:
+		QUO_DEBUG("sdef coming back %p\n", clo.data);
+		if (clo.oid && clo.oid <= subs.nsubs && clo.data) {
+			tws_free_cont(INS(clo.oid));
+			INS(clo.oid) = tws_dup_cont(tws_sdef_get_cont(clo.data));
+		}
+	case TWS_CB_PRE_CONT_DTL_END:
+		break;
+
 	default:
 	fucked:
 		QUO_DEBUG("%p pre: what %u  oid %u  tt %u  data %p\n",
@@ -908,6 +918,8 @@ redo_subs(tws_t tws)
 	for (unsigned int i = 1; i <= subs.nsubs; i++) {
 		if (INS(i) == NULL) {
 			;
+		} else if (tws_req_sdef(tws, i, INS(i)) < 0) {
+			error(0, "cannot acquire secdefs of ins %u\n", i);
 		} else if (tws_req_quo(tws, i, INS(i)) < 0) {
 			error(0, "cannot (re)subscribe to ins %u\n", i);
 		} else {

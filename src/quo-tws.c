@@ -786,7 +786,7 @@ Content-Type: text/xml\r\n\
 
 	/* prepare the header */
 	(void)snprintf(buf, sizeof(buf), hdr, cont_len);
-	buf[hdr_len] = '\n';
+	buf[hdr_len - 1] = '\n';
 
 	/* and append the actual contents */
 	send(w->fd, buf, hdr_len + cont_len, 0);

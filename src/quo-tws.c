@@ -247,6 +247,10 @@ make_tcp(void)
 	if ((s = socket(PF_INET6, SOCK_STREAM, IPPROTO_TCP)) < 0) {
 		return s;
 	}
+	/* reuse addr in case we quickly need to turn the server off and on */
+	setsock_reuseaddr(s);
+	/* turn lingering on */
+	setsock_linger(s, 1);
 	return s;
 }
 
@@ -1290,10 +1294,8 @@ unroll:
 	for (size_t i = 0; i < countof(dccp); i++) {
 		int s = dccp[i].fd;
 
-		if ((s = dccp[0].fd) > 0) {
-			ev_io_stop(EV_A_ dccp + i);
-			shutdown(s, SHUT_RDWR);
-			close(s);
+		if (s > 0) {
+			ev_io_shut(EV_A_ dccp + i);
 		}
 	}
 

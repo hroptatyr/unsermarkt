@@ -274,6 +274,9 @@ extern int tws_rem_quo(tws_t, tws_oid_t);
  * Like `tws_req_quo()' but generate (and return) the oid. */
 extern tws_oid_t tws_gen_quo(tws_t, const void *data);
 
+/**
+ * Request security reference data of the contract in DATA. */
+extern int tws_req_sdef(tws_t, tws_oid_t, const void *data);
 
 /* trd requests */
 /**

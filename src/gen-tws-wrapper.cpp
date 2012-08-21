@@ -862,6 +862,23 @@ tws_gen_quo(tws_t tws, const void *data)
 	return res;
 }
 
+int
+tws_req_sdef(tws_t tws, tws_oid_t oid, const void *data)
+{
+	if (UNLIKELY(!tws_ready_p(tws))) {
+		    return -1;
+	}
+
+	/* and now we just assume it works */
+	{
+		const IB::Contract *cont = (const IB::Contract*)data;
+
+		TWS_PRIV_CLI(tws)->reqContractDetails(oid, *cont);
+	}
+	return __sock_ok_p(tws);
+}
+
+
 /* trd requests */
 int
 tws_put_order(tws_t tws, tws_oid_t id, const void *cont, const void *data)

@@ -906,9 +906,61 @@ tws_batch_cont(
 #endif	/* HAVE_EXPAT_H */
 
 ssize_t
-tws_cont_xml(char *UNUSED(buf), size_t UNUSED(bsz), tws_cont_t UNUSED(c))
+tws_cont_xml(char *restrict buf, size_t bsz, tws_cont_t c)
 {
-	return 0;
+	static char hdr[] = "\
+<?xml version=\"1.0\"?>\n\
+<FIXML xmlns=\"http://www.fixprotocol.org/FIXML-5-0-SP2\"/>\n\
+";
+	static char ftr[] = "\
+</FIXML>\n\
+";
+	char *restrict p;
+
+	if (bsz < sizeof(hdr)) {
+		/* completely fucked */
+		return -1;
+	}
+
+	/* always start out with the hdr,
+	 * which for efficiency contains the empty case already */
+	strncpy(p = buf, hdr, bsz);
+
+	if (c == NULL) {
+		/* this is convenience for lazy definitions in the higher
+		 * level, undocumented though */
+		return sizeof(hdr) - 1;
+	}
+
+	/* modify the contents so far */
+	p[sizeof(hdr) - 4] = '>';
+	p[sizeof(hdr) - 3] = '\n';
+	/* 1 for the / we discarded, one for the \0 */
+	p += sizeof(hdr) - 1 - 1;
+
+	/* it's just one contract, yay
+	 * we quickly give an estimate of the space left
+	 * we used to count in the space we need for the footer,
+	 * but that would give us a headache when we switch to incremental
+	 * string building. */
+	{
+		size_t spc_left = bsz - (p - buf);
+		ssize_t tmp;
+
+		if ((tmp = tws_cont_y(p, spc_left, TX_NS_FIXML_5_0, c)) < 0) {
+			/* grrrr */
+			return -1;
+		}
+		/* otherwise */
+		p += tmp;
+	}
+
+	/* and the footer now */
+	if (p + sizeof(ftr) < buf + bsz) {
+		strncpy(p, ftr, bsz - (p - buf));
+		p += sizeof(ftr) - 1;
+	}
+	return p - buf;
 }
 
 /* gen-tws-cont.c ends here */

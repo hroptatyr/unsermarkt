@@ -217,6 +217,16 @@ tws_make_cont(void)
 	return (tws_cont_t)new IB::Contract;
 }
 
+tws_cont_t
+tws_dup_cont(tws_const_cont_t x)
+{
+	const IB::Contract *ibc = (const IB::Contract*)x;
+	IB::Contract *res = new IB::Contract;
+
+	*res = *ibc;
+	return (tws_cont_t)res;
+}
+
 void
 tws_free_cont(tws_cont_t c)
 {

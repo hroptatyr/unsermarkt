@@ -58,6 +58,8 @@ typedef struct tws_cctx_s *tws_cctx_t;
 extern tws_cont_t tws_make_cont(void);
 extern void tws_free_cont(tws_cont_t);
 
+extern tws_cont_t tws_dup_cont(tws_const_cont_t);
+
 extern tws_cont_t tws_cont(const char *xml, size_t len);
 extern ssize_t tws_cont_xml(char *restrict buf, size_t bsz, tws_cont_t);
 

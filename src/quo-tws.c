@@ -471,7 +471,7 @@ websvc_from_request(struct websvc_s *tgt, const char *req, size_t UNUSED(len))
 			tgt->ty = WEBSVC_F_SECDEF;
 			if ((q = strstr(p += 7, "idx="))) {
 				/* let's see what idx they want */
-				long unsigned int idx = strtoul(q, NULL, 10);
+				long int idx = strtol(q + 4, NULL, 10);
 
 				tgt->secdef.idx = (uint16_t)idx;
 			}

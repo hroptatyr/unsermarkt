@@ -905,8 +905,10 @@ tws_batch_cont(
 }
 #endif	/* HAVE_EXPAT_H */
 
-ssize_t
-tws_cont_xml(char *restrict buf, size_t bsz, tws_cont_t c)
+
+/* serialising to XML or FIX strings */
+static ssize_t
+__sdef_xml(char *restrict buf, size_t bsz, ssize_t(*cb)(), const void *data)
 {
 	static char hdr[] = "\
 <?xml version=\"1.0\"?>\n\
@@ -926,7 +928,7 @@ tws_cont_xml(char *restrict buf, size_t bsz, tws_cont_t c)
 	 * which for efficiency contains the empty case already */
 	strncpy(p = buf, hdr, bsz);
 
-	if (c == NULL) {
+	if (data == NULL) {
 		/* this is convenience for lazy definitions in the higher
 		 * level, undocumented though */
 		return sizeof(hdr) - 1;
@@ -947,7 +949,7 @@ tws_cont_xml(char *restrict buf, size_t bsz, tws_cont_t c)
 		size_t spc_left = bsz - (p - buf);
 		ssize_t tmp;
 
-		if ((tmp = tws_cont_y(p, spc_left, TX_NS_FIXML_5_0, c)) < 0) {
+		if ((tmp = cb(p, spc_left, TX_NS_FIXML_5_0, data)) < 0) {
 			/* grrrr */
 			return -1;
 		}
@@ -961,6 +963,12 @@ tws_cont_xml(char *restrict buf, size_t bsz, tws_cont_t c)
 		p += sizeof(ftr) - 1;
 	}
 	return p - buf;
+}
+
+ssize_t
+tws_cont_xml(char *restrict buf, size_t bsz, tws_const_cont_t c)
+{
+	return __sdef_xml(buf, bsz, tws_cont_y, c);
 }
 
 /* gen-tws-cont.c ends here */

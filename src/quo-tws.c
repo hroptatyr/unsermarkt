@@ -488,15 +488,15 @@ websvc_from_request(struct websvc_s *tgt, const char *req, size_t UNUSED(len))
 static size_t
 websvc_secdef(char *restrict tgt, size_t tsz, struct websvc_s sd)
 {
-	tws_cont_t c = NULL;
+	tws_const_sdef_t sdef = NULL;
 	ssize_t res;
 
 	QUO_DEBUG("printing secdef idx %hu\n", sd.secdef.idx);
-	if ((size_t)(sd.secdef.idx - 1) < subs.nsubs) {
-		c = INSTRMT(sd.secdef.idx);
+	if (sd.secdef.idx && sd.secdef.idx <= subs.nsubs) {
+		sdef = SECDEF(sd.secdef.idx);
 	}
 
-	if ((res = tws_cont_xml(tgt, tsz, c)) < 0) {
+	if ((res = tws_sdef_xml(tgt, tsz, sdef)) < 0) {
 		res = 0;
 	}
 	return res;

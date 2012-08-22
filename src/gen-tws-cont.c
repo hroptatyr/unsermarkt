@@ -971,4 +971,10 @@ tws_cont_xml(char *restrict buf, size_t bsz, tws_const_cont_t c)
 	return __sdef_xml(buf, bsz, tws_cont_y, c);
 }
 
+ssize_t
+tws_sdef_xml(char *restrict buf, size_t bsz, tws_const_sdef_t sd)
+{
+	return __sdef_xml(buf, bsz, tws_sdef_y, sd);
+}
+
 /* gen-tws-cont.c ends here */

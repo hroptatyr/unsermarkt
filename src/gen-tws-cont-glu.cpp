@@ -192,22 +192,39 @@ tws_cont_symstr(tws_cont_t tgt, unsigned int, const char *val)
 
 
 // out converters
+static size_t
+__add(char *restrict tgt, size_t tsz, const char *src, size_t ssz)
+{
+	if (ssz < tsz) {
+		memcpy(tgt, src, ssz);
+		tgt[ssz] = '\0';
+		return ssz;
+	}
+	return 0;
+}
+
+static ssize_t
+tws_sdef_to_fix(char *restrict buf, size_t bsz, tws_const_sdef_t src)
+{
+#define ADDv(tgt, tsz, s, ssz)	__add(tgt, tsz, s, ssz)
+#define ADDl(tgt, tsz, literal)	__add(tgt, tsz, literal, sizeof(literal) - 1)
+
+	IB::ContractDetails *d = (IB::ContractDetails*)src;
+	char *restrict p = buf;
+
+	p += ADDl(p, buf + bsz - p, "<SecDef><Instrmt");
+	p += ADDl(p, buf + bsz - p, "/></SecDef>");
+	return p - buf;
+}
+
 static ssize_t
 tws_cont_to_fix(char *restrict buf, size_t bsz, tws_const_cont_t src)
 {
-	IB::Contract *c = (IB::Contract*)src;
-	const char *sym = c->localSymbol.c_str();
-	const long int conid = c->conId;
-	const char *sectyp = c->secType.c_str();
-	const char *exch = c->exchange.c_str();
+	static IB::ContractDetails sd;
+	const IB::Contract *c = (const IB::Contract*)src;
 
-	return snprintf(buf, bsz, "\
-<SecDef><Instrmt\
- Sym=\"%s\"\
- ID=\"%ld\" Src='M'\
- SecTyp=\"%s\"\
- Exch=\"%s\"/>\
-</SecDef>", sym, conid, sectyp, exch);
+	sd.summary = *c;
+	return tws_sdef_to_fix(buf, bsz, (tws_const_sdef_t)&sd);
 }
 
 
@@ -324,6 +341,23 @@ tws_cont_y(
 		return 0;
 	case TX_NS_FIXML_5_0:
 		return tws_cont_to_fix(buf, bsz, c);
+	case TX_NS_SYMSTR:
+		return 0;
+	default:
+		return -1;
+	}
+}
+
+ssize_t
+tws_sdef_y(
+	char *restrict buf, size_t bsz,
+	unsigned int nsid, tws_const_sdef_t d)
+{
+	switch ((tx_nsid_t)nsid) {
+	case TX_NS_TWSXML_0_1:
+		return 0;
+	case TX_NS_FIXML_5_0:
+		return tws_sdef_to_fix(buf, bsz, d);
 	case TX_NS_SYMSTR:
 		return 0;
 	default:

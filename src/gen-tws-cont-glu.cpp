@@ -206,14 +206,100 @@ __add(char *restrict tgt, size_t tsz, const char *src, size_t ssz)
 static ssize_t
 tws_sdef_to_fix(char *restrict buf, size_t bsz, tws_const_sdef_t src)
 {
-#define ADDv(tgt, tsz, s, ssz)	__add(tgt, tsz, s, ssz)
-#define ADDl(tgt, tsz, literal)	__add(tgt, tsz, literal, sizeof(literal) - 1)
+#define ADDv(tgt, tsz, s, ssz)	tgt += __add(tgt, tsz, s, ssz)
+#define ADDs(tgt, tsz, string)	tgt += __add(tgt, tsz, string, strlen(string))
+#define ADDl(tgt, tsz, ltrl)	tgt += __add(tgt, tsz, ltrl, sizeof(ltrl) - 1)
+#define ADDc(tgt, tsz, c)	(tsz > 1 ? *tgt++ = c, 1 : 0)
+#define ADDF(tgt, tsz, args...)	tgt += snprintf(tgt, tsz, args)
+
+#define ADD_STR(tgt, tsz, tag, slot)			    \
+	do {						    \
+		const char *__c__ = slot.data();	    \
+		const size_t __z__ = slot.size();	    \
+							    \
+		if (__z__) {				    \
+			ADDl(tgt, tsz, " " tag "=\"");	    \
+			ADDv(tgt, tsz, __c__, __z__);	    \
+			ADDc(tgt, tsz, '\"');		    \
+		}					    \
+	} while (0)
 
 	IB::ContractDetails *d = (IB::ContractDetails*)src;
 	char *restrict p = buf;
 
-	p += ADDl(p, buf + bsz - p, "<SecDef><Instrmt");
-	p += ADDl(p, buf + bsz - p, "/></SecDef>");
+#define REST	buf + bsz - p
+
+	ADDl(p, REST, "<SecDef><Instrmt");
+
+	// start out with symbol stuff
+	ADD_STR(p, REST, "Sym", d->summary.localSymbol);
+
+	if (const long int cid = d->summary.conId) {
+		ADDF(p, REST, " ID=\"%ld\" Src=\"M\"", cid);
+	}
+
+	ADD_STR(p, REST, "SecTyp", d->summary.secType);
+	ADD_STR(p, REST, "Exch", d->summary.exchange);
+
+	ADD_STR(p, REST, "MatDt", d->summary.expiry);
+
+	// right and strike
+	ADD_STR(p, REST, "PutCall", d->summary.right);
+	if (const double strk = d->summary.strike) {
+		ADDF(p, REST, " StrkPx=\"%.6f\"", strk);
+	}
+
+	ADD_STR(p, REST, "Mult", d->summary.multiplier);
+	ADD_STR(p, REST, "Ccy", d->summary.currency);
+	ADD_STR(p, REST, "Desc", d->longName);
+
+	if (const double mintick = d->minTick) {
+		long int mult = strtol(d->summary.multiplier.c_str(), NULL, 10);
+
+		ADDF(p, REST, " MinPxIncr=\"%.6f\"", mintick);
+		if (mult) {
+			double amt = mintick * (double)mult;
+			ADDF(p, REST, " MinPxIncrAmt=\"%.6f\"", amt);
+		}
+	}
+
+	ADD_STR(p, REST, "MMY", d->contractMonth);
+
+	// finishing <Instrmt> open tag, Instrmt children will follow
+	ADDc(p, REST, '>');
+
+	// none yet
+
+	// closing <Instrmt> tag, children of SecDef will follow
+	ADDl(p, REST, "</Instrmt>");
+
+	if (IB::Contract::ComboLegList *cl = d->summary.comboLegs) {
+		for (IB::Contract::ComboLegList::iterator it = cl->begin(),
+			     end = cl->end(); it != end; it++) {
+			ADDl(p, REST, "<Leg");
+			if (const long int cid = (*it)->conId) {
+				ADDF(p, REST, " ID=\"%ld\" Src=\"M\"", cid);
+			}
+			ADD_STR(p, REST, "Exch", (*it)->exchange);
+			ADD_STR(p, REST, "Side", (*it)->action);
+			ADDF(p, REST, " RatioQty=\"%.6f\"",
+				(double)(*it)->ratio);
+			ADDc(p, REST, '>');
+			ADDl(p, REST, "</Leg>");
+		}
+	}
+
+	if (IB::UnderComp *undly = d->summary.underComp) {
+		if (const long int cid = undly->conId) {
+			ADDl(p, REST, "<Undly");
+			ADDF(p, REST, " ID=\"%ld\" Src=\"M\"", cid);
+			ADDc(p, REST, '>');
+			ADDl(p, REST, "</Undly>");
+		}
+	}
+
+	// finalise the whole shebang
+	ADDl(p, REST, "</SecDef>");
 	return p - buf;
 }
 

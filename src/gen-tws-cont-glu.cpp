@@ -261,11 +261,14 @@ tws_dup_sdef(tws_const_sdef_t x)
 	return (tws_sdef_t)res;
 }
 
-tws_const_cont_t
-tws_sdef_get_cont(tws_const_sdef_t x)
+tws_cont_t
+tws_sdef_make_cont(tws_const_sdef_t x)
 {
 	const IB::ContractDetails *ibcd = (const IB::ContractDetails*)x;
-	return (tws_const_cont_t)&ibcd->summary;
+	IB::Contract *res = new IB::Contract;
+
+	*res = ibcd->summary;
+	return (tws_cont_t)res;
 }
 
 

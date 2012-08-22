@@ -912,7 +912,7 @@ __sdef_xml(char *restrict buf, size_t bsz, ssize_t(*cb)(), const void *data)
 {
 	static char hdr[] = "\
 <?xml version=\"1.0\"?>\n\
-<FIXML xmlns=\"http://www.fixprotocol.org/FIXML-5-0-SP2\"/>\n\
+<FIXML xmlns=\"http://www.fixprotocol.org/FIXML-5-0-SP2\"/>\
 ";
 	static char ftr[] = "\
 </FIXML>\n\
@@ -935,8 +935,8 @@ __sdef_xml(char *restrict buf, size_t bsz, ssize_t(*cb)(), const void *data)
 	}
 
 	/* modify the contents so far */
-	p[sizeof(hdr) - 4] = '>';
-	p[sizeof(hdr) - 3] = '\n';
+	p[sizeof(hdr) - 3] = '>';
+	p[sizeof(hdr) - 2] = '\n';
 	/* 1 for the / we discarded, one for the \0 */
 	p += sizeof(hdr) - 1 - 1;
 
@@ -959,7 +959,7 @@ __sdef_xml(char *restrict buf, size_t bsz, ssize_t(*cb)(), const void *data)
 
 	/* and the footer now */
 	if (p + sizeof(ftr) < buf + bsz) {
-		strncpy(p, ftr, bsz - (p - buf));
+		memcpy(p, ftr, sizeof(ftr));
 		p += sizeof(ftr) - 1;
 	}
 	return p - buf;

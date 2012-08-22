@@ -193,7 +193,7 @@ tws_cont_symstr(tws_cont_t tgt, unsigned int, const char *val)
 
 // out converters
 static ssize_t
-tws_cont_to_fix(char *restrict buf, size_t bsz, tws_cont_t src)
+tws_cont_to_fix(char *restrict buf, size_t bsz, tws_const_cont_t src)
 {
 	IB::Contract *c = (IB::Contract*)src;
 	const char *sym = c->localSymbol.c_str();
@@ -315,7 +315,9 @@ tws_cont_nick(tws_const_cont_t cont)
 }
 
 ssize_t
-tws_cont_y(char *restrict buf, size_t bsz, unsigned int nsid, tws_cont_t c)
+tws_cont_y(
+	char *restrict buf, size_t bsz,
+	unsigned int nsid, tws_const_cont_t c)
 {
 	switch ((tx_nsid_t)nsid) {
 	case TX_NS_TWSXML_0_1:

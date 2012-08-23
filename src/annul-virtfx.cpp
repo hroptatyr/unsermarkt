@@ -1123,11 +1123,14 @@ static struct pf_pq_s pq = {0, 0, 0, 0, 0, 0};
 static inline q30_t
 make_q30(uint16_t iidx, quo_typ_t t)
 {
-	struct q30_s res = {0};
+	struct q30_s res;
 
 	if (LIKELY(t >= QUO_TYP_BID && t <= QUO_TYP_ASZ)) {
 		res.typ = t - 1;
 		res.idx = iidx;
+	} else {
+		res.typ = QUO_TYP_UNK;
+		res.idx = 0;
 	}
 	return res;
 }

@@ -905,12 +905,14 @@ tws_batch_cont(
 }
 #endif	/* HAVE_EXPAT_H */
 
-ssize_t
-tws_cont_xml(char *restrict buf, size_t bsz, tws_cont_t c)
+
+/* serialising to XML or FIX strings */
+static ssize_t
+__sdef_xml(char *restrict buf, size_t bsz, ssize_t(*cb)(), const void *data)
 {
 	static char hdr[] = "\
 <?xml version=\"1.0\"?>\n\
-<FIXML xmlns=\"http://www.fixprotocol.org/FIXML-5-0-SP2\"/>\n\
+<FIXML xmlns=\"http://www.fixprotocol.org/FIXML-5-0-SP2\"/>\
 ";
 	static char ftr[] = "\
 </FIXML>\n\
@@ -926,15 +928,15 @@ tws_cont_xml(char *restrict buf, size_t bsz, tws_cont_t c)
 	 * which for efficiency contains the empty case already */
 	strncpy(p = buf, hdr, bsz);
 
-	if (c == NULL) {
+	if (data == NULL) {
 		/* this is convenience for lazy definitions in the higher
 		 * level, undocumented though */
 		return sizeof(hdr) - 1;
 	}
 
 	/* modify the contents so far */
-	p[sizeof(hdr) - 4] = '>';
-	p[sizeof(hdr) - 3] = '\n';
+	p[sizeof(hdr) - 3] = '>';
+	p[sizeof(hdr) - 2] = '\n';
 	/* 1 for the / we discarded, one for the \0 */
 	p += sizeof(hdr) - 1 - 1;
 
@@ -947,7 +949,7 @@ tws_cont_xml(char *restrict buf, size_t bsz, tws_cont_t c)
 		size_t spc_left = bsz - (p - buf);
 		ssize_t tmp;
 
-		if ((tmp = tws_cont_y(p, spc_left, TX_NS_FIXML_5_0, c)) < 0) {
+		if ((tmp = cb(p, spc_left, TX_NS_FIXML_5_0, data)) < 0) {
 			/* grrrr */
 			return -1;
 		}
@@ -957,10 +959,22 @@ tws_cont_xml(char *restrict buf, size_t bsz, tws_cont_t c)
 
 	/* and the footer now */
 	if (p + sizeof(ftr) < buf + bsz) {
-		strncpy(p, ftr, bsz - (p - buf));
+		memcpy(p, ftr, sizeof(ftr));
 		p += sizeof(ftr) - 1;
 	}
 	return p - buf;
+}
+
+ssize_t
+tws_cont_xml(char *restrict buf, size_t bsz, tws_const_cont_t c)
+{
+	return __sdef_xml(buf, bsz, tws_cont_y, c);
+}
+
+ssize_t
+tws_sdef_xml(char *restrict buf, size_t bsz, tws_const_sdef_t sd)
+{
+	return __sdef_xml(buf, bsz, tws_sdef_y, sd);
 }
 
 /* gen-tws-cont.c ends here */

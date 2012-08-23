@@ -63,14 +63,33 @@ extern void tws_free_cont(tws_cont_t);
 
 extern tws_cont_t tws_dup_cont(tws_const_cont_t);
 
+/* build a tws_cont_t from specs given in XML */
 extern tws_cont_t tws_cont(const char *xml, size_t len);
-extern ssize_t tws_cont_xml(char *restrict buf, size_t bsz, tws_cont_t);
+
+/* deprecated */
+extern ssize_t tws_cont_xml(char *restrict buf, size_t bsz, tws_const_cont_t);
 
 extern tws_sdef_t tws_make_sdef(void);
 extern void tws_free_sdef(tws_sdef_t);
 
 extern tws_sdef_t tws_dup_sdef(tws_const_sdef_t);
-extern tws_const_cont_t tws_sdef_get_cont(tws_const_sdef_t);
+extern tws_cont_t tws_sdef_make_cont(tws_const_sdef_t);
+
+/* deprecated */
+extern ssize_t tws_sdef_xml(char *restrict buf, size_t bsz, tws_const_sdef_t);
+
+/* more generic serialiser */
+struct tws_cont_seropt_s {
+	tws_const_cont_t cont;
+	tws_const_sdef_t sdef;
+	enum {
+		SEROPT_OUTLNG_UNK,
+		SEROPT_OUTLNG_FIX,
+		SEROPT_OUTLNG_FIXML,
+	} output_language_id;
+};
+extern ssize_t
+tws_cont_ser(char *restrict buf, size_t bsz, struct tws_cont_seropt_s);
 
 /* batch reader */
 /**

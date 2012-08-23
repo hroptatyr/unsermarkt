@@ -732,7 +732,7 @@ del_cake:
 
 /* fdfs */
 static ev_io conns[8];
-static size_t nconns = 0;
+static size_t next_conn = 0;
 
 static void
 ev_io_shut(EV_P_ ev_io *w)
@@ -810,15 +810,15 @@ dccp_cb(EV_P_ ev_io *w, int UNUSED(re))
 		return;
 	}
 
-	if (conns[nconns].fd > 0) {
-		ev_io_shut(EV_A_ conns + nconns);
+	if (conns[next_conn].fd > 0) {
+		ev_io_shut(EV_A_ conns + next_conn);
 	}
 
-	ev_io_init(conns + nconns, dccp_data_cb, s, EV_READ);
-	conns[nconns].data = NULL;
-	ev_io_start(EV_A_ conns + nconns);
-	if (++nconns >= countof(conns)) {
-		nconns = 0;
+	ev_io_init(conns + next_conn, dccp_data_cb, s, EV_READ);
+	conns[next_conn].data = NULL;
+	ev_io_start(EV_A_ conns + next_conn);
+	if (++next_conn >= countof(conns)) {
+		next_conn = 0;
 	}
 	return;
 }

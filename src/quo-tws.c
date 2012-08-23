@@ -53,7 +53,9 @@
 # define EV_P  struct ev_loop *loop __attribute__((unused))
 #endif	/* HAVE_EV_H */
 #include <netinet/in.h>
+#include <sys/socket.h>
 #include <netdb.h>
+#include <sys/utsname.h>
 
 #include <unserding/unserding.h>
 #include <unserding/protocore.h>
@@ -149,7 +151,10 @@ struct quo_qqq_s {
 /* AoV-based subscriptions class */
 struct quo_sub_s {
 	size_t nsubs;
-	tws_cont_t *inss;
+	struct {
+		tws_cont_t cont;
+		tws_sdef_t sdef;
+	} *inss;
 
 	/* actual quotes, this is bid, bsz, ask, asz  */
 	q30_pack_t *quos;
@@ -255,21 +260,13 @@ make_tcp(void)
 }
 
 static int
-sock_listener(int s, short unsigned int port)
+sock_listener(int s, ud_sockaddr_t sa)
 {
-	union ud_sockaddr_u sa = {
-		.sa6 = {
-			.sin6_family = AF_INET6,
-			.sin6_addr = in6addr_any,
-			.sin6_port = htons(port),
-		},
-	};
-
 	if (s < 0) {
 		return s;
 	}
 
-	if (bind(s, &sa.sa, sizeof(sa)) < 0) {
+	if (bind(s, &sa->sa, sizeof(*sa)) < 0) {
 		return -1;
 	}
 
@@ -294,7 +291,8 @@ static struct quo_sub_s subs = {0};
 static struct quo_qq_s qq = {0};
 static utectx_t uu = NULL;
 
-#define INS(i)		(subs.inss[i - 1])
+#define INSTRMT(i)	(subs.inss[i - 1].cont)
+#define SECDEF(i)	(subs.inss[i - 1].sdef)
 
 /* ute services come in 2 flavours little endian "ut" and big endian "UT" */
 #define UTE_CMD_LE	0x7574
@@ -343,14 +341,46 @@ ud_chan_send_ser_all(udpc_seria_t ser)
 	return;
 }
 
+/* looks like dccp://host:port/secdef?idx=00000 */
+static char brag_uri[INET6_ADDRSTRLEN] = "dccp://";
+/* offset into brag_uris idx= field */
+static size_t brag_uri_offset = 0;
+
+static int
+make_brag_uri(ud_sockaddr_t sa, socklen_t UNUSED(sa_len))
+{
+	struct utsname uts[1];
+	char dnsdom[64];
+	const size_t uri_host_offs = sizeof("dccp://");
+	char *curs = brag_uri + uri_host_offs - 1;
+	size_t rest = sizeof(brag_uri) - uri_host_offs;
+	int len;
+
+	if (uname(uts) < 0) {
+		return -1;
+	} else if (getdomainname(dnsdom, sizeof(dnsdom)) < 0) {
+		return -1;
+	}
+
+	len = snprintf(
+		curs, rest, "%s.%s:%hu/secdef?idx=",
+		uts->nodename, dnsdom, sa->sa6.sin6_port);
+
+	if (len > 0) {
+		brag_uri_offset = uri_host_offs + len - 1;
+	}
+
+	QUO_DEBUG("adv_name: %s\n", brag_uri);
+	return 0;
+}
+
 static int
 brag(udpc_seria_t ser, uint16_t idx)
 {
-	static char uri[] = "dccp://localhost:00000/secdef?idx=00000";
 	const char *sym = ute_idx2sym(uu, idx);
 	size_t len, tot;
 
-	tot = (len = strlen(sym)) + sizeof(uri);
+	tot = (len = strlen(sym)) + brag_uri_offset + 5;
 
 	if (UNLIKELY(!udpc_seria_fits_dsm_p(ser, sym, tot))) {
 		ud_packet_t pkt = {UDPC_PKTLEN, /*hack*/ser->msg - UDPC_HDRLEN};
@@ -368,9 +398,9 @@ brag(udpc_seria_t ser, uint16_t idx)
 	udpc_seria_add_str(ser, sym, len);
 	/* put stuff in our uri */
 	len = snprintf(
-		uri, sizeof(uri),
-		"dccp://%s:%hu/secdef?idx=%hu", "quant", 8080, idx);
-	udpc_seria_add_str(ser, uri, len);
+		brag_uri + brag_uri_offset, sizeof(brag_uri) - brag_uri_offset,
+		"%hu", idx);
+	udpc_seria_add_str(ser, brag_uri, brag_uri_offset + len);
 	return 0;
 }
 
@@ -484,15 +514,15 @@ websvc_from_request(struct websvc_s *tgt, const char *req, size_t UNUSED(len))
 static size_t
 websvc_secdef(char *restrict tgt, size_t tsz, struct websvc_s sd)
 {
-	tws_cont_t c = NULL;
+	tws_const_sdef_t sdef = NULL;
 	ssize_t res;
 
 	QUO_DEBUG("printing secdef idx %hu\n", sd.secdef.idx);
-	if ((size_t)(sd.secdef.idx - 1) < subs.nsubs) {
-		c = INS(sd.secdef.idx);
+	if (sd.secdef.idx && sd.secdef.idx <= subs.nsubs) {
+		sdef = SECDEF(sd.secdef.idx);
 	}
 
-	if ((res = tws_cont_xml(tgt, tsz, c)) < 0) {
+	if ((res = tws_sdef_xml(tgt, tsz, sdef)) < 0) {
 		res = 0;
 	}
 	return res;
@@ -640,8 +670,14 @@ pre_cb(tws_t tws, tws_cb_t what, struct tws_pre_clo_s clo)
 	case TWS_CB_PRE_CONT_DTL:
 		QUO_DEBUG("sdef coming back %p\n", clo.data);
 		if (clo.oid && clo.oid <= subs.nsubs && clo.data) {
-			tws_free_cont(INS(clo.oid));
-			INS(clo.oid) = tws_dup_cont(tws_sdef_get_cont(clo.data));
+			if (INSTRMT(clo.oid)) {
+				tws_free_cont(INSTRMT(clo.oid));
+			}
+			if (SECDEF(clo.oid)) {
+				tws_free_sdef(SECDEF(clo.oid));
+			}
+			INSTRMT(clo.oid) = tws_sdef_make_cont(clo.data);
+			SECDEF(clo.oid) = tws_dup_sdef(clo.data);
 		}
 	case TWS_CB_PRE_CONT_DTL_END:
 		break;
@@ -722,7 +758,7 @@ del_cake:
 
 /* fdfs */
 static ev_io conns[8];
-static size_t nconns = 0;
+static size_t next_conn = 0;
 
 static void
 ev_io_shut(EV_P_ ev_io *w)
@@ -800,15 +836,15 @@ dccp_cb(EV_P_ ev_io *w, int UNUSED(re))
 		return;
 	}
 
-	if (conns[nconns].fd > 0) {
-		ev_io_shut(EV_A_ conns + nconns);
+	if (conns[next_conn].fd > 0) {
+		ev_io_shut(EV_A_ conns + next_conn);
 	}
 
-	ev_io_init(conns + nconns, dccp_data_cb, s, EV_READ);
-	conns[nconns].data = NULL;
-	ev_io_start(EV_A_ conns + nconns);
-	if (++nconns >= countof(conns)) {
-		nconns = 0;
+	ev_io_init(conns + next_conn, dccp_data_cb, s, EV_READ);
+	conns[next_conn].data = NULL;
+	ev_io_start(EV_A_ conns + next_conn);
+	if (++next_conn >= countof(conns)) {
+		next_conn = 0;
 	}
 	return;
 }
@@ -872,7 +908,7 @@ __cont_batch_cb(tws_cont_t ins, void *clo)
 			sizeof(*subs.quos) - 1;
 	}
 
-	INS(iidx) = ins;
+	INSTRMT(iidx) = ins;
 	QUO_DEBUG("reg'd %s %hu\n", nick, iidx);
 	return 0;
 }
@@ -915,11 +951,11 @@ redo_subs(tws_t tws)
 
 	/* and finally call the a/c requester */
 	for (unsigned int i = 1; i <= subs.nsubs; i++) {
-		if (INS(i) == NULL) {
+		if (INSTRMT(i) == NULL) {
 			;
-		} else if (tws_req_sdef(tws, i, INS(i)) < 0) {
+		} else if (tws_req_sdef(tws, i, INSTRMT(i)) < 0) {
 			error(0, "cannot acquire secdefs of ins %u\n", i);
-		} else if (tws_req_quo(tws, i, INS(i)) < 0) {
+		} else if (tws_req_quo(tws, i, INSTRMT(i)) < 0) {
 			error(0, "cannot (re)subscribe to ins %u\n", i);
 		} else {
 			QUO_DEBUG("sub'd %s\n", ute_idx2sym(uu, i));
@@ -935,10 +971,14 @@ del_req:
 static void
 undo_subs(tws_t UNUSED(tws))
 {
-	for (size_t i = 0; i < subs.nsubs; i++) {
-		if (subs.inss[i]) {
-			tws_free_cont(subs.inss[i]);
-			subs.inss[i] = NULL;
+	for (size_t i = 1; i <= subs.nsubs; i++) {
+		if (INSTRMT(i)) {
+			tws_free_cont(INSTRMT(i));
+			INSTRMT(i) = NULL;
+		}
+		if (SECDEF(i)) {
+			tws_free_sdef(SECDEF(i));
+			SECDEF(i) = NULL;
 		}
 	}
 	if (subs.nsubs) {
@@ -1183,12 +1223,20 @@ main(int argc, char *argv[])
 
 	/* make a channel for http/dccp requests */
 	{
+		union ud_sockaddr_u sa = {
+			.sa6 = {
+				.sin6_family = AF_INET6,
+				.sin6_addr = in6addr_any,
+				.sin6_port = 0,
+			},
+		};
+		socklen_t sa_len = sizeof(sa);
 		int s;
 
 		if ((s = make_dccp()) < 0) {
 			/* just to indicate we have no socket */
 			dccp[0].fd = -1;
-		} else if (sock_listener(s, 9090) < 0) {
+		} else if (sock_listener(s, &sa) < 0) {
 			/* grrr, whats wrong now */
 			close(s);
 			dccp[0].fd = -1;
@@ -1196,14 +1244,17 @@ main(int argc, char *argv[])
 			/* everything's brilliant */
 			ev_io_init(dccp, dccp_cb, s, EV_READ);
 			ev_io_start(EV_A_ dccp);
+
+			getsockname(s, &sa.sa, &sa_len);
 		}
+
 
 		if (countof(dccp) < 2) {
 			;
 		} else if ((s = make_tcp()) < 0) {
 			/* just to indicate we have no socket */
 			dccp[1].fd = -1;
-		} else if (sock_listener(s, 9090) < 0) {
+		} else if (sock_listener(s, &sa) < 0) {
 			/* bugger */
 			close(s);
 			dccp[1].fd = -1;
@@ -1211,6 +1262,12 @@ main(int argc, char *argv[])
 			/* yay */
 			ev_io_init(dccp + 1, dccp_cb, s, EV_READ);
 			ev_io_start(EV_A_ dccp + 1);
+
+			getsockname(s, &sa.sa, &sa_len);
+		}
+
+		if (s >= 0) {
+			make_brag_uri(&sa, sa_len);
 		}
 	}
 
@@ -1285,6 +1342,12 @@ unroll:
 	}
 
 	/* detach http/dccp */
+	for (size_t i = 0; i < countof(conns); i++) {
+		if (conns[i].fd > 0) {
+			ev_io_shut(EV_A_ conns + i);
+		}
+	}
+
 	for (size_t i = 0; i < countof(dccp); i++) {
 		int s = dccp[i].fd;
 

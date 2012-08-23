@@ -54,7 +54,11 @@ tws_cont_x(tws_cont_t tgt, unsigned int ns, unsigned int aid, const char *val);
 
 /* excorporate contract C into BUF of size BSZ using namespace NS. */
 extern ssize_t
-tws_cont_y(char *restrict buf, size_t bsz, unsigned int ns, tws_cont_t c);
+tws_cont_y(char *restrict buf, size_t bsz, unsigned int ns, tws_const_cont_t c);
+
+/* excorporate secdef D into BUF of size BSZ using namespace NS. */
+extern ssize_t
+tws_sdef_y(char *restrict buf, size_t bsz, unsigned int ns, tws_const_sdef_t d);
 
 #if defined __cplusplus
 }

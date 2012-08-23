@@ -192,22 +192,125 @@ tws_cont_symstr(tws_cont_t tgt, unsigned int, const char *val)
 
 
 // out converters
-static ssize_t
-tws_cont_to_fix(char *restrict buf, size_t bsz, tws_cont_t src)
+static size_t
+__add(char *restrict tgt, size_t tsz, const char *src, size_t ssz)
 {
-	IB::Contract *c = (IB::Contract*)src;
-	const char *sym = c->localSymbol.c_str();
-	const long int conid = c->conId;
-	const char *sectyp = c->secType.c_str();
-	const char *exch = c->exchange.c_str();
+	if (ssz < tsz) {
+		memcpy(tgt, src, ssz);
+		tgt[ssz] = '\0';
+		return ssz;
+	}
+	return 0;
+}
 
-	return snprintf(buf, bsz, "\
-<SecDef><Instrmt\
- Sym=\"%s\"\
- ID=\"%ld\" Src='M'\
- SecTyp=\"%s\"\
- Exch=\"%s\"/>\
-</SecDef>", sym, conid, sectyp, exch);
+static ssize_t
+tws_sdef_to_fix(char *restrict buf, size_t bsz, tws_const_sdef_t src)
+{
+#define ADDv(tgt, tsz, s, ssz)	tgt += __add(tgt, tsz, s, ssz)
+#define ADDs(tgt, tsz, string)	tgt += __add(tgt, tsz, string, strlen(string))
+#define ADDl(tgt, tsz, ltrl)	tgt += __add(tgt, tsz, ltrl, sizeof(ltrl) - 1)
+#define ADDc(tgt, tsz, c)	(tsz > 1 ? *tgt++ = c, 1 : 0)
+#define ADDF(tgt, tsz, args...)	tgt += snprintf(tgt, tsz, args)
+
+#define ADD_STR(tgt, tsz, tag, slot)			    \
+	do {						    \
+		const char *__c__ = slot.data();	    \
+		const size_t __z__ = slot.size();	    \
+							    \
+		if (__z__) {				    \
+			ADDl(tgt, tsz, " " tag "=\"");	    \
+			ADDv(tgt, tsz, __c__, __z__);	    \
+			ADDc(tgt, tsz, '\"');		    \
+		}					    \
+	} while (0)
+
+	IB::ContractDetails *d = (IB::ContractDetails*)src;
+	char *restrict p = buf;
+
+#define REST	buf + bsz - p
+
+	ADDl(p, REST, "<SecDef><Instrmt");
+
+	// start out with symbol stuff
+	ADD_STR(p, REST, "Sym", d->summary.localSymbol);
+
+	if (const long int cid = d->summary.conId) {
+		ADDF(p, REST, " ID=\"%ld\" Src=\"M\"", cid);
+	}
+
+	ADD_STR(p, REST, "SecTyp", d->summary.secType);
+	ADD_STR(p, REST, "Exch", d->summary.exchange);
+
+	ADD_STR(p, REST, "MatDt", d->summary.expiry);
+
+	// right and strike
+	ADD_STR(p, REST, "PutCall", d->summary.right);
+	if (const double strk = d->summary.strike) {
+		ADDF(p, REST, " StrkPx=\"%.6f\"", strk);
+	}
+
+	ADD_STR(p, REST, "Mult", d->summary.multiplier);
+	ADD_STR(p, REST, "Ccy", d->summary.currency);
+	ADD_STR(p, REST, "Desc", d->longName);
+
+	if (const double mintick = d->minTick) {
+		long int mult = strtol(d->summary.multiplier.c_str(), NULL, 10);
+
+		ADDF(p, REST, " MinPxIncr=\"%.6f\"", mintick);
+		if (mult) {
+			double amt = mintick * (double)mult;
+			ADDF(p, REST, " MinPxIncrAmt=\"%.6f\"", amt);
+		}
+	}
+
+	ADD_STR(p, REST, "MMY", d->contractMonth);
+
+	// finishing <Instrmt> open tag, Instrmt children will follow
+	ADDc(p, REST, '>');
+
+	// none yet
+
+	// closing <Instrmt> tag, children of SecDef will follow
+	ADDl(p, REST, "</Instrmt>");
+
+	if (IB::Contract::ComboLegList *cl = d->summary.comboLegs) {
+		for (IB::Contract::ComboLegList::iterator it = cl->begin(),
+			     end = cl->end(); it != end; it++) {
+			ADDl(p, REST, "<Leg");
+			if (const long int cid = (*it)->conId) {
+				ADDF(p, REST, " ID=\"%ld\" Src=\"M\"", cid);
+			}
+			ADD_STR(p, REST, "Exch", (*it)->exchange);
+			ADD_STR(p, REST, "Side", (*it)->action);
+			ADDF(p, REST, " RatioQty=\"%.6f\"",
+				(double)(*it)->ratio);
+			ADDc(p, REST, '>');
+			ADDl(p, REST, "</Leg>");
+		}
+	}
+
+	if (IB::UnderComp *undly = d->summary.underComp) {
+		if (const long int cid = undly->conId) {
+			ADDl(p, REST, "<Undly");
+			ADDF(p, REST, " ID=\"%ld\" Src=\"M\"", cid);
+			ADDc(p, REST, '>');
+			ADDl(p, REST, "</Undly>");
+		}
+	}
+
+	// finalise the whole shebang
+	ADDl(p, REST, "</SecDef>");
+	return p - buf;
+}
+
+static ssize_t
+tws_cont_to_fix(char *restrict buf, size_t bsz, tws_const_cont_t src)
+{
+	static IB::ContractDetails sd;
+	const IB::Contract *c = (const IB::Contract*)src;
+
+	sd.summary = *c;
+	return tws_sdef_to_fix(buf, bsz, (tws_const_sdef_t)&sd);
 }
 
 
@@ -261,11 +364,14 @@ tws_dup_sdef(tws_const_sdef_t x)
 	return (tws_sdef_t)res;
 }
 
-tws_const_cont_t
-tws_sdef_get_cont(tws_const_sdef_t x)
+tws_cont_t
+tws_sdef_make_cont(tws_const_sdef_t x)
 {
 	const IB::ContractDetails *ibcd = (const IB::ContractDetails*)x;
-	return (tws_const_cont_t)&ibcd->summary;
+	IB::Contract *res = new IB::Contract;
+
+	*res = ibcd->summary;
+	return (tws_cont_t)res;
 }
 
 
@@ -312,13 +418,32 @@ tws_cont_nick(tws_const_cont_t cont)
 }
 
 ssize_t
-tws_cont_y(char *restrict buf, size_t bsz, unsigned int nsid, tws_cont_t c)
+tws_cont_y(
+	char *restrict buf, size_t bsz,
+	unsigned int nsid, tws_const_cont_t c)
 {
 	switch ((tx_nsid_t)nsid) {
 	case TX_NS_TWSXML_0_1:
 		return 0;
 	case TX_NS_FIXML_5_0:
 		return tws_cont_to_fix(buf, bsz, c);
+	case TX_NS_SYMSTR:
+		return 0;
+	default:
+		return -1;
+	}
+}
+
+ssize_t
+tws_sdef_y(
+	char *restrict buf, size_t bsz,
+	unsigned int nsid, tws_const_sdef_t d)
+{
+	switch ((tx_nsid_t)nsid) {
+	case TX_NS_TWSXML_0_1:
+		return 0;
+	case TX_NS_FIXML_5_0:
+		return tws_sdef_to_fix(buf, bsz, d);
 	case TX_NS_SYMSTR:
 		return 0;
 	default:

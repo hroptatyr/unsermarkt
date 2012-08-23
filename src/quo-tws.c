@@ -1299,6 +1299,12 @@ unroll:
 	}
 
 	/* detach http/dccp */
+	for (size_t i = 0; i < countof(conns); i++) {
+		if (conns[i].fd > 0) {
+			ev_io_shut(EV_A_ conns + i);
+		}
+	}
+
 	for (size_t i = 0; i < countof(dccp); i++) {
 		int s = dccp[i].fd;
 

@@ -198,12 +198,28 @@ AC_DEFUN([SXE_WARNFLAGS], [dnl
 		warnflags="$warnflags -Wdeprecated"])
 
 	## icc specific
+	SXE_CHECK_COMPILER_FLAGS([-Wcheck], [
+		warnflags="$warnflags -Wcheck"])
+
+	dnl SXE_CHECK_COMPILER_FLAGS([-Wp64], [
+	dnl 	warnflags="$warnflags -Wp64"])
+
+	SXE_CHECK_COMPILER_FLAGS([-Wstrict-aliasing], [
+		warnflags="$warnflags -Wstrict-aliasing"])
+
+	SXE_CHECK_COMPILER_FLAGS([-w3], [
+		warnflags="$warnflags -w3"])
+
 	SXE_CHECK_COMPILER_FLAGS([-diag-disable 10237], [dnl
 		warnflags="${warnflags} -diag-disable 10237"], [
 		SXE_CHECK_COMPILER_FLAGS([-wd 10237], [dnl
 			warnflags="${warnflags} -wd 10237"])])
-	SXE_CHECK_COMPILER_FLAGS([-w2], [
-		warnflags="$warnflags -w2"])
+
+	dnl SXE_CHECK_COMPILER_FLAGS([-diag-disable 2259], [dnl
+	dnl 	warnflags="${warnflags} -diag-disable 2259"], [
+	dnl 	SXE_CHECK_COMPILER_FLAGS([-wd 2259], [dnl
+	dnl 		warnflags="${warnflags} -wd 2259"])])
+
 
 	AC_MSG_CHECKING([for preferred warning flags])
 	AC_MSG_RESULT([${warnflags}])

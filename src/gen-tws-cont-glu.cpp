@@ -229,7 +229,17 @@ tws_sdef_to_fix(char *restrict buf, size_t bsz, tws_const_sdef_t src)
 
 #define REST	buf + bsz - p
 
-	ADDl(p, REST, "<SecDef><Instrmt");
+	ADDl(p, REST, "<SecDef");
+
+	// do we need BizDt and shit?
+
+	// we do want the currency though
+	ADD_STR(p, REST, "Ccy", d->summary.currency);
+
+	ADDc(p, REST, '>');
+
+	// instrmt tag
+	ADDl(p, REST, "<Instrmt");
 
 	// start out with symbol stuff
 	ADD_STR(p, REST, "Sym", d->summary.localSymbol);
@@ -250,7 +260,6 @@ tws_sdef_to_fix(char *restrict buf, size_t bsz, tws_const_sdef_t src)
 	}
 
 	ADD_STR(p, REST, "Mult", d->summary.multiplier);
-	ADD_STR(p, REST, "Ccy", d->summary.currency);
 	ADD_STR(p, REST, "Desc", d->longName);
 
 	if (const double mintick = d->minTick) {

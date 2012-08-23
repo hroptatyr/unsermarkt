@@ -149,7 +149,10 @@ struct quo_qqq_s {
 /* AoV-based subscriptions class */
 struct quo_sub_s {
 	size_t nsubs;
-	tws_cont_t *inss;
+	struct {
+		tws_cont_t cont;
+		tws_sdef_t sdef;
+	} *inss;
 
 	/* actual quotes, this is bid, bsz, ask, asz  */
 	q30_pack_t *quos;
@@ -294,7 +297,8 @@ static struct quo_sub_s subs = {0};
 static struct quo_qq_s qq = {0};
 static utectx_t uu = NULL;
 
-#define INS(i)		(subs.inss[i - 1])
+#define INSTRMT(i)	(subs.inss[i - 1].cont)
+#define SECDEF(i)	(subs.inss[i - 1].sdef)
 
 /* ute services come in 2 flavours little endian "ut" and big endian "UT" */
 #define UTE_CMD_LE	0x7574
@@ -484,15 +488,15 @@ websvc_from_request(struct websvc_s *tgt, const char *req, size_t UNUSED(len))
 static size_t
 websvc_secdef(char *restrict tgt, size_t tsz, struct websvc_s sd)
 {
-	tws_cont_t c = NULL;
+	tws_const_sdef_t sdef = NULL;
 	ssize_t res;
 
 	QUO_DEBUG("printing secdef idx %hu\n", sd.secdef.idx);
-	if ((size_t)(sd.secdef.idx - 1) < subs.nsubs) {
-		c = INS(sd.secdef.idx);
+	if (sd.secdef.idx && sd.secdef.idx <= subs.nsubs) {
+		sdef = SECDEF(sd.secdef.idx);
 	}
 
-	if ((res = tws_cont_xml(tgt, tsz, c)) < 0) {
+	if ((res = tws_sdef_xml(tgt, tsz, sdef)) < 0) {
 		res = 0;
 	}
 	return res;
@@ -640,8 +644,14 @@ pre_cb(tws_t tws, tws_cb_t what, struct tws_pre_clo_s clo)
 	case TWS_CB_PRE_CONT_DTL:
 		QUO_DEBUG("sdef coming back %p\n", clo.data);
 		if (clo.oid && clo.oid <= subs.nsubs && clo.data) {
-			tws_free_cont(INS(clo.oid));
-			INS(clo.oid) = tws_dup_cont(tws_sdef_get_cont(clo.data));
+			if (INSTRMT(clo.oid)) {
+				tws_free_cont(INSTRMT(clo.oid));
+			}
+			if (SECDEF(clo.oid)) {
+				tws_free_sdef(SECDEF(clo.oid));
+			}
+			INSTRMT(clo.oid) = tws_sdef_make_cont(clo.data);
+			SECDEF(clo.oid) = tws_dup_sdef(clo.data);
 		}
 	case TWS_CB_PRE_CONT_DTL_END:
 		break;
@@ -722,7 +732,7 @@ del_cake:
 
 /* fdfs */
 static ev_io conns[8];
-static size_t nconns = 0;
+static size_t next_conn = 0;
 
 static void
 ev_io_shut(EV_P_ ev_io *w)
@@ -800,15 +810,15 @@ dccp_cb(EV_P_ ev_io *w, int UNUSED(re))
 		return;
 	}
 
-	if (conns[nconns].fd > 0) {
-		ev_io_shut(EV_A_ conns + nconns);
+	if (conns[next_conn].fd > 0) {
+		ev_io_shut(EV_A_ conns + next_conn);
 	}
 
-	ev_io_init(conns + nconns, dccp_data_cb, s, EV_READ);
-	conns[nconns].data = NULL;
-	ev_io_start(EV_A_ conns + nconns);
-	if (++nconns >= countof(conns)) {
-		nconns = 0;
+	ev_io_init(conns + next_conn, dccp_data_cb, s, EV_READ);
+	conns[next_conn].data = NULL;
+	ev_io_start(EV_A_ conns + next_conn);
+	if (++next_conn >= countof(conns)) {
+		next_conn = 0;
 	}
 	return;
 }
@@ -872,7 +882,7 @@ __cont_batch_cb(tws_cont_t ins, void *clo)
 			sizeof(*subs.quos) - 1;
 	}
 
-	INS(iidx) = ins;
+	INSTRMT(iidx) = ins;
 	QUO_DEBUG("reg'd %s %hu\n", nick, iidx);
 	return 0;
 }
@@ -915,11 +925,11 @@ redo_subs(tws_t tws)
 
 	/* and finally call the a/c requester */
 	for (unsigned int i = 1; i <= subs.nsubs; i++) {
-		if (INS(i) == NULL) {
+		if (INSTRMT(i) == NULL) {
 			;
-		} else if (tws_req_sdef(tws, i, INS(i)) < 0) {
+		} else if (tws_req_sdef(tws, i, INSTRMT(i)) < 0) {
 			error(0, "cannot acquire secdefs of ins %u\n", i);
-		} else if (tws_req_quo(tws, i, INS(i)) < 0) {
+		} else if (tws_req_quo(tws, i, INSTRMT(i)) < 0) {
 			error(0, "cannot (re)subscribe to ins %u\n", i);
 		} else {
 			QUO_DEBUG("sub'd %s\n", ute_idx2sym(uu, i));
@@ -935,10 +945,14 @@ del_req:
 static void
 undo_subs(tws_t UNUSED(tws))
 {
-	for (size_t i = 0; i < subs.nsubs; i++) {
-		if (subs.inss[i]) {
-			tws_free_cont(subs.inss[i]);
-			subs.inss[i] = NULL;
+	for (size_t i = 1; i <= subs.nsubs; i++) {
+		if (INSTRMT(i)) {
+			tws_free_cont(INSTRMT(i));
+			INSTRMT(i) = NULL;
+		}
+		if (SECDEF(i)) {
+			tws_free_sdef(SECDEF(i));
+			SECDEF(i) = NULL;
 		}
 	}
 	if (subs.nsubs) {
@@ -1285,6 +1299,12 @@ unroll:
 	}
 
 	/* detach http/dccp */
+	for (size_t i = 0; i < countof(conns); i++) {
+		if (conns[i].fd > 0) {
+			ev_io_shut(EV_A_ conns + i);
+		}
+	}
+
 	for (size_t i = 0; i < countof(dccp); i++) {
 		int s = dccp[i].fd;
 

@@ -53,7 +53,9 @@
 # define EV_P  struct ev_loop *loop __attribute__((unused))
 #endif	/* HAVE_EV_H */
 #include <netinet/in.h>
+#include <sys/socket.h>
 #include <netdb.h>
+#include <sys/utsname.h>
 
 #include <unserding/unserding.h>
 #include <unserding/protocore.h>
@@ -258,21 +260,13 @@ make_tcp(void)
 }
 
 static int
-sock_listener(int s, short unsigned int port)
+sock_listener(int s, ud_sockaddr_t sa)
 {
-	union ud_sockaddr_u sa = {
-		.sa6 = {
-			.sin6_family = AF_INET6,
-			.sin6_addr = in6addr_any,
-			.sin6_port = htons(port),
-		},
-	};
-
 	if (s < 0) {
 		return s;
 	}
 
-	if (bind(s, &sa.sa, sizeof(sa)) < 0) {
+	if (bind(s, &sa->sa, sizeof(*sa)) < 0) {
 		return -1;
 	}
 
@@ -347,14 +341,46 @@ ud_chan_send_ser_all(udpc_seria_t ser)
 	return;
 }
 
+/* looks like dccp://host:port/secdef?idx=00000 */
+static char brag_uri[INET6_ADDRSTRLEN] = "dccp://";
+/* offset into brag_uris idx= field */
+static size_t brag_uri_offset = 0;
+
+static int
+make_brag_uri(ud_sockaddr_t sa, socklen_t UNUSED(sa_len))
+{
+	struct utsname uts[1];
+	char dnsdom[64];
+	const size_t uri_host_offs = sizeof("dccp://");
+	char *curs = brag_uri + uri_host_offs - 1;
+	size_t rest = sizeof(brag_uri) - uri_host_offs;
+	int len;
+
+	if (uname(uts) < 0) {
+		return -1;
+	} else if (getdomainname(dnsdom, sizeof(dnsdom)) < 0) {
+		return -1;
+	}
+
+	len = snprintf(
+		curs, rest, "%s.%s:%hu/secdef?idx=",
+		uts->nodename, dnsdom, sa->sa6.sin6_port);
+
+	if (len > 0) {
+		brag_uri_offset = uri_host_offs + len - 1;
+	}
+
+	QUO_DEBUG("adv_name: %s\n", brag_uri);
+	return 0;
+}
+
 static int
 brag(udpc_seria_t ser, uint16_t idx)
 {
-	static char uri[] = "dccp://localhost:00000/secdef?idx=00000";
 	const char *sym = ute_idx2sym(uu, idx);
 	size_t len, tot;
 
-	tot = (len = strlen(sym)) + sizeof(uri);
+	tot = (len = strlen(sym)) + brag_uri_offset + 5;
 
 	if (UNLIKELY(!udpc_seria_fits_dsm_p(ser, sym, tot))) {
 		ud_packet_t pkt = {UDPC_PKTLEN, /*hack*/ser->msg - UDPC_HDRLEN};
@@ -372,9 +398,9 @@ brag(udpc_seria_t ser, uint16_t idx)
 	udpc_seria_add_str(ser, sym, len);
 	/* put stuff in our uri */
 	len = snprintf(
-		uri, sizeof(uri),
-		"dccp://%s:%hu/secdef?idx=%hu", "quant", 8080, idx);
-	udpc_seria_add_str(ser, uri, len);
+		brag_uri + brag_uri_offset, sizeof(brag_uri) - brag_uri_offset,
+		"%hu", idx);
+	udpc_seria_add_str(ser, brag_uri, brag_uri_offset + len);
 	return 0;
 }
 
@@ -1197,12 +1223,20 @@ main(int argc, char *argv[])
 
 	/* make a channel for http/dccp requests */
 	{
+		union ud_sockaddr_u sa = {
+			.sa6 = {
+				.sin6_family = AF_INET6,
+				.sin6_addr = in6addr_any,
+				.sin6_port = 0,
+			},
+		};
+		socklen_t sa_len = sizeof(sa);
 		int s;
 
 		if ((s = make_dccp()) < 0) {
 			/* just to indicate we have no socket */
 			dccp[0].fd = -1;
-		} else if (sock_listener(s, 9090) < 0) {
+		} else if (sock_listener(s, &sa) < 0) {
 			/* grrr, whats wrong now */
 			close(s);
 			dccp[0].fd = -1;
@@ -1210,14 +1244,17 @@ main(int argc, char *argv[])
 			/* everything's brilliant */
 			ev_io_init(dccp, dccp_cb, s, EV_READ);
 			ev_io_start(EV_A_ dccp);
+
+			getsockname(s, &sa.sa, &sa_len);
 		}
+
 
 		if (countof(dccp) < 2) {
 			;
 		} else if ((s = make_tcp()) < 0) {
 			/* just to indicate we have no socket */
 			dccp[1].fd = -1;
-		} else if (sock_listener(s, 9090) < 0) {
+		} else if (sock_listener(s, &sa) < 0) {
 			/* bugger */
 			close(s);
 			dccp[1].fd = -1;
@@ -1225,6 +1262,12 @@ main(int argc, char *argv[])
 			/* yay */
 			ev_io_init(dccp + 1, dccp_cb, s, EV_READ);
 			ev_io_start(EV_A_ dccp + 1);
+
+			getsockname(s, &sa.sa, &sa_len);
+		}
+
+		if (s >= 0) {
+			make_brag_uri(&sa, sa_len);
 		}
 	}
 

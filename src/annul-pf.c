@@ -219,7 +219,7 @@ check_poss(const struct xmpl_s *UNUSED(ctx))
 		sl1t_set_tblidx(t, i + 1);
 		t->pri = SL1T_PRC_MKT;
 
-		if (pos->lqty != 0.0) {
+		if (pos->lqty) {
 			double qty = calc_qty(pos->lqty);
 
 			fprintf(stderr, "\
@@ -229,7 +229,7 @@ ORDER\t%s\tSELL\t%.8f\t% 12.0f\n", pos->sym, qty, pos->lqty);
 			t->qty = ffff_m30_get_d(qty).u;
 			udpc_seria_add_scom(ser, AS_SCOM(t), sizeof(*t));
 		}
-		if (pos->sqty != 0.0) {
+		if (pos->sqty) {
 			double qty = calc_qty(pos->sqty);
 
 			fprintf(stderr, "\

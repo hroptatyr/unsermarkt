@@ -364,7 +364,7 @@ make_brag_uri(ud_sockaddr_t sa, socklen_t UNUSED(sa_len))
 
 	len = snprintf(
 		curs, rest, "%s.%s:%hu/secdef?idx=",
-		uts->nodename, dnsdom, sa->sa6.sin6_port);
+		uts->nodename, dnsdom, ntohs(sa->sa6.sin6_port));
 
 	if (len > 0) {
 		brag_uri_offset = uri_host_offs + len - 1;

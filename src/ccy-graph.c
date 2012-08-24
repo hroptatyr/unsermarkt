@@ -127,8 +127,6 @@ static size_t pgsz = 0;
 graph_t
 make_graph(void)
 {
-#define PROT_MEM	(PROT_READ | PROT_WRITE)
-#define MAP_MEM		(MAP_PRIVATE | MAP_ANON)
 	graph_t res;
 	size_t tmp = sizeof(*res);
 

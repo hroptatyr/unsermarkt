@@ -167,12 +167,6 @@ static unsigned int nrend = 0;
 
 #define CLI(x)		(assert(x), assert(x <= ncli), cli + x - 1)
 
-#if defined MAP_ANON && !defined MAP_ANONYMOUS
-# define MAP_ANONYMOUS	MAP_ANON
-#endif	/* MAP_ANON && !MAP_ANONYMOUS */
-#define MAP_MEM		(MAP_PRIVATE | MAP_ANONYMOUS)
-#define PROT_MEM	(PROT_READ | PROT_WRITE)
-
 static void
 init_cli(void)
 {

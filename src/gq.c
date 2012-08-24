@@ -50,13 +50,6 @@
 # define assert(x)
 #endif	/* DEBUG_FLAG */
 
-#if !defined PROT_MEM
-# define PROT_MEM	(PROT_READ | PROT_WRITE)
-#endif	/* PROT_MEM */
-#if !defined MAP_MEM
-# define MAP_MEM	(MAP_ANONYMOUS | MAP_PRIVATE)
-#endif	/* MAP_MEM */
-
 static size_t __attribute__((const, pure))
 gq_nmemb(size_t mbsz, size_t n)
 {

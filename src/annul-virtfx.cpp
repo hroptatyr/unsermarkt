@@ -1015,11 +1015,6 @@ undo_subs(my_tws_t)
 static __attribute__((noinline)) void
 resz_subs(unsigned int iidx)
 {
-#if !defined MAP_ANON && defined MAP_ANONYMOUS
-# define MAP_ANON	(MAP_ANONYMOUS)
-#endif	/* !MAP_ANON && MAP_ANONYMOUS */
-#define PROT_MEM	(PROT_READ | PROT_WRITE)
-#define MAP_MEM		(MAP_PRIVATE | MAP_ANON)
 	/* singleton/resizer */
 	size_t new_sz;
 	void *new_;

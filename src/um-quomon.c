@@ -193,12 +193,6 @@ static unsigned int nrend = 0;
 #define NEXT(y, x)	EAT(y, x).next
 #define PREV(y, x)	EAT(y, x).prev
 
-#if defined MAP_ANON && !defined MAP_ANONYMOUS
-# define MAP_ANONYMOUS	MAP_ANON
-#endif	/* MAP_ANON && !MAP_ANONYMOUS */
-#define MAP_MEM		(MAP_PRIVATE | MAP_ANONYMOUS)
-#define PROT_MEM	(PROT_READ | PROT_WRITE)
-
 static void
 resz_lob(lobidx_t li, size_t at_least)
 {

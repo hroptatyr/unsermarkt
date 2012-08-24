@@ -56,6 +56,10 @@ struct pair_s {
 	const_iso_4217_t trm;
 };
 
+#define NULL_PAIR	((gpair_t)0)
+#define NULL_EDGE	((gedge_t)0)
+#define NULL_PATH_HOP	((gpath_def_t)0)
+
 
 extern graph_t make_graph(void);
 extern void free_graph(graph_t);

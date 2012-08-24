@@ -110,9 +110,6 @@ union graph_u {
 	struct gpair_s p[0];
 };
 
-#define NULL_PAIR	((gpair_t)0)
-#define NULL_EDGE	((gedge_t)0)
-#define NULL_PATH_HOP	((gpath_def_t)0)
 #define P(g, x)		(g->p[x])
 #define E(g, x)		(g->e[x])
 #define F(g, x)		(g->f[x])

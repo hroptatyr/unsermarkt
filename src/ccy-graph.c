@@ -441,6 +441,7 @@ ccyg_add_paths(graph_t g, struct pair_s x)
 {
 /* adds a virtual pair X from paths found */
 	struct pair_s p = x;
+	size_t ngp = g->npairs;
 
 	CCY_DEBUG("adding paths XCH %s FOR %s\n", x.bas->sym, x.trm->sym);
 
@@ -448,7 +449,7 @@ ccyg_add_paths(graph_t g, struct pair_s x)
 		/* trivial */
 		return;
 	}
-	for (gpair_t i = 1; i <= g->npairs; i++) {
+	for (gpair_t i = 1; i <= ngp; i++) {
 		if (P(g, i).p.bas == x.bas) {
 			p.bas = P(g, i).p.trm;
 		} else if (P(g, i).p.trm == x.bas) {

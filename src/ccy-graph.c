@@ -285,7 +285,7 @@ add_path_hop(graph_t g, gpath_def_t tgtpath, gpair_t via)
 	if ((tmp = find_path_hop(g, tgtpath, via)) == NULL_PATH_HOP &&
 	    (tmp = make_gpath_hop(g)) != NULL_PATH_HOP) {
 		/* create a new hop */
-		CCY_DEBUG("ctor'ing path %zu -+-> %s%s (%zu)\n",
+		CCY_DEBUG("ctor'ing path hop %zu -+-> %s%s (%zu)\n",
 			  tgtpath,
 			  P(g, via).p.bas->sym, P(g, via).p.trm->sym, via);
 		F(g, tmp).x = via;

@@ -56,6 +56,10 @@ struct pair_s {
 	const_iso_4217_t trm;
 };
 
+#define NULL_PAIR	((gpair_t)0)
+#define NULL_EDGE	((gedge_t)0)
+#define NULL_PATH_HOP	((gpath_def_t)0)
+
 
 extern graph_t make_graph(void);
 extern void free_graph(graph_t);
@@ -72,6 +76,19 @@ extern void ccyg_populate(graph_t);
  * Add all possible path that go from the term currency to the base currency.
  * Paths are virtual gpairs. */
 extern void ccyg_add_paths(graph_t, struct pair_s);
+
+#if defined DEBUG_FLAG
+extern void prnt_graph(graph_t);
+#endif	/* DEBUG_FLAG */
+
+/* testing */
+extern void upd_bid(graph_t g, gpair_t p, double pri, double qty);
+extern void upd_ask(graph_t g, gpair_t p, double pri, double qty);
+
+extern double get_bid(graph_t g, gpair_t p);
+extern double get_ask(graph_t g, gpair_t p);
+
+extern void recomp_affected(graph_t g, gpair_t p);
 
 #if defined __cplusplus
 }

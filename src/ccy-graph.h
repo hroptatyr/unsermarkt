@@ -77,6 +77,10 @@ extern void ccyg_populate(graph_t);
  * Paths are virtual gpairs. */
 extern void ccyg_add_paths(graph_t, struct pair_s);
 
+#if defined DEBUG_FLAG
+extern void prnt_graph(graph_t);
+#endif	/* DEBUG_FLAG */
+
 #if defined __cplusplus
 }
 #endif	/* __cplusplus */

@@ -115,6 +115,26 @@ union graph_u {
 #define F(g, x)		(g->f[x])
 #define AFF(g, x)	(g->aff[x])
 
+void
+prnt_graph(graph_t g)
+{
+	for (gpair_t i = 1; i <= g->npairs; i++) {
+		CCY_DEBUG("p %zu  %s%s  paths @[%zu] 4(%zu)\n",
+			  i,
+			  P(g, i).p.bas->sym, P(g, i).p.trm->sym,
+			  P(g, i).off, P(g, i).len);
+		CCY_DEBUG("  updates affect:\n");
+		for (uint64_t aff = AFF(g, i).x, j = 1; aff; aff >>= 1, j++) {
+			if (!(aff & 1)) {
+				continue;
+			}
+			CCY_DEBUG("  + %s%s (%zu)\n",
+				  P(g, j).p.bas->sym, P(g, j).p.trm->sym, j);
+		}
+	}
+	return;
+}
+
 
 static size_t pgsz = 0;
 

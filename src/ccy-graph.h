@@ -81,6 +81,15 @@ extern void ccyg_add_paths(graph_t, struct pair_s);
 extern void prnt_graph(graph_t);
 #endif	/* DEBUG_FLAG */
 
+/* testing */
+extern void upd_bid(graph_t g, gpair_t p, double pri, double qty);
+extern void upd_ask(graph_t g, gpair_t p, double pri, double qty);
+
+extern double get_bid(graph_t g, gpair_t p);
+extern double get_ask(graph_t g, gpair_t p);
+
+extern void recomp_affected(graph_t g, gpair_t p);
+
 #if defined __cplusplus
 }
 #endif	/* __cplusplus */

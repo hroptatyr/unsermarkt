@@ -76,8 +76,10 @@
 
 #if defined HAVE_UTERUS_UTERUS_H
 # include <uterus/uterus.h>
+# include <uterus/m30.h>
 #elif defined HAVE_UTERUS_H
 # include <uterus.h>
+# include <m30.h>
 #else
 # error uterus headers are mandatory
 #endif	/* HAVE_UTERUS_UTERUS_H || HAVE_UTERUS_H */
@@ -305,6 +307,31 @@ prune_clis(void)
 	return;
 }
 
+static void
+upd_pair(graph_t g, gpair_t p, const_sl1t_t cell)
+{
+	double pri, qty;
+
+	/* often used, so just compute them here */
+	pri = ffff_m30_d(cell->pri);
+	qty = ffff_m30_d(cell->qty);
+
+	switch (sl1t_ttf(cell)) {
+	case SL1T_TTF_BID:
+		upd_bid(g, p, pri, qty);
+		break;
+	case SL1T_TTF_ASK:
+		upd_ask(g, p, pri, qty);
+		break;
+	default:
+		XQ_DEBUG("unknown tick type %hu\n", sl1t_ttf(cell));
+		return;
+	}
+
+	recomp_affected(g, p);
+	return;
+}
+
 
 /* pair handling */
 static gpair_t
@@ -372,10 +399,9 @@ snarf_meta(job_t j, graph_t g)
 		/* fuck error checking */
 		udpc_seria_des_str_into(CLI(c)->sym, sizeof(CLI(c)->sym), ser);
 
-		XQ_DEBUG("found %s on the wire\n", CLI(c)->sym);
 		/* generate a pair and add him */
 		if ((p = find_pair_by_sym(g, CLI(c)->sym)) != CLI(c)->tgtid) {
-			XQ_DEBUG("g'd pair %zu\n", p);
+			XQ_DEBUG("g'd pair %s %zu\n", CLI(c)->sym, p);
 			CLI(c)->tgtid = p;
 		}
 
@@ -386,7 +412,7 @@ snarf_meta(job_t j, graph_t g)
 }
 
 static void
-snarf_data(job_t j)
+snarf_data(job_t j, graph_t g)
 {
 	char *pbuf = UDPC_PAYLOAD(JOB_PACKET(j).pbuf);
 	size_t plen = UDPC_PAYLLEN(JOB_PACKET(j).plen);
@@ -412,16 +438,18 @@ snarf_data(job_t j)
 		if ((c = find_cli(k)) == 0) {
 			c = add_cli(k);
 		}
-		if (CLI(c)->tgtid == 0) {
+		if (CLI(c)->tgtid == 1) {
+			double p = ffff_m30_d(CONST_SL1T_T(sp)->pri);
+
+			XQ_DEBUG("PAIR 1!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
+			XQ_DEBUG("%c %.6f\n", 'c' - sl1t_ttf(CONST_SL1T_T(sp)), p);
+		} else if (CLI(c)->tgtid == 0) {
 			continue;
 		}
 
 		/* fiddle with the tblidx */
 		scom_thdr_set_tblidx(sp, CLI(c)->tgtid);
-#if 0
-		/* and pump the tick to ute */
-		ute_add_tick(u, sp);
-#endif
+		upd_pair(g, CLI(c)->tgtid, CONST_SL1T_T(sp));
 
 		/* leave a last_seen note */
 		CLI(c)->last_seen = tv->tv_sec;
@@ -475,8 +503,7 @@ mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
 
 	case UTE:
 	case UTE_RPL:
-		fputs("DATA\n", logerr);
-		//snarf_data(j);
+		snarf_data(j, g);
 		break;
 	default:
 		break;

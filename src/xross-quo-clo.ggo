@@ -1,0 +1,18 @@
+args "--unamed-opts --no-handle-error --long-help -a xq_args_info -f xq_parser"
+package "xross-quo"
+usage "xross-quo [OPTION]... PAIR..."
+description "read quotes off unserding beef channels and quote crosses"
+
+option "daemonise" d
+	"Detach from tty and runs as daemon"
+	optional
+
+section "Network options"
+option "port" p
+	"Multicast control channel port"
+	int default="8653" optional
+
+option "beef" -
+	"Multicast payload channels, can be used multiple times"
+	int optional multiple
+

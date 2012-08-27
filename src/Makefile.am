@@ -300,6 +300,22 @@ ccy_graph_SOURCES = ccy-graph.c ccy-graph.h
 ccy_graph_SOURCES += iso4217.c iso4217.h
 ccy_graph_CPPFLAGS = $(AM_CPPFLAGS) -DSTANDALONE
 
+if HAVE_LIBEV
+noinst_PROGRAMS += xross-quo
+xross_quo_SOURCES = xross-quo.c xross-quo-clo.ggo
+xross_quo_SOURCES += ccy-graph.h
+xross_quo_SOURCES += iso4217.c iso4217.h
+xross_quo_CPPFLAGS = $(AM_CPPFLAGS) -D_GNU_SOURCE
+xross_quo_CPPFLAGS += $(libev_CFLAGS)
+xross_quo_CPPFLAGS += $(unserding_CFLAGS)
+xross_quo_CPPFLAGS += $(uterus_CFLAGS)
+xross_quo_LDFLAGS = $(AM_LDFLAGS)
+xross_quo_LDFLAGS += $(uterus_LIBS)
+xross_quo_LDFLAGS += $(unserding_LIBS)
+xross_quo_LDFLAGS += $(libev_LIBS)
+endif  HAVE_LIBEV
+BUILT_SOURCES += xross-quo-clo.c xross-quo-clo.h
+
 if HAVE_TWSAPI
 lib_LTLIBRARIES += libtwscapi.la
 libtwscapi_la_SOURCES = gen-tws.c gen-tws.h

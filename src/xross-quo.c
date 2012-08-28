@@ -379,17 +379,41 @@ find_bbo(graph_t g)
 		bid.mant -= bid.mant % 1000;
 		ask.mant -= ask.mant % 1000;
 
-		if (res.b.mant == 0 || bid.mant && res.b.mant < bid.mant) {
+		if (res.b.u == 0 || bid.u && res.b.v < bid.v) {
 			res.b = bid;
 		}
-		if (res.a.mant == 0 || ask.mant && res.a.mant > ask.mant) {
+		if (res.a.u == 0 || ask.u && res.a.v > ask.v) {
 			res.a = ask;
 		}
 	}
 	return res;
 }
 
+static inline void
+udpc_seria_add_m30(udpc_seria_t sctx, sl1t_t x, m30_t p)
+{
+	x->pri = p.u;
+	x->qty = ((m30_t){.expo = 1, .mant = 10000}).u;
+
+	memcpy(sctx->msg + sctx->msgoff, x, sizeof(*x));
+	sctx->msgoff += sizeof(*x);
+	return;
+}
+
 
+#define UTE_LE		(0x7574)
+#define UTE_BE		(0x5554)
+#define QMETA		(0x7572)
+#define QMETA_RPL	(UDPC_PKT_RPL(QMETA))
+#if defined WORDS_BIGENDIAN
+# define UTE		UTE_BE
+#else  /* !WORDS_BIGENDIAN */
+# define UTE		UTE_LE
+#endif	/* WORDS_BIGENDIAN */
+#define UTE_RPL		(UDPC_PKT_RPL(UTE))
+
+static ud_chan_t ute_out_ch;
+
 static void
 snarf_meta(job_t j, graph_t g)
 {
@@ -449,6 +473,7 @@ snarf_data(job_t j, graph_t g)
 	};
 	struct timeval tv[1];
 	uint64_t aff = 0;
+	static struct bbo_s last_bbo;
 
 	if (UNLIKELY(plen == 0)) {
 		return;
@@ -479,28 +504,48 @@ snarf_data(job_t j, graph_t g)
 		CLI(c)->last_seen = tv->tv_sec;
 	}
 
-	if (aff) {
+	if (aff && ute_out_ch) {
 		struct bbo_s bbo = find_bbo(g);
-		double bb = ffff_m30_d(bbo.b);
-		double ba = ffff_m30_d(bbo.a);
 
-		XQ_DEBUG("bbid %.6f  %.6f bask\n", bb, ba);
+		if (bbo.b.u != last_bbo.b.u || bbo.a.u != last_bbo.a.u) {
+			static char buf[UDPC_PKTLEN];
+			static unsigned int pno = 0;
+			struct udpc_seria_s ser[1];
+			struct sl1t_s new[1];
+
+			/* init the seria */
+#define PKT(x)		(ud_packet_t){sizeof(x), x}
+			udpc_make_pkt(PKT(buf), 0, pno++, UTE);
+			udpc_seria_init(ser, UDPC_PAYLOAD(buf), UDPC_PLLEN);
+
+			/* bit of prep work */
+			sl1t_set_stmp_sec(new, tv->tv_sec);
+			sl1t_set_stmp_msec(new, tv->tv_usec / 1000);
+			sl1t_set_tblidx(new, 1);
+
+			if (bbo.b.u == last_bbo.b.u) {
+				sl1t_set_ttf(new, SL1T_TTF_BID);
+				udpc_seria_add_m30(ser, new, bbo.b);
+			}
+			if (bbo.a.u != last_bbo.a.u) {
+				sl1t_set_ttf(new, SL1T_TTF_ASK);
+				udpc_seria_add_m30(ser, new, bbo.a);
+			}
+
+			last_bbo = bbo;
+
+			/* and send him off now */
+			ud_chan_send(
+				ute_out_ch,
+				(ud_packet_t){
+					UDPC_HDRLEN + udpc_seria_msglen(ser),
+						buf});
+		}
 	}
 	return;
 }
 
 
-#define UTE_LE		(0x7574)
-#define UTE_BE		(0x5554)
-#define QMETA		(0x7572)
-#define QMETA_RPL	(UDPC_PKT_RPL(QMETA))
-#if defined WORDS_BIGENDIAN
-# define UTE		UTE_BE
-#else  /* !WORDS_BIGENDIAN */
-# define UTE		UTE_LE
-#endif	/* WORDS_BIGENDIAN */
-#define UTE_RPL		(UDPC_PKT_RPL(UTE))
-
 /* the actual worker function */
 static void
 mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
@@ -732,6 +777,11 @@ main(int argc, char *argv[])
 		beef[i + 1].data = g;
 	}
 
+	/* also the first beef channel could be our output chan */
+	if (argi->beef_given) {
+		ute_out_ch = ud_chan_init(argi->beef_arg[0]);
+	}
+
 	/* init cli space */
 	init_cli();
 
@@ -745,6 +795,11 @@ main(int argc, char *argv[])
 	ev_loop(EV_A_ 0);
 
 past_loop:
+	if (ute_out_ch) {
+		ud_chan_fini(ute_out_ch);
+		ute_out_ch = NULL;
+	}
+
 	/* detaching beef channels */
 	for (size_t i = 0; i < nbeef; i++) {
 		int s = beef[i].fd;

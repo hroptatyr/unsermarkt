@@ -415,6 +415,62 @@ udpc_seria_add_m30(udpc_seria_t sctx, sl1t_t x, m30_t p)
 static ud_chan_t ute_out_ch;
 
 static void
+dissem_bbo(struct bbo_s bbo)
+{
+	static struct bbo_s last_bbo;
+	static time_t last_brag;
+	static char buf[UDPC_PKTLEN];
+	static unsigned int pno = 0;
+	struct udpc_seria_s ser[1];
+	struct sl1t_s new[1];
+	struct timeval now[1];
+
+	if (bbo.b.u == last_bbo.b.u && bbo.a.u == last_bbo.a.u) {
+		/* piss off right away, nothing's changed */
+		return;
+	}
+
+#define PKT(x)		(ud_packet_t){sizeof(x), x}
+#define XPKT(y, x)	(ud_packet_t){UDPC_HDRLEN + udpc_seria_msglen(y), x}
+	gettimeofday(now, NULL);
+	if (now->tv_sec >= last_brag + 10) {
+		udpc_make_pkt(PKT(buf), 0, pno++, QMETA_RPL);
+		udpc_seria_init(ser, UDPC_PAYLOAD(buf), UDPC_PLLEN);
+
+		udpc_seria_add_ui16(ser, 1);
+		udpc_seria_add_str(ser, "EURAUDx", 7);
+
+		ud_chan_send(ute_out_ch, XPKT(ser, buf));
+		last_brag = now->tv_sec;
+	}
+
+	/* init the seria (again) */
+	udpc_make_pkt(PKT(buf), 0, pno++, UTE);
+	udpc_set_data_pkt(PKT(buf));
+	udpc_seria_init(ser, UDPC_PAYLOAD(buf), UDPC_PLLEN);
+
+	/* bit of prep work */
+	sl1t_set_stmp_sec(new, now->tv_sec);
+	sl1t_set_stmp_msec(new, now->tv_usec / 1000);
+	sl1t_set_tblidx(new, 1);
+
+	if (bbo.b.u == last_bbo.b.u) {
+		sl1t_set_ttf(new, SL1T_TTF_BID);
+		udpc_seria_add_m30(ser, new, bbo.b);
+	}
+	if (bbo.a.u != last_bbo.a.u) {
+		sl1t_set_ttf(new, SL1T_TTF_ASK);
+		udpc_seria_add_m30(ser, new, bbo.a);
+	}
+	/* just to have something we can compare things to */
+	last_bbo = bbo;
+
+	/* and send him off now */
+	ud_chan_send(ute_out_ch, XPKT(ser, buf));
+	return;
+}
+
+static void
 snarf_meta(job_t j, graph_t g)
 {
 	char *pbuf = UDPC_PAYLOAD(JOB_PACKET(j).pbuf);
@@ -473,7 +529,6 @@ snarf_data(job_t j, graph_t g)
 	};
 	struct timeval tv[1];
 	uint64_t aff = 0;
-	static struct bbo_s last_bbo;
 
 	if (UNLIKELY(plen == 0)) {
 		return;
@@ -507,40 +562,7 @@ snarf_data(job_t j, graph_t g)
 	if (aff && ute_out_ch) {
 		struct bbo_s bbo = find_bbo(g);
 
-		if (bbo.b.u != last_bbo.b.u || bbo.a.u != last_bbo.a.u) {
-			static char buf[UDPC_PKTLEN];
-			static unsigned int pno = 0;
-			struct udpc_seria_s ser[1];
-			struct sl1t_s new[1];
-
-			/* init the seria */
-#define PKT(x)		(ud_packet_t){sizeof(x), x}
-			udpc_make_pkt(PKT(buf), 0, pno++, UTE);
-			udpc_seria_init(ser, UDPC_PAYLOAD(buf), UDPC_PLLEN);
-
-			/* bit of prep work */
-			sl1t_set_stmp_sec(new, tv->tv_sec);
-			sl1t_set_stmp_msec(new, tv->tv_usec / 1000);
-			sl1t_set_tblidx(new, 1);
-
-			if (bbo.b.u == last_bbo.b.u) {
-				sl1t_set_ttf(new, SL1T_TTF_BID);
-				udpc_seria_add_m30(ser, new, bbo.b);
-			}
-			if (bbo.a.u != last_bbo.a.u) {
-				sl1t_set_ttf(new, SL1T_TTF_ASK);
-				udpc_seria_add_m30(ser, new, bbo.a);
-			}
-
-			last_bbo = bbo;
-
-			/* and send him off now */
-			ud_chan_send(
-				ute_out_ch,
-				(ud_packet_t){
-					UDPC_HDRLEN + udpc_seria_msglen(ser),
-						buf});
-		}
+		dissem_bbo(bbo);
 	}
 	return;
 }

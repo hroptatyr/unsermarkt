@@ -467,12 +467,7 @@ snarf_data(job_t j, graph_t g)
 		if ((c = find_cli(k)) == 0) {
 			c = add_cli(k);
 		}
-		if (CLI(c)->tgtid == 1) {
-			double p = ffff_m30_d(CONST_SL1T_T(sp)->pri);
-
-			XQ_DEBUG("PAIR 1!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
-			XQ_DEBUG("%c %.6f\n", 'c' - sl1t_ttf(CONST_SL1T_T(sp)), p);
-		} else if (CLI(c)->tgtid == 0) {
+		if (CLI(c)->tgtid == 0) {
 			continue;
 		}
 

@@ -575,12 +575,12 @@ recomp_path(graph_t g, gpath_def_t p)
 			a /= P(g, h).b.pri;
 			ccy = P(g, h).p.bas;
 		} else {
-			CCY_DEBUG("can't continue\n");
+			CCY_DEBUG_RECOMP("can't continue\n");
 			break;
 		}
 	}
 
-	CCY_DEBUG("b %.6f  %.6f a\n", b, a);
+	CCY_DEBUG_RECOMP("b %.6f  %.6f a\n", b, a);
 	P(g, p).b.pri = b;
 	P(g, p).a.pri = a;
 	return;

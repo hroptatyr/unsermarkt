@@ -307,33 +307,13 @@ prune_clis(void)
 	return;
 }
 
-static void
-upd_pair(graph_t g, gpair_t p, const_sl1t_t cell)
-{
-	double pri, qty;
-
-	/* often used, so just compute them here */
-	pri = ffff_m30_d(cell->pri);
-	qty = ffff_m30_d(cell->qty);
-
-	switch (sl1t_ttf(cell)) {
-	case SL1T_TTF_BID:
-		upd_bid(g, p, pri, qty);
-		break;
-	case SL1T_TTF_ASK:
-		upd_ask(g, p, pri, qty);
-		break;
-	default:
-		XQ_DEBUG("unknown tick type %hu\n", sl1t_ttf(cell));
-		return;
-	}
-
-	recomp_affected(g, p);
-	return;
-}
-
 
 /* pair handling */
+struct bbo_s {
+	m30_t b;
+	m30_t a;
+};
+
 static gpair_t
 find_pair_by_sym(graph_t g, const char *sym)
 {
@@ -359,6 +339,52 @@ find_pair_by_sym(graph_t g, const char *sym)
 		return NULL_PAIR;
 	}
 	return ccyg_find_pair(g, p);
+}
+
+static uint64_t
+upd_pair(graph_t g, gpair_t p, const_sl1t_t cell)
+{
+	double pri, qty;
+
+	/* often used, so just compute them here */
+	pri = ffff_m30_d(cell->pri);
+	qty = ffff_m30_d(cell->qty);
+
+	switch (sl1t_ttf(cell)) {
+	case SL1T_TTF_BID:
+		upd_bid(g, p, pri, qty);
+		break;
+	case SL1T_TTF_ASK:
+		upd_ask(g, p, pri, qty);
+		break;
+	default:
+		XQ_DEBUG("unknown tick type %hu\n", sl1t_ttf(cell));
+		return 0;
+	}
+
+	return recomp_affected(g, p);
+}
+
+static struct bbo_s
+find_bbo(graph_t g)
+{
+	struct bbo_s res = {0, 0};
+
+	for (size_t i = 9; i < 9 + npaths; i++) {
+		m30_t bid = ffff_m30_get_d(get_bid(g, i));
+		m30_t ask = ffff_m30_get_d(get_ask(g, i));
+
+		bid.mant -= bid.mant % 1000;
+		ask.mant -= ask.mant % 1000;
+
+		if (res.b.mant == 0 || bid.mant && res.b.mant < bid.mant) {
+			res.b = bid;
+		}
+		if (res.a.mant == 0 || ask.mant && res.a.mant > ask.mant) {
+			res.a = ask;
+		}
+	}
+	return res;
 }
 
 
@@ -420,6 +446,7 @@ snarf_data(job_t j, graph_t g)
 		.sa = &j->sa,
 	};
 	struct timeval tv[1];
+	uint64_t aff = 0;
 
 	if (UNLIKELY(plen == 0)) {
 		return;
@@ -449,10 +476,18 @@ snarf_data(job_t j, graph_t g)
 
 		/* fiddle with the tblidx */
 		scom_thdr_set_tblidx(sp, CLI(c)->tgtid);
-		upd_pair(g, CLI(c)->tgtid, CONST_SL1T_T(sp));
+		aff |= upd_pair(g, CLI(c)->tgtid, CONST_SL1T_T(sp));
 
 		/* leave a last_seen note */
 		CLI(c)->last_seen = tv->tv_sec;
+	}
+
+	if (aff) {
+		struct bbo_s bbo = find_bbo(g);
+		double bb = ffff_m30_d(bbo.b);
+		double ba = ffff_m30_d(bbo.a);
+
+		XQ_DEBUG("bbid %.6f  %.6f bask\n", bb, ba);
 	}
 	return;
 }

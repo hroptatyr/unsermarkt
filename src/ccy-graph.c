@@ -586,7 +586,7 @@ recomp_path(graph_t g, gpath_def_t p)
 	return;
 }
 
-void
+uint64_t
 recomp_affected(graph_t g, gpair_t p)
 {
 	for (uint64_t aff = AFF(g, p).x, j = 1; aff; aff >>= 1, j++) {
@@ -597,7 +597,7 @@ recomp_affected(graph_t g, gpair_t p)
 			recomp_path(g, j);
 		}
 	}
-	return;
+	return AFF(g, p).x;
 }
 
 

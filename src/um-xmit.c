@@ -353,6 +353,7 @@ work(const struct xmit_s *ctx)
 
 #define RESET_SER						\
 	udpc_make_pkt(pkt, 0, pno++, UTE_CMD);			\
+	udpc_set_data_pkt(pkt);					\
 	udpc_seria_init(ser, UDPC_PAYLOAD(buf), UDPC_PLLEN)
 
 	/* initial set up of pkt */

@@ -44,16 +44,6 @@
 #include <string.h>
 #include <sys/mman.h>
 
-#if defined HAVE_UTERUS_UTERUS_H
-# include <uterus/uterus.h>
-# include <uterus/m30.h>
-#elif defined HAVE_UTERUS_H
-# include <uterus.h>
-# include <m30.h>
-#else
-# error uterus headers are mandatory
-#endif	/* HAVE_UTERUS_UTERUS_H || HAVE_UTERUS_H */
-
 #include "iso4217.h"
 #include "nifty.h"
 #include "ccy-graph.h"
@@ -61,8 +51,10 @@
 
 #if defined DEBUG_FLAG && !defined BENCHMARK
 # define CCY_DEBUG(args...)	fprintf(stderr, args)
+# define CCY_DEBUG_RECOMP(args...)
 #else
 # define CCY_DEBUG(args...)
+# define CCY_DEBUG_RECOMP(args...)
 #endif	/* DEBUG_FLAG */
 
 struct gpair_s {
@@ -75,9 +67,15 @@ struct gpair_s {
 	size_t len;
 
 	/* 16b */
-	struct sl1t_s b;
+	struct {
+		double pri;
+		double qty;
+	} b;
 	/* 16b */
-	struct sl1t_s a;
+	struct {
+		double pri;
+		double qty;
+	} a;
 };
 
 struct gedge_s {
@@ -110,13 +108,58 @@ union graph_u {
 	struct gpair_s p[0];
 };
 
-#define NULL_PAIR	((gpair_t)0)
-#define NULL_EDGE	((gedge_t)0)
-#define NULL_PATH_HOP	((gpath_def_t)0)
 #define P(g, x)		(g->p[x])
 #define E(g, x)		(g->e[x])
 #define F(g, x)		(g->f[x])
 #define AFF(g, x)	(g->aff[x])
+
+void
+upd_bid(graph_t g, gpair_t p, double pri, double qty)
+{
+	P(g, p).b.pri = pri;
+	P(g, p).b.qty = qty;
+	return;
+}
+
+void
+upd_ask(graph_t g, gpair_t p, double pri, double qty)
+{
+	P(g, p).a.pri = pri;
+	P(g, p).a.qty = qty;
+	return;
+}
+
+double
+get_bid(graph_t g, gpair_t p)
+{
+	return P(g, p).b.pri;
+}
+
+double
+get_ask(graph_t g, gpair_t p)
+{
+	return P(g, p).a.pri;
+}
+
+void
+prnt_graph(graph_t g)
+{
+	for (gpair_t i = 1; i <= g->npairs; i++) {
+		CCY_DEBUG("p %zu  %s%s  paths @[%zu] 4(%zu)\n",
+			  i,
+			  P(g, i).p.bas->sym, P(g, i).p.trm->sym,
+			  P(g, i).off, P(g, i).len);
+		CCY_DEBUG("  updates affect:\n");
+		for (uint64_t aff = AFF(g, i).x, j = 1; aff; aff >>= 1, j++) {
+			if (!(aff & 1)) {
+				continue;
+			}
+			CCY_DEBUG("  + %s%s (%zu)\n",
+				  P(g, j).p.bas->sym, P(g, j).p.trm->sym, j);
+		}
+	}
+	return;
+}
 
 
 static size_t pgsz = 0;
@@ -127,8 +170,6 @@ static size_t pgsz = 0;
 graph_t
 make_graph(void)
 {
-#define PROT_MEM	(PROT_READ | PROT_WRITE)
-#define MAP_MEM		(MAP_PRIVATE | MAP_ANON)
 	graph_t res;
 	size_t tmp = sizeof(*res);
 
@@ -290,7 +331,7 @@ add_path_hop(graph_t g, gpath_def_t tgtpath, gpair_t via)
 	if ((tmp = find_path_hop(g, tgtpath, via)) == NULL_PATH_HOP &&
 	    (tmp = make_gpath_hop(g)) != NULL_PATH_HOP) {
 		/* create a new hop */
-		CCY_DEBUG("ctor'ing path %zu -+-> %s%s (%zu)\n",
+		CCY_DEBUG("ctor'ing path hop %zu -+-> %s%s (%zu)\n",
 			  tgtpath,
 			  P(g, via).p.bas->sym, P(g, via).p.trm->sym, via);
 		F(g, tmp).x = via;
@@ -390,12 +431,12 @@ edge_finder(graph_t g, gpair_t x, struct pair_s p)
 			res++;
 			break;
 
-		} else if (P(g, y).p.bas == p.bas) {
+		} else if (P(g, y).p.bas == p.trm) {
 			cp.bas = P(g, y).p.trm;
-			cp.trm = p.trm;
-		} else if (P(g, y).p.trm == p.bas) {
+			cp.trm = p.bas;
+		} else if (P(g, y).p.trm == p.trm) {
 			cp.bas = P(g, y).p.bas;
-			cp.trm = p.trm;
+			cp.trm = p.bas;
 		} else {
 			continue;
 		}
@@ -441,23 +482,24 @@ edge_finder(graph_t g, gpair_t x, struct pair_s p)
 	return res;
 }
 
-void
+size_t
 ccyg_add_paths(graph_t g, struct pair_s x)
 {
 /* adds a virtual pair X from paths found */
 	struct pair_s p = x;
+	size_t ngp = g->npairs;
 
 	CCY_DEBUG("adding paths XCH %s FOR %s\n", x.bas->sym, x.trm->sym);
 
 	if (x.bas == x.trm) {
 		/* trivial */
-		return;
+		return 0;
 	}
-	for (gpair_t i = 1; i <= g->npairs; i++) {
-		if (P(g, i).p.bas == x.bas) {
-			p.bas = P(g, i).p.trm;
-		} else if (P(g, i).p.trm == x.bas) {
-			p.bas = P(g, i).p.bas;
+	for (gpair_t i = 1; i <= ngp; i++) {
+		if (P(g, i).p.trm == x.trm) {
+			p.trm = P(g, i).p.bas;
+		} else if (P(g, i).p.bas == x.trm) {
+			p.trm = P(g, i).p.trm;
 		} else {
 			continue;
 		}
@@ -481,7 +523,7 @@ ccyg_add_paths(graph_t g, struct pair_s x)
 			P(g, f).p = x;
 		}
 	}
-	return;
+	return g->npairs - ngp;
 }
 
 
@@ -492,36 +534,70 @@ recomp_path(graph_t g, gpath_def_t p)
 	double b, a;
 	const_iso_4217_t ccy;
 
-	CCY_DEBUG("recomputing %s%s %zu\n",
-		  P(g, p).p.bas->sym, P(g, p).p.trm->sym, p);
-
 	/* init and go */
 	b = 1.0;
 	a = 1.0;
-	ccy = P(g, p).p.trm;
+	ccy = P(g, p).p.bas;
 	for (gpair_t i = P(g, p).off; i < P(g, p).off + P(g, p).len; i++) {
 		gpath_hop_t h = F(g, i).x;
 
-		CCY_DEBUG("  ... %s%s\n",
-			  P(g, h).p.bas->sym, P(g, h).p.trm->sym);
+		/* from bid(BBBAAA) = 1/ask(AAABBB) and
+		 * for AAABBB and BBBCCC
+		 * bid(AAACCC) = bid(AAABBB) * bid(BBBCCC)
+		 * ask(AAACCC) = ask(AAABBB) * ask(BBBCCC)
+		 *
+		 * it follows:
+		 * for AAABBB and CCCBBB:
+		 * bid(AAACCC) = bid(AAABBB) * 1/ask(CCCBBB)
+		 * ask(AAACCC) = ask(AAABBB) * 1/bid(CCCBBB)
+		 *
+		 * for BBBAAA and BBBCCC::
+		 * bid(AAACCC) = 1/ask(BBBAAA) * bid(BBBCCC)
+		 * ask(AAACCC) = 1/bid(BBBAAA) * ask(BBBCCC)
+		 *
+		 * for BBBAAA and CCCBBB:
+		 * bid(AAACCC) = 1/ask(BBBAAA) * 1/ask(CCCBBB)
+		 * ask(AAACCC) = 1/bid(BBBAAA) * 1/bid(CCCBBB)
+		 *
+		 * which is what the if-tree is all about. */
+
+		CCY_DEBUG_RECOMP(
+			"  ... %s%s\n",
+			P(g, h).p.bas->sym, P(g, h).p.trm->sym);
 		if (P(g, h).p.bas == ccy) {
-			b *= ffff_m30_d(ffff_m30_get_ui32(P(g, h).b.pri));
-			a *= ffff_m30_d(ffff_m30_get_ui32(P(g, h).a.pri));
+			/* first two cases */
+			b *= P(g, h).b.pri;
+			a *= P(g, h).a.pri;
 			ccy = P(g, h).p.trm;
 		} else if (P(g, h).p.trm == ccy) {
-			b /= ffff_m30_d(ffff_m30_get_ui32(P(g, h).a.pri));
-			a /= ffff_m30_d(ffff_m30_get_ui32(P(g, h).b.pri));
+			/* second two cases */
+			b /= P(g, h).a.pri;
+			a /= P(g, h).b.pri;
 			ccy = P(g, h).p.bas;
 		} else {
-			CCY_DEBUG("can't continue\n");
+			CCY_DEBUG_RECOMP("can't continue\n");
 			break;
 		}
 	}
 
-	CCY_DEBUG("b %.6f  %.6f a\n", b, a);
-	P(g, p).b.pri = ffff_m30_get_d(b).u;
-	P(g, p).a.pri = ffff_m30_get_d(a).u;
+	CCY_DEBUG_RECOMP("b %.6f  %.6f a\n", b, a);
+	P(g, p).b.pri = b;
+	P(g, p).a.pri = a;
 	return;
+}
+
+uint64_t
+recomp_affected(graph_t g, gpair_t p)
+{
+	for (uint64_t aff = AFF(g, p).x, j = 1; aff; aff >>= 1, j++) {
+		if ((aff & 1)) {
+			CCY_DEBUG_RECOMP(
+				"+ recomp %s%s (%zu)\n",
+				P(g, j).p.bas->sym, P(g, j).p.trm->sym, j);
+			recomp_path(g, j);
+		}
+	}
+	return AFF(g, p).x;
 }
 
 
@@ -611,17 +687,17 @@ main(int argc, char *argv[])
 		gpair_t p;
 
 		if ((p = ccyg_find_pair(g, EURUSD)) != NULL_PAIR) {
-			P(g, p).b.pri = ffff_m30_get_d(1.22305).u + i;
-			P(g, p).b.qty = ffff_m30_get_d(13.0).u + i;
-			P(g, p).a.pri = ffff_m30_get_d(1.22309).u + i;
-			P(g, p).a.qty = ffff_m30_get_d(13.0).u + i;
+			P(g, p).b.pri = 1.22305 + (double)i / 10000.0;
+			P(g, p).b.qty = 13.0 + (double)i / 100.0;
+			P(g, p).a.pri = 1.22309 + (double)i / 10000.0;
+			P(g, p).a.qty = 13.0 + (double)i / 100.0;
 		}
 
 		if ((p = ccyg_find_pair(g, AUDUSD)) != NULL_PAIR) {
-			P(g, p).b.pri = ffff_m30_get_d(1.0250).u + i;
-			P(g, p).b.qty = ffff_m30_get_d(11.0).u + i;
-			P(g, p).a.pri = ffff_m30_get_d(1.02517).u + i;
-			P(g, p).a.qty = ffff_m30_get_d(13.0).u + i;
+			P(g, p).b.pri = 1.0250 + (double)i / 10000.0;
+			P(g, p).b.qty = 11.0 + (double)i / 100.0;
+			P(g, p).a.pri = 1.02517 + (double)i / 100.0;
+			P(g, p).a.qty = 13.0 + (double)i / 100.0;
 		}
 
 		if ((p = ccyg_find_pair(

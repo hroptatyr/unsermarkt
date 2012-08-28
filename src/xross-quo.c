@@ -1,4 +1,4 @@
-/*** um-quodmp.c -- unsermarkt quote dumper
+/*** xross-quo.c -- read fx quotes from beef and quote crosses
  *
  * Copyright (C) 2012 Sebastian Freundt
  *
@@ -76,12 +76,16 @@
 
 #if defined HAVE_UTERUS_UTERUS_H
 # include <uterus/uterus.h>
+# include <uterus/m30.h>
 #elif defined HAVE_UTERUS_H
 # include <uterus.h>
+# include <m30.h>
 #else
 # error uterus headers are mandatory
 #endif	/* HAVE_UTERUS_UTERUS_H || HAVE_UTERUS_H */
 
+#include "iso4217.h"
+#include "ccy-graph.h"
 #include "nifty.h"
 
 #if defined __INTEL_COMPILER
@@ -105,9 +109,9 @@
 
 static FILE *logerr;
 #if defined DEBUG_FLAG
-# define UMQD_DEBUG(args...)	fprintf(logerr, args)
+# define XQ_DEBUG(args...)	fprintf(logerr, args)
 #else  /* !DEBUG_FLAG */
-# define UMQD_DEBUG(args...)
+# define XQ_DEBUG(args...)
 #endif	/* DEBUG_FLAG */
 
 typedef size_t cli_t;
@@ -132,25 +136,6 @@ struct cli_s {
 /* children need access to beef resources */
 static ev_io *beef = NULL;
 static size_t nbeef = 0;
-
-
-#if !defined HAVE_UTE_FREE
-/* for the moment we provide compatibility with uterus v0.2.2 */
-struct utectx_s {
-	/** file descriptor we're banging on about */
-	int fd;
-};
-
-static void
-ute_free(utectx_t ctx)
-{
-	struct utectx_s *p = ctx;
-	close(p->fd);
-	p->fd = -1;
-	free(ctx);
-	return;
-}
-#endif	/* HAVE_UTE_FREE */
 
 
 /* we support a maximum of 64 order books atm */
@@ -290,7 +275,7 @@ prune_clis(void)
 	/* prune clis */
 	for (cli_t i = 1; i <= ncli; i++) {
 		if (CLI(i)->last_seen + MAX_CLI_AGE < tv->tv_sec) {
-			UMQD_DEBUG("pruning %zu\n", i);
+			XQ_DEBUG("pruning %zu\n", i);
 			prune_cli(i);
 		}
 	}
@@ -308,11 +293,11 @@ prune_clis(void)
 			/* shrink */
 			size_t nmv = ncli - i;
 
-			UMQD_DEBUG("condensing %zu/%zu clis\n", consec, ncli);
+			XQ_DEBUG("condensing %zu/%zu clis\n", consec, ncli);
 			memcpy(CLI(i - consec), CLI(i), nmv * sizeof(*cli));
 			nu_ncli -= consec;
 		} else if (consec) {
-			UMQD_DEBUG("condensing %zu/%zu clis\n", consec, ncli);
+			XQ_DEBUG("condensing %zu/%zu clis\n", consec, ncli);
 			nu_ncli -= consec;
 		}
 	}
@@ -323,14 +308,170 @@ prune_clis(void)
 }
 
 
-static utectx_t u = NULL;
-static const char *u_fn = NULL;
-static size_t u_nt = 0;
-/* number of ticks ignored due to missing symbols */
-static size_t ign = 0;
+/* pair handling */
+static size_t npaths;
+
+struct bbo_s {
+	m30_t b;
+	m30_t a;
+};
+
+static gpair_t
+find_pair_by_sym(graph_t g, const char *sym)
+{
+	struct pair_s p;
+
+	if ((p.bas = find_iso_4217_by_name(sym)) == NULL) {
+		return NULL_PAIR;
+	}
+	/* otherwise at least the base currency is there */
+	switch (sym[3]) {
+	case '.':
+	case '/':
+		sym++;
+	default:
+		sym += 3;
+		break;
+	case '\0':
+		/* fuck!!! */
+		return NULL_PAIR;
+	}
+	/* YAY, we survived the hardest part, the unstandardised separator */
+	if ((p.trm = find_iso_4217_by_name(sym)) == NULL) {
+		return NULL_PAIR;
+	}
+	return ccyg_find_pair(g, p);
+}
+
+static uint64_t
+upd_pair(graph_t g, gpair_t p, const_sl1t_t cell)
+{
+	double pri, qty;
+
+	/* often used, so just compute them here */
+	pri = ffff_m30_d(cell->pri);
+	qty = ffff_m30_d(cell->qty);
+
+	switch (sl1t_ttf(cell)) {
+	case SL1T_TTF_BID:
+		upd_bid(g, p, pri, qty);
+		break;
+	case SL1T_TTF_ASK:
+		upd_ask(g, p, pri, qty);
+		break;
+	default:
+		XQ_DEBUG("unknown tick type %hu\n", sl1t_ttf(cell));
+		return 0;
+	}
+
+	return recomp_affected(g, p);
+}
+
+static struct bbo_s
+find_bbo(graph_t g)
+{
+	struct bbo_s res = {0, 0};
+
+	for (size_t i = 9; i < 9 + npaths; i++) {
+		m30_t bid = ffff_m30_get_d(get_bid(g, i));
+		m30_t ask = ffff_m30_get_d(get_ask(g, i));
+
+		bid.mant -= bid.mant % 1000;
+		ask.mant -= ask.mant % 1000;
+
+		if (res.b.u == 0 || bid.u && res.b.v < bid.v) {
+			res.b = bid;
+		}
+		if (res.a.u == 0 || ask.u && res.a.v > ask.v) {
+			res.a = ask;
+		}
+	}
+	return res;
+}
+
+static inline void
+udpc_seria_add_m30(udpc_seria_t sctx, sl1t_t x, m30_t p)
+{
+	x->pri = p.u;
+	x->qty = ((m30_t){.expo = 1, .mant = 10000}).u;
+
+	memcpy(sctx->msg + sctx->msgoff, x, sizeof(*x));
+	sctx->msgoff += sizeof(*x);
+	return;
+}
+
+
+#define UTE_LE		(0x7574)
+#define UTE_BE		(0x5554)
+#define QMETA		(0x7572)
+#define QMETA_RPL	(UDPC_PKT_RPL(QMETA))
+#if defined WORDS_BIGENDIAN
+# define UTE		UTE_BE
+#else  /* !WORDS_BIGENDIAN */
+# define UTE		UTE_LE
+#endif	/* WORDS_BIGENDIAN */
+#define UTE_RPL		(UDPC_PKT_RPL(UTE))
+
+static ud_chan_t ute_out_ch;
 
 static void
-snarf_meta(job_t j)
+dissem_bbo(struct bbo_s bbo)
+{
+	static struct bbo_s last_bbo;
+	static time_t last_brag;
+	static char buf[UDPC_PKTLEN];
+	static unsigned int pno = 0;
+	struct udpc_seria_s ser[1];
+	struct sl1t_s new[1];
+	struct timeval now[1];
+
+	if (bbo.b.u == last_bbo.b.u && bbo.a.u == last_bbo.a.u) {
+		/* piss off right away, nothing's changed */
+		return;
+	}
+
+#define PKT(x)		(ud_packet_t){sizeof(x), x}
+#define XPKT(y, x)	(ud_packet_t){UDPC_HDRLEN + udpc_seria_msglen(y), x}
+	gettimeofday(now, NULL);
+	if (now->tv_sec >= last_brag + 10) {
+		udpc_make_pkt(PKT(buf), 0, pno++, QMETA_RPL);
+		udpc_seria_init(ser, UDPC_PAYLOAD(buf), UDPC_PLLEN);
+
+		udpc_seria_add_ui16(ser, 1);
+		udpc_seria_add_str(ser, "EURAUDx", 7);
+
+		ud_chan_send(ute_out_ch, XPKT(ser, buf));
+		last_brag = now->tv_sec;
+	}
+
+	/* init the seria (again) */
+	udpc_make_pkt(PKT(buf), 0, pno++, UTE);
+	udpc_set_data_pkt(PKT(buf));
+	udpc_seria_init(ser, UDPC_PAYLOAD(buf), UDPC_PLLEN);
+
+	/* bit of prep work */
+	sl1t_set_stmp_sec(new, now->tv_sec);
+	sl1t_set_stmp_msec(new, now->tv_usec / 1000);
+	sl1t_set_tblidx(new, 1);
+
+	if (bbo.b.u == last_bbo.b.u) {
+		sl1t_set_ttf(new, SL1T_TTF_BID);
+		udpc_seria_add_m30(ser, new, bbo.b);
+	}
+	if (bbo.a.u != last_bbo.a.u) {
+		sl1t_set_ttf(new, SL1T_TTF_ASK);
+		udpc_seria_add_m30(ser, new, bbo.a);
+	}
+	/* just to have something we can compare things to */
+	last_bbo = bbo;
+
+	/* and send him off now */
+	ud_chan_send(ute_out_ch, XPKT(ser, buf));
+	return;
+}
+
+static void
+snarf_meta(job_t j, graph_t g)
 {
 	char *pbuf = UDPC_PAYLOAD(JOB_PACKET(j).pbuf);
 	size_t plen = UDPC_PAYLLEN(JOB_PACKET(j).plen);
@@ -347,7 +488,7 @@ snarf_meta(job_t j)
 	udpc_seria_init(ser, pbuf, plen);
 	while (ser->msgoff < plen && (tag = udpc_seria_tag(ser))) {
 		cli_t c;
-		uint16_t id;
+		gpair_t p;
 
 		if (UNLIKELY(tag != UDPC_TYPE_UI16)) {
 			break;
@@ -366,19 +507,10 @@ snarf_meta(job_t j)
 		/* fuck error checking */
 		udpc_seria_des_str_into(CLI(c)->sym, sizeof(CLI(c)->sym), ser);
 
-		/* check if we know about the symbol */
-		if ((id = ute_sym2idx(u, CLI(c)->sym)) == CLI(c)->tgtid) {
-			/* yep, known and it's the same id, brilliant */
-			;
-		} else if (CLI(c)->tgtid) {
-			/* known but the wrong id */
-			UMQD_DEBUG("reass %hu -> %hu\n", CLI(c)->tgtid, id);
-			CLI(c)->tgtid = id;
-		} else /*if (CLI(c)->tgtid == 0)*/ {
-			/* unknown */
-			UMQD_DEBUG("ass'ing %s -> %hu\n", CLI(c)->sym, id);
-			CLI(c)->tgtid = id;
-			ute_bang_symidx(u, CLI(c)->sym, CLI(c)->tgtid);
+		/* generate a pair and add him */
+		if ((p = find_pair_by_sym(g, CLI(c)->sym)) != CLI(c)->tgtid) {
+			XQ_DEBUG("g'd pair %s %zu\n", CLI(c)->sym, p);
+			CLI(c)->tgtid = p;
 		}
 
 		/* leave a last_seen note */
@@ -388,7 +520,7 @@ snarf_meta(job_t j)
 }
 
 static void
-snarf_data(job_t j)
+snarf_data(job_t j, graph_t g)
 {
 	char *pbuf = UDPC_PAYLOAD(JOB_PACKET(j).pbuf);
 	size_t plen = UDPC_PAYLLEN(JOB_PACKET(j).plen);
@@ -396,6 +528,7 @@ snarf_data(job_t j)
 		.sa = &j->sa,
 	};
 	struct timeval tv[1];
+	uint64_t aff = 0;
 
 	if (UNLIKELY(plen == 0)) {
 		return;
@@ -415,102 +548,26 @@ snarf_data(job_t j)
 			c = add_cli(k);
 		}
 		if (CLI(c)->tgtid == 0) {
-			ign++;
 			continue;
 		}
 
 		/* fiddle with the tblidx */
 		scom_thdr_set_tblidx(sp, CLI(c)->tgtid);
-		/* and pump the tick to ute */
-		ute_add_tick(u, sp);
+		aff |= upd_pair(g, CLI(c)->tgtid, CONST_SL1T_T(sp));
 
 		/* leave a last_seen note */
 		CLI(c)->last_seen = tv->tv_sec;
 	}
+
+	if (aff && ute_out_ch) {
+		struct bbo_s bbo = find_bbo(g);
+
+		dissem_bbo(bbo);
+	}
 	return;
 }
 
-static void
-rotate_outfile(EV_P)
-{
-	struct tm tm[1];
-	static char nu_fn[256];
-	char *n = nu_fn;
-	time_t now;
-
-	fprintf(logerr, "rotate...\n");
-
-	/* get a recent time stamp */
-	now = time(NULL);
-	gmtime_r(&now, tm);
-	strncpy(n, u_fn, sizeof(nu_fn));
-	n += strlen(u_fn);
-	*n++ = '-';
-	strftime(n, sizeof(nu_fn) - (n - nu_fn), "%Y-%m-%dT%H:%M:%S.ute\0", tm);
-#if defined HAVE_UTE_FREE
-	ute_set_fn(u, nu_fn);
-#else  /* !HAVE_UTE_FREE */
-	/* the next best thing */
-	rename(u_fn, nu_fn);
-#endif	/* HAVE_UTE_FREE */
-
-	/* magic */
-	switch (fork()) {
-	case -1:
-		fprintf(logerr, "cannot fork :O\n");
-		return;
-
-	default: {
-		/* i am the parent */
-		utectx_t nu = ute_open(u_fn, UO_CREAT | UO_RDWR | UO_TRUNC);
-		ign = 0;
-		ute_clone_slut(nu, u);
-
-		/* free resources */
-		ute_free(u);
-		/* nu u is nu */
-		u = nu;
-		return;
-	}
-
-	case 0:
-		/* i am the child, just update the file name and nticks
-		 * and let unroll do the work */
-		u_fn = nu_fn;
-		/* let libev know we're a fork */
-		ev_loop_fork(EV_DEFAULT);
-
-		/* close everything but the ute file */
-		for (size_t i = 0; i < nbeef; i++) {
-			int fd = beef[i].fd;
-
-			/* just close the descriptor, as opposed to
-			 * calling ud_mcast_fini() on it */
-			ev_io_stop(EV_A_ beef + i);
-			close(fd);
-		}
-		/* pretend we're through with the beef */
-		nbeef = 0;
-
-		/* then exit */
-		ev_unloop(EV_A_ EVUNLOOP_ALL);
-		return;
-	}
-	/* not reached */
-}
-
 
-#define UTE_LE		(0x7574)
-#define UTE_BE		(0x5554)
-#define QMETA		(0x7572)
-#define QMETA_RPL	(UDPC_PKT_RPL(QMETA))
-#if defined WORDS_BIGENDIAN
-# define UTE		UTE_BE
-#else  /* !WORDS_BIGENDIAN */
-# define UTE		UTE_LE
-#endif	/* WORDS_BIGENDIAN */
-#define UTE_RPL		(UDPC_PKT_RPL(UTE))
-
 /* the actual worker function */
 static void
 mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
@@ -519,6 +576,7 @@ mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
 	/* a job */
 	struct job_s j[1];
 	socklen_t lsa = sizeof(j->sa);
+	graph_t g = w->data;
 
 	j->sock = w->fd;
 	nrd = recvfrom(w->fd, j->buf, sizeof(j->buf), 0, &j->sa.sa, &lsa);
@@ -539,12 +597,12 @@ mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
 	/* intercept special channels */
 	switch (udpc_pkt_cmd(JOB_PACKET(j))) {
 	case QMETA_RPL:
-		snarf_meta(j);
+		snarf_meta(j, g);
 		break;
 
 	case UTE:
 	case UTE_RPL:
-		snarf_data(j);
+		snarf_data(j, g);
 		break;
 	default:
 		break;
@@ -571,14 +629,6 @@ sigpipe_cb(EV_P_ ev_signal *UNUSED(w), int UNUSED(revents))
 static void
 sighup_cb(EV_P_ ev_signal *UNUSED(w), int UNUSED(revents))
 {
-	rotate_outfile(EV_A);
-	return;
-}
-
-static void
-midnight_cb(EV_P_ ev_periodic *UNUSED(w), int UNUSED(r))
-{
-	rotate_outfile(EV_A);
 	return;
 }
 
@@ -591,6 +641,38 @@ prune_cb(EV_P_ ev_timer *w, int UNUSED(r))
 }
 
 
+/* graph guts */
+#include "ccy-graph.c"
+
+/* this must be configurable somehow */
+static void
+build_hops(graph_t g)
+{
+	ccyg_add_pair(g, (struct pair_s){ISO_4217_EUR, ISO_4217_AUD});
+	ccyg_add_pair(g, (struct pair_s){ISO_4217_EUR, ISO_4217_USD});
+	ccyg_add_pair(g, (struct pair_s){ISO_4217_AUD, ISO_4217_USD});
+	ccyg_add_pair(g, (struct pair_s){ISO_4217_GBP, ISO_4217_USD});
+	ccyg_add_pair(g, (struct pair_s){ISO_4217_NZD, ISO_4217_USD});
+	ccyg_add_pair(g, (struct pair_s){ISO_4217_EUR, ISO_4217_GBP});
+	ccyg_add_pair(g, (struct pair_s){ISO_4217_EUR, ISO_4217_NZD});
+	ccyg_add_pair(g, (struct pair_s){ISO_4217_AUD, ISO_4217_NZD});
+
+	/* population */
+	ccyg_populate(g);
+
+	/* and construct all paths */
+	npaths = ccyg_add_paths(g, (struct pair_s){ISO_4217_EUR, ISO_4217_AUD});
+	XQ_DEBUG("%zu virtual paths added\n", npaths);
+
+#if defined DEBUG_FLAG
+	XQ_DEBUG("\nGRAPH NOW\n");
+	prnt_graph(g);
+#endif	/* DEBUG_FLAG */
+	return;
+}
+
+
+
 #if defined __INTEL_COMPILER
 # pragma warning (disable:593)
 # pragma warning (disable:181)
@@ -598,8 +680,8 @@ prune_cb(EV_P_ ev_timer *w, int UNUSED(r))
 # pragma GCC diagnostic ignored "-Wswitch"
 # pragma GCC diagnostic ignored "-Wswitch-enum"
 #endif /* __INTEL_COMPILER */
-#include "um-quodmp-clo.h"
-#include "um-quodmp-clo.c"
+#include "xross-quo-clo.h"
+#include "xross-quo-clo.c"
 #if defined __INTEL_COMPILER
 # pragma warning (default:593)
 # pragma warning (default:181)
@@ -621,7 +703,7 @@ detach(void)
 		break;
 	default:
 		/* i am the parent */
-		UMQD_DEBUG("daemonisation successful %d\n", pid);
+		XQ_DEBUG("daemonisation successful %d\n", pid);
 		exit(0);
 	}
 
@@ -639,7 +721,7 @@ detach(void)
 		(void)dup2(fd, STDERR_FILENO);
 	}
 #if defined DEBUG_FLAG
-	logerr = fopen("/tmp/um-quodmp.log", "w");
+	logerr = fopen("/tmp/xross-quo.log", "w");
 #else  /* !DEBUG_FLAG */
 	logerr = fdopen(fd, "w");
 #endif	/* DEBUG_FLAG */
@@ -649,16 +731,16 @@ detach(void)
 int
 main(int argc, char *argv[])
 {
+	static graph_t g;
 	/* use the default event loop unless you have special needs */
 	struct ev_loop *loop;
 	/* args */
-	struct umqd_args_info argi[1];
+	struct xq_args_info argi[1];
 	/* ev goodies */
 	ev_signal sigint_watcher[1];
 	ev_signal sighup_watcher[1];
 	ev_signal sigterm_watcher[1];
 	ev_signal sigpipe_watcher[1];
-	ev_periodic midnight[1];
 	ev_timer prune[1];
 	int res = 0;
 
@@ -666,14 +748,8 @@ main(int argc, char *argv[])
 	logerr = stderr;
 
 	/* parse the command line */
-	if (umqd_parser(argc, argv, argi)) {
+	if (xq_parser(argc, argv, argi)) {
 		exit(1);
-	}
-
-	if (argi->output_given && argi->into_given) {
-		fputs("only one of --output and --into can be given\n", logerr);
-		res = 1;
-		goto out;
 	}
 
 	/* initialise the main loop */
@@ -692,10 +768,6 @@ main(int argc, char *argv[])
 	ev_signal_init(sighup_watcher, sighup_cb, SIGHUP);
 	ev_signal_start(EV_A_ sighup_watcher);
 
-	/* the midnight tick for file rotation, also upon sighup */
-	ev_periodic_init(midnight, midnight_cb, MIDNIGHT, ONE_DAY, NULL);
-	ev_periodic_start(EV_A_ midnight);
-
 	/* prune timer, check occasionally for old unused clients */
 	ev_timer_init(prune, prune_cb, PRUNE_INTV, PRUNE_INTV);
 	ev_timer_start(EV_A_ prune);
@@ -703,6 +775,10 @@ main(int argc, char *argv[])
 	/* make some room for the control channel and the beef chans */
 	nbeef = argi->beef_given + 1;
 	beef = malloc(nbeef * sizeof(*beef));
+
+	/* generate the graph we're talking */
+	g = make_graph();
+	build_hops(g);
 
 	/* attach a multicast listener
 	 * we add this quite late so that it's unlikely that a plethora of
@@ -719,32 +795,17 @@ main(int argc, char *argv[])
 		int s = ud_mcast_init(argi->beef_arg[i]);
 		ev_io_init(beef + i + 1, mon_beef_cb, s, EV_READ);
 		ev_io_start(EV_A_ beef + i + 1);
+		/* make sure we let our beef handler know about our graph */
+		beef[i + 1].data = g;
+	}
+
+	/* also the first beef channel could be our output chan */
+	if (argi->beef_given) {
+		ute_out_ch = ud_chan_init(argi->beef_arg[0]);
 	}
 
 	/* init cli space */
 	init_cli();
-
-	/* init ute */
-	if (!argi->output_given && !argi->into_given) {
-		if ((u = ute_mktemp(UO_RDWR)) == NULL) {
-			res = 1;
-			goto past_ute;
-		}
-		u_fn = strdup(ute_fn(u));
-	} else {
-		int u_fl = UO_CREAT | UO_RDWR;
-
-		if (argi->output_given) {
-			u_fn = argi->output_arg;
-			u_fl |= UO_TRUNC;
-		} else if (argi->into_given) {
-			u_fn = argi->into_arg;
-		}
-		if ((u = ute_open(u_fn, u_fl)) == NULL) {
-			res = 1;
-			goto past_ute;
-		}
-	}
 
 	if (argi->daemonise_given && detach() < 0) {
 		perror("daemonisation failed");
@@ -756,27 +817,23 @@ main(int argc, char *argv[])
 	ev_loop(EV_A_ 0);
 
 past_loop:
-	/* close the file, might take a while due to sorting */
-	if (u) {
-		/* get the number of ticks */
-		u_nt = ute_nticks(u);
-		/* deal with the file */
-		ute_close(u);
+	if (ute_out_ch) {
+		ud_chan_fini(ute_out_ch);
+		ute_out_ch = NULL;
 	}
-	/* print name and stats */
-	fprintf(logerr, "dumped %zu ticks, %zu ignored\n", u_nt, ign);
-	fputs(u_fn, stdout);
-	fputc('\n', stdout);
 
-past_ute:
 	/* detaching beef channels */
 	for (size_t i = 0; i < nbeef; i++) {
 		int s = beef[i].fd;
 		ev_io_stop(EV_A_ beef + i);
 		ud_mcast_fini(s);
+		beef[i].data = NULL;
 	}
 	/* free beef resources */
 	free(beef);
+
+	/* free the graph */
+	free_graph(g);
 
 	/* finish cli space */
 	fini_cli();
@@ -784,12 +841,11 @@ past_ute:
 	/* destroy the default evloop */
 	ev_default_destroy();
 
-out:
 	/* kick the config context */
-	umqd_parser_free(argi);
+	xq_parser_free(argi);
 
 	/* unloop was called, so exit */
 	return res;
 }
 
-/* um-quodmp.c ends here */
+/* xross-quo.c ends here */

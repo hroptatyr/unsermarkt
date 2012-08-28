@@ -309,6 +309,8 @@ prune_clis(void)
 
 
 /* pair handling */
+static size_t npaths;
+
 struct bbo_s {
 	m30_t b;
 	m30_t a;
@@ -597,10 +599,13 @@ build_hops(graph_t g)
 	ccyg_populate(g);
 
 	/* and construct all paths */
-	ccyg_add_paths(g, (struct pair_s){ISO_4217_EUR, ISO_4217_AUD});
+	npaths = ccyg_add_paths(g, (struct pair_s){ISO_4217_EUR, ISO_4217_AUD});
+	XQ_DEBUG("%zu virtual paths added\n", npaths);
 
+#if defined DEBUG_FLAG
 	XQ_DEBUG("\nGRAPH NOW\n");
 	prnt_graph(g);
+#endif	/* DEBUG_FLAG */
 	return;
 }
 

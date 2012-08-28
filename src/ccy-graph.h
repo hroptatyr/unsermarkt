@@ -74,8 +74,9 @@ extern void ccyg_populate(graph_t);
 
 /**
  * Add all possible path that go from the term currency to the base currency.
- * Paths are virtual gpairs. */
-extern void ccyg_add_paths(graph_t, struct pair_s);
+ * Paths are virtual gpairs.
+ * On success this returns the number of pairs added to the graph. */
+extern size_t ccyg_add_paths(graph_t, struct pair_s);
 
 #if defined DEBUG_FLAG
 extern void prnt_graph(graph_t);

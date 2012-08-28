@@ -482,7 +482,7 @@ edge_finder(graph_t g, gpair_t x, struct pair_s p)
 	return res;
 }
 
-void
+size_t
 ccyg_add_paths(graph_t g, struct pair_s x)
 {
 /* adds a virtual pair X from paths found */
@@ -493,7 +493,7 @@ ccyg_add_paths(graph_t g, struct pair_s x)
 
 	if (x.bas == x.trm) {
 		/* trivial */
-		return;
+		return 0;
 	}
 	for (gpair_t i = 1; i <= ngp; i++) {
 		if (P(g, i).p.trm == x.trm) {
@@ -523,7 +523,7 @@ ccyg_add_paths(graph_t g, struct pair_s x)
 			P(g, f).p = x;
 		}
 	}
-	return;
+	return g->npairs - ngp;
 }
 
 

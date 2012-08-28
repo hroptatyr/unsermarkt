@@ -431,12 +431,12 @@ edge_finder(graph_t g, gpair_t x, struct pair_s p)
 			res++;
 			break;
 
-		} else if (P(g, y).p.bas == p.bas) {
+		} else if (P(g, y).p.bas == p.trm) {
 			cp.bas = P(g, y).p.trm;
-			cp.trm = p.trm;
-		} else if (P(g, y).p.trm == p.bas) {
+			cp.trm = p.bas;
+		} else if (P(g, y).p.trm == p.trm) {
 			cp.bas = P(g, y).p.bas;
-			cp.trm = p.trm;
+			cp.trm = p.bas;
 		} else {
 			continue;
 		}
@@ -482,7 +482,7 @@ edge_finder(graph_t g, gpair_t x, struct pair_s p)
 	return res;
 }
 
-void
+size_t
 ccyg_add_paths(graph_t g, struct pair_s x)
 {
 /* adds a virtual pair X from paths found */
@@ -493,13 +493,13 @@ ccyg_add_paths(graph_t g, struct pair_s x)
 
 	if (x.bas == x.trm) {
 		/* trivial */
-		return;
+		return 0;
 	}
 	for (gpair_t i = 1; i <= ngp; i++) {
-		if (P(g, i).p.bas == x.bas) {
-			p.bas = P(g, i).p.trm;
-		} else if (P(g, i).p.trm == x.bas) {
-			p.bas = P(g, i).p.bas;
+		if (P(g, i).p.trm == x.trm) {
+			p.trm = P(g, i).p.bas;
+		} else if (P(g, i).p.bas == x.trm) {
+			p.trm = P(g, i).p.trm;
 		} else {
 			continue;
 		}
@@ -523,7 +523,7 @@ ccyg_add_paths(graph_t g, struct pair_s x)
 			P(g, f).p = x;
 		}
 	}
-	return;
+	return g->npairs - ngp;
 }
 
 
@@ -537,20 +537,42 @@ recomp_path(graph_t g, gpath_def_t p)
 	/* init and go */
 	b = 1.0;
 	a = 1.0;
-	ccy = P(g, p).p.trm;
+	ccy = P(g, p).p.bas;
 	for (gpair_t i = P(g, p).off; i < P(g, p).off + P(g, p).len; i++) {
 		gpath_hop_t h = F(g, i).x;
+
+		/* from bid(BBBAAA) = 1/ask(AAABBB) and
+		 * for AAABBB and BBBCCC
+		 * bid(AAACCC) = bid(AAABBB) * bid(BBBCCC)
+		 * ask(AAACCC) = ask(AAABBB) * ask(BBBCCC)
+		 *
+		 * it follows:
+		 * for AAABBB and CCCBBB:
+		 * bid(AAACCC) = bid(AAABBB) * 1/ask(CCCBBB)
+		 * ask(AAACCC) = ask(AAABBB) * 1/bid(CCCBBB)
+		 *
+		 * for BBBAAA and BBBCCC::
+		 * bid(AAACCC) = 1/ask(BBBAAA) * bid(BBBCCC)
+		 * ask(AAACCC) = 1/bid(BBBAAA) * ask(BBBCCC)
+		 *
+		 * for BBBAAA and CCCBBB:
+		 * bid(AAACCC) = 1/ask(BBBAAA) * 1/ask(CCCBBB)
+		 * ask(AAACCC) = 1/bid(BBBAAA) * 1/bid(CCCBBB)
+		 *
+		 * which is what the if-tree is all about. */
 
 		CCY_DEBUG_RECOMP(
 			"  ... %s%s\n",
 			P(g, h).p.bas->sym, P(g, h).p.trm->sym);
 		if (P(g, h).p.bas == ccy) {
-			a /= P(g, h).b.pri;
-			b /= P(g, h).a.pri;
+			/* first two cases */
+			b *= P(g, h).b.pri;
+			a *= P(g, h).a.pri;
 			ccy = P(g, h).p.trm;
 		} else if (P(g, h).p.trm == ccy) {
-			a *= P(g, h).a.pri;
-			b *= P(g, h).b.pri;
+			/* second two cases */
+			b /= P(g, h).a.pri;
+			a /= P(g, h).b.pri;
 			ccy = P(g, h).p.bas;
 		} else {
 			CCY_DEBUG_RECOMP("can't continue\n");
@@ -558,13 +580,13 @@ recomp_path(graph_t g, gpath_def_t p)
 		}
 	}
 
-	CCY_DEBUG("b %.6f  %.6f a\n", b, a);
+	CCY_DEBUG_RECOMP("b %.6f  %.6f a\n", b, a);
 	P(g, p).b.pri = b;
 	P(g, p).a.pri = a;
 	return;
 }
 
-void
+uint64_t
 recomp_affected(graph_t g, gpair_t p)
 {
 	for (uint64_t aff = AFF(g, p).x, j = 1; aff; aff >>= 1, j++) {
@@ -575,7 +597,7 @@ recomp_affected(graph_t g, gpair_t p)
 			recomp_path(g, j);
 		}
 	}
-	return;
+	return AFF(g, p).x;
 }
 
 

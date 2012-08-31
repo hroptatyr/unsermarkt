@@ -61,6 +61,10 @@ SXE_CHECK_LIBLTDL
 AC_CHECK_HEADERS([stdbool.h])
 AC_CHECK_HEADERS([fcntl.h])
 
+## check for working c11 features
+SXE_CHECK_ANON_STRUCTS_DECL
+SXE_CHECK_ANON_STRUCTS_INIT
+
 ## date time
 SXE_CHECK_METRONOME
 

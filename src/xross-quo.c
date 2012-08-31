@@ -393,7 +393,16 @@ static inline void
 udpc_seria_add_m30(udpc_seria_t sctx, sl1t_t x, m30_t p)
 {
 	x->pri = p.u;
-	x->qty = ((m30_t){.expo = 1, .mant = 10000}).u;
+#if defined HAVE_ANON_STRUCTS_INIT
+	x->qty = ((union m30_u){.expo = 1, .mant = 10000}).u;
+#else  /* !HAVE_ANON_STRUCTS_INIT */
+	{
+		m30_t tmp;
+		tmp.expo = 1;
+		tmp.mant = 10000;
+		x->qty = tmp.u;
+	}
+#endif	/* HAVE_ANON_STRUCTS_INIT */
 
 	memcpy(sctx->msg + sctx->msgoff, x, sizeof(*x));
 	sctx->msgoff += sizeof(*x);

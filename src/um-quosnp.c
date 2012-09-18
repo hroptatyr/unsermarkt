@@ -670,9 +670,9 @@ __quotreq1(char *restrict tgt, size_t tsz, uint16_t idx)
 		tgt, tsz, "\
   <Quot QID=\"%zu\" \
 BidPx=\"%.6f\" OfrPx=\"%.6f\" BidSz=\"%.4f\" OfrSz=\"%.4f\">\n\
-    <Instrmt Sym=\"%s\"/>\n\
+    <Instrmt ID=\"%hu\" Sym=\"%s\"/>\n\
   </Quot>\n",
-		++qid, b, a, bsz, asz, sym);
+		++qid, b, a, bsz, asz, idx, sym);
 }
 
 static size_t

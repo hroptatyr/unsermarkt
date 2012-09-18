@@ -75,6 +75,8 @@
 # define EV_P  struct ev_loop *loop __attribute__((unused))
 #endif	/* HAVE_EV_H */
 #include <sys/mman.h>
+#include <sys/socket.h>
+#include <sys/utsname.h>
 
 #include <unserding/unserding.h>
 #include <unserding/protocore.h>
@@ -90,6 +92,7 @@
 #endif	/* HAVE_UTERUS_UTERUS_H || HAVE_UTERUS_H */
 
 #include "nifty.h"
+#include "ud-sock.h"
 
 #if defined __INTEL_COMPILER
 # pragma warning (disable:981)
@@ -297,7 +300,7 @@ prune_clis(void)
 	/* prune clis */
 	for (cli_t i = 1; i <= ncli; i++) {
 		if (CLI(i)->last_seen + MAX_CLI_AGE < tv->tv_sec) {
-			UMQS_DEBUG("pruning %zu\n", i);
+			UMQS_DEBUG("pruning %zu  %u  %ld\n", i, CLI(i)->last_seen, tv->tv_sec);
 			prune_cli(i);
 		}
 	}
@@ -327,6 +330,58 @@ prune_clis(void)
 	/* let everyone know how many clis we've got */
 	ncli = nu_ncli;
 	return;
+}
+
+
+/* networking */
+static int
+make_dccp(void)
+{
+	int s;
+
+	if ((s = socket(PF_INET6, SOCK_DCCP, IPPROTO_DCCP)) < 0) {
+		return s;
+	}
+	/* mark the address as reusable */
+	setsock_reuseaddr(s);
+	/* impose a sockopt service, we just use 1 for now */
+	set_dccp_service(s, 1);
+	/* make a timeout for the accept call below */
+	setsock_rcvtimeo(s, 1000);
+	/* make socket non blocking */
+	setsock_nonblock(s);
+	/* turn off nagle'ing of data */
+	setsock_nodelay(s);
+	return s;
+}
+
+static int
+make_tcp(void)
+{
+	int s;
+
+	if ((s = socket(PF_INET6, SOCK_STREAM, IPPROTO_TCP)) < 0) {
+		return s;
+	}
+	/* reuse addr in case we quickly need to turn the server off and on */
+	setsock_reuseaddr(s);
+	/* turn lingering on */
+	setsock_linger(s, 1);
+	return s;
+}
+
+static int
+sock_listener(int s, ud_sockaddr_t sa)
+{
+	if (s < 0) {
+		return s;
+	}
+
+	if (bind(s, &sa->sa, sizeof(*sa)) < 0) {
+		return -1;
+	}
+
+	return listen(s, MAX_DCCP_CONNECTION_BACK_LOG);
 }
 
 
@@ -489,6 +544,142 @@ rotate_outfile(EV_P)
 }
 
 
+/* web services */
+typedef enum {
+	WEBSVC_F_UNK,
+	WEBSVC_F_SECDEF,
+	WEBSVC_F_QUOTREQ,
+} websvc_f_t;
+
+struct websvc_s {
+	websvc_f_t ty;
+
+	union {
+		struct {
+			uint16_t idx;
+		} secdef;
+	};
+};
+
+/* looks like dccp://host:port/secdef?idx=00000 */
+static char brag_uri[INET6_ADDRSTRLEN] = "dccp://";
+/* offset into brag_uris idx= field */
+static size_t brag_uri_offset = 0;
+
+static int
+make_brag_uri(ud_sockaddr_t sa, socklen_t UNUSED(sa_len))
+{
+	struct utsname uts[1];
+	char dnsdom[64];
+	const size_t uri_host_offs = sizeof("dccp://");
+	char *curs = brag_uri + uri_host_offs - 1;
+	size_t rest = sizeof(brag_uri) - uri_host_offs;
+	int len;
+
+	if (uname(uts) < 0) {
+		return -1;
+	} else if (getdomainname(dnsdom, sizeof(dnsdom)) < 0) {
+		return -1;
+	}
+
+	len = snprintf(
+		curs, rest, "%s.%s:%hu/",
+		uts->nodename, dnsdom, ntohs(sa->sa6.sin6_port));
+
+	if (len > 0) {
+		brag_uri_offset = uri_host_offs + len - 1;
+	}
+
+	UMQS_DEBUG("adv_name: %s\n", brag_uri);
+	return 0;
+}
+
+static websvc_f_t
+websvc_from_request(struct websvc_s *tgt, const char *req, size_t UNUSED(len))
+{
+	static const char get_slash[] = "GET /";
+	const char *p;
+
+	tgt->ty = WEBSVC_F_UNK;
+	if ((p = strstr(req, get_slash))) {
+		p += sizeof(get_slash) - 1;
+
+		if (strncmp(p, "secdef", 6) == 0) {
+			UMQS_DEBUG("secdef query\n");
+			tgt->ty = WEBSVC_F_SECDEF;
+		} else if (strncmp(p, "quotreq", 7) == 0) {
+			UMQS_DEBUG("quotreq query\n");
+			tgt->ty = WEBSVC_F_QUOTREQ;
+		}
+	}
+	return tgt->ty;
+}
+
+static size_t
+websvc_secdef(char *restrict tgt, size_t tsz, struct websvc_s sd)
+{
+	ssize_t res = 0;
+
+	UMQS_DEBUG("printing secdef idx %hu\n", sd.secdef.idx);
+	if (tsz > 0) {
+		tgt[0] = '\0';
+	}
+	return res;
+}
+
+static size_t
+websvc_quotreq(char *restrict tgt, size_t tsz, struct websvc_s sd)
+{
+	static const char rsp[] = "\
+<?xml version=\"1.0\" encoding=\"utf-8\"?>\n\
+<FIXML>\n\
+  <Quot BidPx=\"100.10\" OfrPx=\"100.20\">\n\
+    <Instrmt Sym=\"blood\"/>\n\
+  </Quot>\n\
+</FIXML>\n\
+";
+
+	UMQS_DEBUG("printing quotreq idx %hu\n", sd.secdef.idx);
+	if (sizeof(rsp) < tsz) {
+		memcpy(tgt, rsp, sizeof(rsp));
+	}
+	return sizeof(rsp) - 1;
+}
+
+static size_t
+websvc_unk(char *restrict tgt, size_t tsz, struct websvc_s UNUSED(sd))
+{
+	static const char rsp[] = "\
+<!DOCTYPE html>\n\
+<html>\n\
+  <head>\n\
+    <title>um-quosnp overview</title>\n\
+  </head>\n\
+\n\
+  <body>\n\
+    <section>\n\
+      <header>\n\
+        <h1>Services</h1>\n\
+      </header>\n\
+\n\
+      <footer>\n\
+        <hr/>\n\
+        <address>\n\
+          <a href=\"https://github.com/hroptatyr/unsermarkt/\">unsermarkt</a>\n\
+        </address>\n\
+      </footer>\n\
+    </section>\n\
+  </body>\n\
+</html>\n\
+";
+	if (tsz < sizeof(rsp)) {
+		return 0;
+	}
+	memcpy(tgt, rsp, sizeof(rsp));
+	return sizeof(rsp) - 1;
+}
+
+
 #define UTE_LE		(0x7574)
 #define UTE_BE		(0x5554)
 #define QMETA		(0x7572)
@@ -540,6 +731,129 @@ mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
 	}
 
 out_revok:
+	return;
+}
+
+/* fdfs */
+static void
+ev_io_shut(EV_P_ ev_io *w)
+{
+	int fd = w->fd;
+
+	ev_io_stop(EV_A_ w);
+	shutdown(fd, SHUT_RDWR);
+	close(fd);
+	w->fd = -1;
+	return;
+}
+
+static void
+paste_clen(char *restrict buf, size_t bsz, size_t len)
+{
+/* print ascii repr of LEN at BUF. */
+	buf[0] = ' ';
+	buf[1] = ' ';
+	buf[2] = ' ';
+	buf[3] = ' ';
+
+	if (len > bsz) {
+		len = 0;
+	}
+
+	buf[4] = (len % 10U) + '0';
+	if ((len /= 10U)) {
+		buf[3] = (len % 10U) + '0';
+		if ((len /= 10U)) {
+			buf[2] = (len % 10U) + '0';
+			if ((len /= 10U)) {
+				buf[1] = (len % 10U) + '0';
+				if ((len /= 10U)) {
+					buf[0] = (len % 10U) + '0';
+				}
+			}
+		}
+	}
+	return;
+}
+
+static void
+dccp_data_cb(EV_P_ ev_io *w, int UNUSED(re))
+{
+	/* the final \n will be subst'd later on */
+#define HDR		"\
+HTTP/1.1 200 OK\r\n\
+Server: quo-tws\r\n\
+Content-Length: "
+#define CLEN_SPEC	"% 5zu"
+#define BUF_INIT	HDR CLEN_SPEC "\r\n\r\n"
+	/* hdr is a format string and hdr_len is as wide as the result printed
+	 * later on */
+	static char buf[16384] = BUF_INIT;
+	char *rsp = buf + sizeof(BUF_INIT) - 1;
+	const size_t rsp_len = sizeof(buf) - (sizeof(BUF_INIT) - 1);
+	ssize_t nrd;
+	size_t cont_len;
+	struct websvc_s voodoo;
+
+	if ((nrd = read(w->fd, rsp, rsp_len)) < 0) {
+		goto clo;
+	} else if ((size_t)nrd < rsp_len) {
+		buf[nrd] = '\0';
+	} else {
+		/* uh oh, mega request, wtf? */
+		buf[sizeof(buf) - 1] = '\0';
+	}
+
+	switch (websvc_from_request(&voodoo, buf, nrd)) {
+	default:
+	case WEBSVC_F_UNK:
+		cont_len = websvc_unk(rsp, rsp_len, voodoo);
+		break;
+
+	case WEBSVC_F_SECDEF:
+		cont_len = websvc_secdef(rsp, rsp_len, voodoo);
+		break;
+	case WEBSVC_F_QUOTREQ:
+		cont_len = websvc_quotreq(rsp, rsp_len, voodoo);
+		break;
+	}
+
+	/* prepare the header */
+	paste_clen(buf + sizeof(HDR) - 1, sizeof(buf), cont_len);
+
+	/* and append the actual contents */
+	send(w->fd, buf, sizeof(BUF_INIT) - 1 + cont_len, 0);
+
+clo:
+	ev_io_shut(EV_A_ w);
+	return;
+}
+
+static void
+dccp_cb(EV_P_ ev_io *w, int UNUSED(re))
+{
+	static ev_io conns[8];
+	static size_t next_conn = 0;
+	union ud_sockaddr_u sa;
+	socklen_t sasz = sizeof(sa);
+	int s;
+
+	UMQS_DEBUG("interesting activity on %d\n", w->fd);
+
+	if ((s = accept(w->fd, &sa.sa, &sasz)) < 0) {
+		return;
+	}
+
+	if (conns[next_conn].fd > 0) {
+		ev_io_shut(EV_A_ conns + next_conn);
+	}
+
+	ev_io_init(conns + next_conn, dccp_data_cb, s, EV_READ);
+	conns[next_conn].data = NULL;
+	ev_io_start(EV_A_ conns + next_conn);
+	if (++next_conn >= countof(conns)) {
+		next_conn = 0;
+	}
 	return;
 }
 
@@ -649,6 +963,7 @@ main(int argc, char *argv[])
 	ev_signal sigpipe_watcher[1];
 	ev_periodic midnight[1];
 	ev_timer prune[1];
+	ev_io dccp[2];
 	int res = 0;
 
 	/* big assignment for logging purposes */
@@ -695,6 +1010,59 @@ main(int argc, char *argv[])
 		int s = ud_mcast_init(UD_NETWORK_SERVICE);
 		ev_io_init(beef, mon_beef_cb, s, EV_READ);
 		ev_io_start(EV_A_ beef);
+	}
+
+	/* make a channel for http/dccp requests */
+	{
+		union ud_sockaddr_u sa = {
+			.sa6 = {
+				.sin6_family = AF_INET6,
+				.sin6_addr = in6addr_any,
+				.sin6_port = 0,
+			},
+		};
+		socklen_t sa_len = sizeof(sa);
+		int s;
+
+		if ((s = make_dccp()) < 0) {
+			/* just to indicate we have no socket */
+			dccp[0].fd = -1;
+		} else if (sock_listener(s, &sa) < 0) {
+			/* grrr, whats wrong now */
+			close(s);
+			dccp[0].fd = -1;
+		} else {
+			/* everything's brilliant */
+			ev_io_init(dccp, dccp_cb, s, EV_READ);
+			ev_io_start(EV_A_ dccp);
+
+			getsockname(s, &sa.sa, &sa_len);
+		}
+
+
+		if (countof(dccp) < 2) {
+			;
+		} else if ((s = make_tcp()) < 0) {
+			/* just to indicate we have no socket */
+			dccp[1].fd = -1;
+		} else if (sock_listener(s, &sa) < 0) {
+			/* bugger */
+			close(s);
+			dccp[1].fd = -1;
+		} else {
+			/* yay */
+			ev_io_init(dccp + 1, dccp_cb, s, EV_READ);
+			ev_io_start(EV_A_ dccp + 1);
+
+			getsockname(s, &sa.sa, &sa_len);
+		}
+
+		if (s >= 0) {
+			make_brag_uri(&sa, sa_len);
+
+			fwrite(brag_uri, 1, brag_uri_offset, stdout);
+			fputc('\n', stdout);
+		}
 	}
 
 	/* go through all beef channels */

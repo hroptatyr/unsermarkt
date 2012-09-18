@@ -1,0 +1,18 @@
+args "--unamed-opts --no-handle-error --long-help -a umqd_args_info -f umqd_parser"
+package "um-quosnp"
+usage "um-quosnp [OPTION]..."
+description "snap quotes off unserding beef channels"
+
+option "daemonise" d
+	"Detach from tty and runs as daemon"
+	optional
+
+section "Network options"
+option "port" p
+	"Multicast control channel port"
+	int default="8653" optional
+
+option "beef" -
+	"Multicast payload channels, can be used multiple times"
+	int optional multiple
+

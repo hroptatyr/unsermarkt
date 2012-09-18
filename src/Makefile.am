@@ -116,10 +116,22 @@ um_apfmon_LDFLAGS += $(AM_LDFLAGS) -lncurses
 um_apfmon_LDFLAGS += $(unserding_LIBS)
 um_apfmon_LDFLAGS += $(libev_LIBS)
 um_apfmon_LDFLAGS += -lreadline
+
+bin_PROGRAMS += um-quosnp
+um_quosnp_SOURCES = um-quosnp.c um-quosnp-clo.ggo
+um_quosnp_CPPFLAGS = $(AM_CPPFLAGS) -D_GNU_SOURCE
+um_quosnp_CPPFLAGS += $(libev_CFLAGS)
+um_quosnp_CPPFLAGS += $(unserding_CFLAGS)
+um_quosnp_CPPFLAGS += $(uterus_CFLAGS)
+um_quosnp_LDFLAGS = $(AM_LDFLAGS)
+um_quosnp_LDFLAGS += $(uterus_LIBS)
+um_quosnp_LDFLAGS += $(unserding_LIBS)
+um_quosnp_LDFLAGS += $(libev_LIBS)
 endif  ## HAVE_LIBEV
 BUILT_SOURCES += um-quomon-clo.c um-quomon-clo.h
 BUILT_SOURCES += um-apfmon-clo.c um-apfmon-clo.h
 BUILT_SOURCES += um-quodmp-clo.c um-quodmp-clo.h
+BUILT_SOURCES += um-quosnp-clo.c um-quosnp-clo.h
 
 bin_PROGRAMS += um-xmit
 um_xmit_SOURCES = um-xmit.c

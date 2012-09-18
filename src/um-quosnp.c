@@ -387,8 +387,8 @@ sock_listener(int s, ud_sockaddr_t sa)
 
 static utectx_t u = NULL;
 static struct {
-	struct sl1t_s bid;
-	struct sl1t_s ask;
+	struct sl1t_s bid[1];
+	struct sl1t_s ask[1];
 } *cache = NULL;
 static size_t ncache = 0;
 
@@ -419,10 +419,10 @@ bang(unsigned int tgtid, scom_t sp)
 
 	switch (scom_thdr_ttf(sp)) {
 	case SL1T_TTF_BID:
-		cache[tgtid - 1].bid = *AS_CONST_SL1T(sp);
+		*cache[tgtid - 1].bid = *AS_CONST_SL1T(sp);
 		break;
 	case SL1T_TTF_ASK:
-		cache[tgtid - 1].ask = *AS_CONST_SL1T(sp);
+		*cache[tgtid - 1].ask = *AS_CONST_SL1T(sp);
 		break;
 	default:
 		break;
@@ -558,6 +558,10 @@ struct websvc_s {
 		struct {
 			uint16_t idx;
 		} secdef;
+
+		struct {
+			uint16_t idx;
+		} quotreq;
 	};
 };
 
@@ -565,6 +569,8 @@ struct websvc_s {
 static char brag_uri[INET6_ADDRSTRLEN] = "dccp://";
 /* offset into brag_uris idx= field */
 static size_t brag_uri_offset = 0;
+
+#define MASS_QUOT	(0xffff)
 
 static int
 make_brag_uri(ud_sockaddr_t sa, socklen_t UNUSED(sa_len))
@@ -594,25 +600,48 @@ make_brag_uri(ud_sockaddr_t sa, socklen_t UNUSED(sa_len))
 	return 0;
 }
 
+static uint16_t
+__find_idx(const char *str)
+{
+	if ((str = strstr(str, "idx="))) {
+		long int idx = strtol(str + 4, NULL, 10);
+		if (idx > 0 && idx < 65536) {
+			return (uint16_t)idx;
+		}
+		return 0;
+	}
+	return MASS_QUOT;
+}
+
 static websvc_f_t
 websvc_from_request(struct websvc_s *tgt, const char *req, size_t UNUSED(len))
 {
 	static const char get_slash[] = "GET /";
+	websvc_f_t res = WEBSVC_F_UNK;
 	const char *p;
 
-	tgt->ty = WEBSVC_F_UNK;
 	if ((p = strstr(req, get_slash))) {
 		p += sizeof(get_slash) - 1;
 
-		if (strncmp(p, "secdef", 6) == 0) {
+#define TAG_MATCHES_P(p, x)				\
+		(strncmp(p, x, sizeof(x) - 1) == 0)
+
+#define SECDEF_TAG	"secdef"
+		if (TAG_MATCHES_P(p, SECDEF_TAG)) {
 			UMQS_DEBUG("secdef query\n");
-			tgt->ty = WEBSVC_F_SECDEF;
-		} else if (strncmp(p, "quotreq", 7) == 0) {
+			res = WEBSVC_F_SECDEF;
+			tgt->secdef.idx =
+				__find_idx(p + sizeof(SECDEF_TAG) - 1);
+
+#define QUOTREQ_TAG	"quotreq"
+		} else if (TAG_MATCHES_P(p, QUOTREQ_TAG)) {
 			UMQS_DEBUG("quotreq query\n");
-			tgt->ty = WEBSVC_F_QUOTREQ;
+			res = WEBSVC_F_QUOTREQ;
+			tgt->quotreq.idx =
+				__find_idx(p + sizeof(QUOTREQ_TAG) - 1);
 		}
 	}
-	return tgt->ty;
+	return tgt->ty = res;
 }
 
 static size_t
@@ -628,22 +657,55 @@ websvc_secdef(char *restrict tgt, size_t tsz, struct websvc_s sd)
 }
 
 static size_t
+__quotreq1(char *restrict tgt, size_t tsz, uint16_t idx)
+{
+	static size_t qid = 0;
+	const char *sym = ute_idx2sym(u, idx);
+	double b = ffff_m30_d((m30_t)AS_CONST_SL1T(cache[idx - 1].bid)->pri);
+	double bsz = ffff_m30_d((m30_t)AS_CONST_SL1T(cache[idx - 1].bid)->qty);
+	double a = ffff_m30_d((m30_t)AS_CONST_SL1T(cache[idx - 1].ask)->pri);
+	double asz = ffff_m30_d((m30_t)AS_CONST_SL1T(cache[idx - 1].ask)->qty);
+
+	return snprintf(
+		tgt, tsz, "\
+  <Quot QID=\"%zu\" \
+BidPx=\"%.6f\" OfrPx=\"%.6f\" BidSz=\"%.4f\" OfrSz=\"%.4f\">\n\
+    <Instrmt Sym=\"%s\"/>\n\
+  </Quot>\n",
+		++qid, b, a, bsz, asz, sym);
+}
+
+static size_t
 websvc_quotreq(char *restrict tgt, size_t tsz, struct websvc_s sd)
 {
-	static const char rsp[] = "\
+	static const char pre[] = "\
 <?xml version=\"1.0\" encoding=\"utf-8\"?>\n\
 <FIXML>\n\
-  <Quot BidPx=\"100.10\" OfrPx=\"100.20\">\n\
-    <Instrmt Sym=\"blood\"/>\n\
-  </Quot>\n\
+";
+	static const char post[] = "\
 </FIXML>\n\
 ";
+	size_t idx = 0;
+	size_t nsy = ute_nsyms(u);
 
-	UMQS_DEBUG("printing quotreq idx %hu\n", sd.secdef.idx);
-	if (sizeof(rsp) < tsz) {
-		memcpy(tgt, rsp, sizeof(rsp));
+	UMQS_DEBUG("printing quotreq idx %hu\n", sd.quotreq.idx);
+
+	if (sd.quotreq.idx && sd.quotreq.idx < nsy) {
+		memcpy(tgt + idx, pre, sizeof(pre));
+		idx += sizeof(pre) - 1;
+		idx += __quotreq1(tgt + idx, tsz - idx, sd.quotreq.idx);
+		memcpy(tgt + idx, post, sizeof(post));
+		idx += sizeof(post) - 1;
+	} else if (sd.quotreq.idx == MASS_QUOT) {
+		memcpy(tgt + idx, pre, sizeof(pre));
+		idx += sizeof(pre) - 1;
+		for (size_t i = 1; i <= nsy; i++) {
+			idx += __quotreq1(tgt + idx, tsz - idx, i);
+		}
+		memcpy(tgt + idx, post, sizeof(post));
+		idx += sizeof(post) - 1;
 	}
-	return sizeof(rsp) - 1;
+	return idx;
 }
 
 static size_t
@@ -782,13 +844,13 @@ dccp_data_cb(EV_P_ ev_io *w, int UNUSED(re))
 	/* the final \n will be subst'd later on */
 #define HDR		"\
 HTTP/1.1 200 OK\r\n\
-Server: quo-tws\r\n\
+Server: um-quosnp\r\n\
 Content-Length: "
 #define CLEN_SPEC	"% 5zu"
 #define BUF_INIT	HDR CLEN_SPEC "\r\n\r\n"
 	/* hdr is a format string and hdr_len is as wide as the result printed
 	 * later on */
-	static char buf[16384] = BUF_INIT;
+	static char buf[65536] = BUF_INIT;
 	char *rsp = buf + sizeof(BUF_INIT) - 1;
 	const size_t rsp_len = sizeof(buf) - (sizeof(BUF_INIT) - 1);
 	ssize_t nrd;
@@ -804,7 +866,7 @@ Content-Length: "
 		buf[sizeof(buf) - 1] = '\0';
 	}
 
-	switch (websvc_from_request(&voodoo, buf, nrd)) {
+	switch (websvc_from_request(&voodoo, rsp, nrd)) {
 	default:
 	case WEBSVC_F_UNK:
 		cont_len = websvc_unk(rsp, rsp_len, voodoo);

@@ -100,7 +100,7 @@
 
 /* maximum allowed age for clients (in seconds) */
 #if defined DEBUG_FLAG
-# define MAX_CLI_AGE	(60.0)
+# define MAX_CLI_AGE	(60)
 # define PRUNE_INTV	(10.0)
 #else  /* !DEBUG_FLAG */
 # define MAX_CLI_AGE	(1800)

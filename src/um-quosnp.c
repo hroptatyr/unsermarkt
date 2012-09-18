@@ -1,4 +1,4 @@
-/*** xross-quo.c -- read fx quotes from beef and quote crosses
+/*** um-quosnp.c -- unsermarkt quote snapper
  *
  * Copyright (C) 2012 Sebastian Freundt
  *
@@ -34,6 +34,11 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  ***/
+/** Brief:
+ * This basically does the same job as um-quodmp but without actually
+ * writing the quotes to the disk, instead keep the last state in a
+ * memory mapped file and respond to url queries.
+ * Eventually this stuff will go back to um-quodmp. */
 #if defined HAVE_CONFIG_H
 # include "config.h"
 #endif	/* HAVE_CONFIG_H */
@@ -70,6 +75,8 @@
 # define EV_P  struct ev_loop *loop __attribute__((unused))
 #endif	/* HAVE_EV_H */
 #include <sys/mman.h>
+#include <sys/socket.h>
+#include <sys/utsname.h>
 
 #include <unserding/unserding.h>
 #include <unserding/protocore.h>
@@ -84,9 +91,8 @@
 # error uterus headers are mandatory
 #endif	/* HAVE_UTERUS_UTERUS_H || HAVE_UTERUS_H */
 
-#include "iso4217.h"
-#include "ccy-graph.h"
 #include "nifty.h"
+#include "ud-sock.h"
 
 #if defined __INTEL_COMPILER
 # pragma warning (disable:981)
@@ -100,7 +106,7 @@
 
 /* maximum allowed age for clients (in seconds) */
 #if defined DEBUG_FLAG
-# define MAX_CLI_AGE	(60)
+# define MAX_CLI_AGE	(300)
 # define PRUNE_INTV	(10.0)
 #else  /* !DEBUG_FLAG */
 # define MAX_CLI_AGE	(1800)
@@ -109,9 +115,9 @@
 
 static FILE *logerr;
 #if defined DEBUG_FLAG
-# define XQ_DEBUG(args...)	fprintf(logerr, args)
+# define UMQS_DEBUG(args...)	fprintf(logerr, args)
 #else  /* !DEBUG_FLAG */
-# define XQ_DEBUG(args...)
+# define UMQS_DEBUG(args...)
 #endif	/* DEBUG_FLAG */
 
 typedef size_t cli_t;
@@ -136,6 +142,25 @@ struct cli_s {
 /* children need access to beef resources */
 static ev_io *beef = NULL;
 static size_t nbeef = 0;
+
+
+#if !defined HAVE_UTE_FREE
+/* for the moment we provide compatibility with uterus v0.2.2 */
+struct utectx_s {
+	/** file descriptor we're banging on about */
+	int fd;
+};
+
+static void
+ute_free(utectx_t ctx)
+{
+	struct utectx_s *p = ctx;
+	close(p->fd);
+	p->fd = -1;
+	free(ctx);
+	return;
+}
+#endif	/* HAVE_UTE_FREE */
 
 
 /* we support a maximum of 64 order books atm */
@@ -275,7 +300,7 @@ prune_clis(void)
 	/* prune clis */
 	for (cli_t i = 1; i <= ncli; i++) {
 		if (CLI(i)->last_seen + MAX_CLI_AGE < tv->tv_sec) {
-			XQ_DEBUG("pruning %zu\n", i);
+			UMQS_DEBUG("pruning %zu  %u  %ld\n", i, CLI(i)->last_seen, tv->tv_sec);
 			prune_cli(i);
 		}
 	}
@@ -293,11 +318,11 @@ prune_clis(void)
 			/* shrink */
 			size_t nmv = ncli - i;
 
-			XQ_DEBUG("condensing %zu/%zu clis\n", consec, ncli);
+			UMQS_DEBUG("condensing %zu/%zu clis\n", consec, ncli);
 			memcpy(CLI(i - consec), CLI(i), nmv * sizeof(*cli));
 			nu_ncli -= consec;
 		} else if (consec) {
-			XQ_DEBUG("condensing %zu/%zu clis\n", consec, ncli);
+			UMQS_DEBUG("condensing %zu/%zu clis\n", consec, ncli);
 			nu_ncli -= consec;
 		}
 	}
@@ -308,179 +333,105 @@ prune_clis(void)
 }
 
 
-/* pair handling */
-static size_t npaths;
-
-struct bbo_s {
-	m30_t b;
-	m30_t a;
-};
-
-static gpair_t
-find_pair_by_sym(graph_t g, const char *sym)
+/* networking */
+static int
+make_dccp(void)
 {
-	struct pair_s p;
+	int s;
 
-	if ((p.bas = find_iso_4217_by_name(sym)) == NULL) {
-		return NULL_PAIR;
+	if ((s = socket(PF_INET6, SOCK_DCCP, IPPROTO_DCCP)) < 0) {
+		return s;
 	}
-	/* otherwise at least the base currency is there */
-	switch (sym[3]) {
-	case '.':
-	case '/':
-		sym++;
-	default:
-		sym += 3;
-		break;
-	case '\0':
-		/* fuck!!! */
-		return NULL_PAIR;
-	}
-	/* YAY, we survived the hardest part, the unstandardised separator */
-	if ((p.trm = find_iso_4217_by_name(sym)) == NULL) {
-		return NULL_PAIR;
-	}
-	return ccyg_find_pair(g, p);
+	/* mark the address as reusable */
+	setsock_reuseaddr(s);
+	/* impose a sockopt service, we just use 1 for now */
+	set_dccp_service(s, 1);
+	/* make a timeout for the accept call below */
+	setsock_rcvtimeo(s, 1000);
+	/* make socket non blocking */
+	setsock_nonblock(s);
+	/* turn off nagle'ing of data */
+	setsock_nodelay(s);
+	return s;
 }
 
-static uint64_t
-upd_pair(graph_t g, gpair_t p, const_sl1t_t cell)
+static int
+make_tcp(void)
 {
-	double pri, qty;
+	int s;
 
-	/* often used, so just compute them here */
-	pri = ffff_m30_d(cell->pri);
-	qty = ffff_m30_d(cell->qty);
-
-	switch (sl1t_ttf(cell)) {
-	case SL1T_TTF_BID:
-		upd_bid(g, p, pri, qty);
-		break;
-	case SL1T_TTF_ASK:
-		upd_ask(g, p, pri, qty);
-		break;
-	default:
-		XQ_DEBUG("unknown tick type %hu\n", sl1t_ttf(cell));
-		return 0;
+	if ((s = socket(PF_INET6, SOCK_STREAM, IPPROTO_TCP)) < 0) {
+		return s;
 	}
-
-	return recomp_affected(g, p);
+	/* reuse addr in case we quickly need to turn the server off and on */
+	setsock_reuseaddr(s);
+	/* turn lingering on */
+	setsock_linger(s, 1);
+	return s;
 }
 
-static struct bbo_s
-find_bbo(graph_t g)
+static int
+sock_listener(int s, ud_sockaddr_t sa)
 {
-	struct bbo_s res = {0, 0};
-
-	for (size_t i = 9; i < 9 + npaths; i++) {
-		m30_t bid = ffff_m30_get_d(get_bid(g, i));
-		m30_t ask = ffff_m30_get_d(get_ask(g, i));
-
-		bid.mant -= bid.mant % 1000;
-		ask.mant -= ask.mant % 1000;
-
-		if (res.b.u == 0 || bid.u && res.b.v < bid.v) {
-			res.b = bid;
-		}
-		if (res.a.u == 0 || ask.u && res.a.v > ask.v) {
-			res.a = ask;
-		}
+	if (s < 0) {
+		return s;
 	}
-	return res;
-}
 
-static inline void
-udpc_seria_add_m30(udpc_seria_t sctx, sl1t_t x, m30_t p)
-{
-	x->pri = p.u;
-#if defined HAVE_ANON_STRUCTS_INIT
-	x->qty = ((union m30_u){.expo = 1, .mant = 10000}).u;
-#else  /* !HAVE_ANON_STRUCTS_INIT */
-	{
-		m30_t tmp;
-		tmp.expo = 1;
-		tmp.mant = 10000;
-		x->qty = tmp.u;
+	if (bind(s, &sa->sa, sizeof(*sa)) < 0) {
+		return -1;
 	}
-#endif	/* HAVE_ANON_STRUCTS_INIT */
 
-	memcpy(sctx->msg + sctx->msgoff, x, sizeof(*x));
-	sctx->msgoff += sizeof(*x);
-	return;
+	return listen(s, MAX_DCCP_CONNECTION_BACK_LOG);
 }
 
 
-#define UTE_LE		(0x7574)
-#define UTE_BE		(0x5554)
-#define QMETA		(0x7572)
-#define QMETA_RPL	(UDPC_PKT_RPL(QMETA))
-#if defined WORDS_BIGENDIAN
-# define UTE		UTE_BE
-#else  /* !WORDS_BIGENDIAN */
-# define UTE		UTE_LE
-#endif	/* WORDS_BIGENDIAN */
-#define UTE_RPL		(UDPC_PKT_RPL(UTE))
+static utectx_t u = NULL;
+static struct {
+	struct sl1t_s bid[1];
+	struct sl1t_s ask[1];
+} *cache = NULL;
+static size_t ncache = 0;
 
-static ud_chan_t ute_out_ch;
+#if !defined AS_CONST_SL1T
+# define AS_CONST_SL1T(x)	((const_sl1t_t)(x))
+#endif	/* !AS_CONST_SL1T */
 
 static void
-dissem_bbo(struct bbo_s bbo)
+bang(unsigned int tgtid, scom_t sp)
 {
-	static struct bbo_s last_bbo;
-	static time_t last_brag;
-	static char buf[UDPC_PKTLEN];
-	static unsigned int pno = 0;
-	struct udpc_seria_s ser[1];
-	struct sl1t_s new[1];
-	struct timeval now[1];
+	static const size_t pgsz = 65536UL;
 
-	if (bbo.b.u == last_bbo.b.u && bbo.a.u == last_bbo.a.u) {
-		/* piss off right away, nothing's changed */
+	if (UNLIKELY(!tgtid)) {
 		return;
+	} else if (UNLIKELY(ncache < tgtid)) {
+		/* resize */
+		size_t nx64k = (tgtid * sizeof(*cache) + pgsz) & ~(pgsz - 1);
+
+		if (UNLIKELY(cache == NULL)) {
+			cache = mmap(NULL, nx64k, PROT_MEM, MAP_MEM, -1, 0);
+		} else {
+			size_t olsz = ncache * sizeof(*cache);
+			cache = mremap(cache, olsz, nx64k, MREMAP_MAYMOVE);
+		}
+
+		ncache = nx64k / sizeof(*cache);
 	}
 
-#define PKT(x)		(ud_packet_t){sizeof(x), x}
-#define XPKT(y, x)	(ud_packet_t){UDPC_HDRLEN + udpc_seria_msglen(y), x}
-	gettimeofday(now, NULL);
-	if (now->tv_sec >= last_brag + 10) {
-		udpc_make_pkt(PKT(buf), 0, pno++, QMETA_RPL);
-		udpc_seria_init(ser, UDPC_PAYLOAD(buf), UDPC_PLLEN);
-
-		udpc_seria_add_ui16(ser, 1);
-		udpc_seria_add_str(ser, "EURAUDx", 7);
-
-		ud_chan_send(ute_out_ch, XPKT(ser, buf));
-		last_brag = now->tv_sec;
+	switch (scom_thdr_ttf(sp)) {
+	case SL1T_TTF_BID:
+		*cache[tgtid - 1].bid = *AS_CONST_SL1T(sp);
+		break;
+	case SL1T_TTF_ASK:
+		*cache[tgtid - 1].ask = *AS_CONST_SL1T(sp);
+		break;
+	default:
+		break;
 	}
-
-	/* init the seria (again) */
-	udpc_make_pkt(PKT(buf), 0, pno++, UTE);
-	udpc_set_data_pkt(PKT(buf));
-	udpc_seria_init(ser, UDPC_PAYLOAD(buf), UDPC_PLLEN);
-
-	/* bit of prep work */
-	sl1t_set_stmp_sec(new, now->tv_sec);
-	sl1t_set_stmp_msec(new, now->tv_usec / 1000);
-	sl1t_set_tblidx(new, 1);
-
-	if (bbo.b.u == last_bbo.b.u) {
-		sl1t_set_ttf(new, SL1T_TTF_BID);
-		udpc_seria_add_m30(ser, new, bbo.b);
-	}
-	if (bbo.a.u != last_bbo.a.u) {
-		sl1t_set_ttf(new, SL1T_TTF_ASK);
-		udpc_seria_add_m30(ser, new, bbo.a);
-	}
-	/* just to have something we can compare things to */
-	last_bbo = bbo;
-
-	/* and send him off now */
-	ud_chan_send(ute_out_ch, XPKT(ser, buf));
 	return;
 }
 
 static void
-snarf_meta(job_t j, graph_t g)
+snarf_meta(job_t j)
 {
 	char *pbuf = UDPC_PAYLOAD(JOB_PACKET(j).pbuf);
 	size_t plen = UDPC_PAYLLEN(JOB_PACKET(j).plen);
@@ -497,7 +448,7 @@ snarf_meta(job_t j, graph_t g)
 	udpc_seria_init(ser, pbuf, plen);
 	while (ser->msgoff < plen && (tag = udpc_seria_tag(ser))) {
 		cli_t c;
-		gpair_t p;
+		uint16_t id;
 
 		if (UNLIKELY(tag != UDPC_TYPE_UI16)) {
 			break;
@@ -516,10 +467,19 @@ snarf_meta(job_t j, graph_t g)
 		/* fuck error checking */
 		udpc_seria_des_str_into(CLI(c)->sym, sizeof(CLI(c)->sym), ser);
 
-		/* generate a pair and add him */
-		if ((p = find_pair_by_sym(g, CLI(c)->sym)) != CLI(c)->tgtid) {
-			XQ_DEBUG("g'd pair %s %zu\n", CLI(c)->sym, p);
-			CLI(c)->tgtid = p;
+		/* check if we know about the symbol */
+		if ((id = ute_sym2idx(u, CLI(c)->sym)) == CLI(c)->tgtid) {
+			/* yep, known and it's the same id, brilliant */
+			;
+		} else if (CLI(c)->tgtid) {
+			/* known but the wrong id */
+			UMQS_DEBUG("reass %hu -> %hu\n", CLI(c)->tgtid, id);
+			CLI(c)->tgtid = id;
+		} else /*if (CLI(c)->tgtid == 0)*/ {
+			/* unknown */
+			UMQS_DEBUG("ass'ing %s -> %hu\n", CLI(c)->sym, id);
+			CLI(c)->tgtid = id;
+			ute_bang_symidx(u, CLI(c)->sym, CLI(c)->tgtid);
 		}
 
 		/* leave a last_seen note */
@@ -529,7 +489,7 @@ snarf_meta(job_t j, graph_t g)
 }
 
 static void
-snarf_data(job_t j, graph_t g)
+snarf_data(job_t j)
 {
 	char *pbuf = UDPC_PAYLOAD(JOB_PACKET(j).pbuf);
 	size_t plen = UDPC_PAYLLEN(JOB_PACKET(j).plen);
@@ -537,7 +497,6 @@ snarf_data(job_t j, graph_t g)
 		.sa = &j->sa,
 	};
 	struct timeval tv[1];
-	uint64_t aff = 0;
 
 	if (UNLIKELY(plen == 0)) {
 		return;
@@ -560,23 +519,252 @@ snarf_data(job_t j, graph_t g)
 			continue;
 		}
 
-		/* fiddle with the tblidx */
-		scom_thdr_set_tblidx(sp, CLI(c)->tgtid);
-		aff |= upd_pair(g, CLI(c)->tgtid, CONST_SL1T_T(sp));
+		/* update our state table */
+		bang(CLI(c)->tgtid, sp);
 
 		/* leave a last_seen note */
 		CLI(c)->last_seen = tv->tv_sec;
 	}
+	return;
+}
 
-	if (aff && ute_out_ch) {
-		struct bbo_s bbo = find_bbo(g);
+static void
+rotate_outfile(EV_P)
+{
+	struct tm tm[1];
+	time_t now;
 
-		dissem_bbo(bbo);
-	}
+	fprintf(logerr, "rotate...\n");
+
+	/* get a recent time stamp */
+	now = time(NULL);
+	gmtime_r(&now, tm);
+	fprintf(logerr, "%zu syms\n", ute_nsyms(u));
 	return;
 }
 
 
+/* web services */
+typedef enum {
+	WEBSVC_F_UNK,
+	WEBSVC_F_SECDEF,
+	WEBSVC_F_QUOTREQ,
+} websvc_f_t;
+
+struct websvc_s {
+	websvc_f_t ty;
+
+	union {
+		struct {
+			uint16_t idx;
+		} secdef;
+
+		struct {
+			uint16_t idx;
+		} quotreq;
+	};
+};
+
+/* looks like dccp://host:port/secdef?idx=00000 */
+static char brag_uri[INET6_ADDRSTRLEN] = "dccp://";
+/* offset into brag_uris idx= field */
+static size_t brag_uri_offset = 0;
+
+#define MASS_QUOT	(0xffff)
+
+static int
+make_brag_uri(ud_sockaddr_t sa, socklen_t UNUSED(sa_len))
+{
+	struct utsname uts[1];
+	char dnsdom[64];
+	const size_t uri_host_offs = sizeof("dccp://");
+	char *curs = brag_uri + uri_host_offs - 1;
+	size_t rest = sizeof(brag_uri) - uri_host_offs;
+	int len;
+
+	if (uname(uts) < 0) {
+		return -1;
+	} else if (getdomainname(dnsdom, sizeof(dnsdom)) < 0) {
+		return -1;
+	}
+
+	len = snprintf(
+		curs, rest, "%s.%s:%hu/",
+		uts->nodename, dnsdom, ntohs(sa->sa6.sin6_port));
+
+	if (len > 0) {
+		brag_uri_offset = uri_host_offs + len - 1;
+	}
+
+	UMQS_DEBUG("adv_name: %s\n", brag_uri);
+	return 0;
+}
+
+static uint16_t
+__find_idx(const char *str)
+{
+	if ((str = strstr(str, "idx="))) {
+		long int idx = strtol(str + 4, NULL, 10);
+		if (idx > 0 && idx < 65536) {
+			return (uint16_t)idx;
+		}
+		return 0;
+	}
+	return MASS_QUOT;
+}
+
+static websvc_f_t
+websvc_from_request(struct websvc_s *tgt, const char *req, size_t UNUSED(len))
+{
+	static const char get_slash[] = "GET /";
+	websvc_f_t res = WEBSVC_F_UNK;
+	const char *p;
+
+	if ((p = strstr(req, get_slash))) {
+		p += sizeof(get_slash) - 1;
+
+#define TAG_MATCHES_P(p, x)				\
+		(strncmp(p, x, sizeof(x) - 1) == 0)
+
+#define SECDEF_TAG	"secdef"
+		if (TAG_MATCHES_P(p, SECDEF_TAG)) {
+			UMQS_DEBUG("secdef query\n");
+			res = WEBSVC_F_SECDEF;
+			tgt->secdef.idx =
+				__find_idx(p + sizeof(SECDEF_TAG) - 1);
+
+#define QUOTREQ_TAG	"quotreq"
+		} else if (TAG_MATCHES_P(p, QUOTREQ_TAG)) {
+			UMQS_DEBUG("quotreq query\n");
+			res = WEBSVC_F_QUOTREQ;
+			tgt->quotreq.idx =
+				__find_idx(p + sizeof(QUOTREQ_TAG) - 1);
+		}
+	}
+	return tgt->ty = res;
+}
+
+static size_t
+websvc_secdef(char *restrict tgt, size_t tsz, struct websvc_s sd)
+{
+	ssize_t res = 0;
+
+	UMQS_DEBUG("printing secdef idx %hu\n", sd.secdef.idx);
+	if (tsz > 0) {
+		tgt[0] = '\0';
+	}
+	return res;
+}
+
+static size_t
+__quotreq1(char *restrict tgt, size_t tsz, uint16_t idx)
+{
+	static size_t qid = 0;
+	const char *sym = ute_idx2sym(u, idx);
+	double b = ffff_m30_d((m30_t)AS_CONST_SL1T(cache[idx - 1].bid)->pri);
+	double bsz = ffff_m30_d((m30_t)AS_CONST_SL1T(cache[idx - 1].bid)->qty);
+	double a = ffff_m30_d((m30_t)AS_CONST_SL1T(cache[idx - 1].ask)->pri);
+	double asz = ffff_m30_d((m30_t)AS_CONST_SL1T(cache[idx - 1].ask)->qty);
+
+	return snprintf(
+		tgt, tsz, "\
+  <Quot QID=\"%zu\" \
+BidPx=\"%.6f\" OfrPx=\"%.6f\" BidSz=\"%.4f\" OfrSz=\"%.4f\">\n\
+    <Instrmt ID=\"%hu\" Sym=\"%s\"/>\n\
+  </Quot>\n",
+		++qid, b, a, bsz, asz, idx, sym);
+}
+
+static size_t
+websvc_quotreq(char *restrict tgt, size_t tsz, struct websvc_s sd)
+{
+	static const char pre[] = "\
+<?xml version=\"1.0\" encoding=\"utf-8\"?>\n\
+<FIXML>\n\
+";
+	static const char post[] = "\
+</FIXML>\n\
+";
+	size_t idx = 0;
+	size_t nsy = ute_nsyms(u);
+
+	UMQS_DEBUG("printing quotreq idx %hu\n", sd.quotreq.idx);
+
+	if (!sd.quotreq.idx) {
+		return 0;
+	}
+
+	/* copy pre */
+	memcpy(tgt + idx, pre, sizeof(pre));
+	idx += sizeof(pre) - 1;
+
+	if (sd.quotreq.idx < nsy) {
+		idx += __quotreq1(tgt + idx, tsz - idx, sd.quotreq.idx);
+	} else if (sd.quotreq.idx == MASS_QUOT) {
+		static const char batch_pre[] = "<Batch>\n";
+		static const char batch_post[] = "</Batch>\n";
+
+		memcpy(tgt + idx, batch_pre, sizeof(batch_pre));
+		idx += sizeof(batch_pre) - 1;
+		/* loop over instruments */
+		for (size_t i = 1; i <= nsy; i++) {
+			idx += __quotreq1(tgt + idx, tsz - idx, i);
+		}
+		memcpy(tgt + idx, batch_post, sizeof(batch_post));
+		idx += sizeof(batch_post) - 1;
+	}
+
+	/* copy post */
+	memcpy(tgt + idx, post, sizeof(post));
+	idx += sizeof(post) - 1;
+	return idx;
+}
+
+static size_t
+websvc_unk(char *restrict tgt, size_t tsz, struct websvc_s UNUSED(sd))
+{
+	static const char rsp[] = "\
+<!DOCTYPE html>\n\
+<html>\n\
+  <head>\n\
+    <title>um-quosnp overview</title>\n\
+  </head>\n\
+\n\
+  <body>\n\
+    <section>\n\
+      <header>\n\
+        <h1>Services</h1>\n\
+      </header>\n\
+\n\
+      <footer>\n\
+        <hr/>\n\
+        <address>\n\
+          <a href=\"https://github.com/hroptatyr/unsermarkt/\">unsermarkt</a>\n\
+        </address>\n\
+      </footer>\n\
+    </section>\n\
+  </body>\n\
+</html>\n\
+";
+	if (tsz < sizeof(rsp)) {
+		return 0;
+	}
+	memcpy(tgt, rsp, sizeof(rsp));
+	return sizeof(rsp) - 1;
+}
+
+
+#define UTE_LE		(0x7574)
+#define UTE_BE		(0x5554)
+#define QMETA		(0x7572)
+#define QMETA_RPL	(UDPC_PKT_RPL(QMETA))
+#if defined WORDS_BIGENDIAN
+# define UTE		UTE_BE
+#else  /* !WORDS_BIGENDIAN */
+# define UTE		UTE_LE
+#endif	/* WORDS_BIGENDIAN */
+#define UTE_RPL		(UDPC_PKT_RPL(UTE))
+
 /* the actual worker function */
 static void
 mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
@@ -585,7 +773,6 @@ mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
 	/* a job */
 	struct job_s j[1];
 	socklen_t lsa = sizeof(j->sa);
-	graph_t g = w->data;
 
 	j->sock = w->fd;
 	nrd = recvfrom(w->fd, j->buf, sizeof(j->buf), 0, &j->sa.sa, &lsa);
@@ -606,18 +793,141 @@ mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
 	/* intercept special channels */
 	switch (udpc_pkt_cmd(JOB_PACKET(j))) {
 	case QMETA_RPL:
-		snarf_meta(j, g);
+		snarf_meta(j);
 		break;
 
 	case UTE:
 	case UTE_RPL:
-		snarf_data(j, g);
+		snarf_data(j);
 		break;
 	default:
 		break;
 	}
 
 out_revok:
+	return;
+}
+
+/* fdfs */
+static void
+ev_io_shut(EV_P_ ev_io *w)
+{
+	int fd = w->fd;
+
+	ev_io_stop(EV_A_ w);
+	shutdown(fd, SHUT_RDWR);
+	close(fd);
+	w->fd = -1;
+	return;
+}
+
+static void
+paste_clen(char *restrict buf, size_t bsz, size_t len)
+{
+/* print ascii repr of LEN at BUF. */
+	buf[0] = ' ';
+	buf[1] = ' ';
+	buf[2] = ' ';
+	buf[3] = ' ';
+
+	if (len > bsz) {
+		len = 0;
+	}
+
+	buf[4] = (len % 10U) + '0';
+	if ((len /= 10U)) {
+		buf[3] = (len % 10U) + '0';
+		if ((len /= 10U)) {
+			buf[2] = (len % 10U) + '0';
+			if ((len /= 10U)) {
+				buf[1] = (len % 10U) + '0';
+				if ((len /= 10U)) {
+					buf[0] = (len % 10U) + '0';
+				}
+			}
+		}
+	}
+	return;
+}
+
+static void
+dccp_data_cb(EV_P_ ev_io *w, int UNUSED(re))
+{
+	/* the final \n will be subst'd later on */
+#define HDR		"\
+HTTP/1.1 200 OK\r\n\
+Server: um-quosnp\r\n\
+Content-Length: "
+#define CLEN_SPEC	"% 5zu"
+#define BUF_INIT	HDR CLEN_SPEC "\r\n\r\n"
+	/* hdr is a format string and hdr_len is as wide as the result printed
+	 * later on */
+	static char buf[65536] = BUF_INIT;
+	char *rsp = buf + sizeof(BUF_INIT) - 1;
+	const size_t rsp_len = sizeof(buf) - (sizeof(BUF_INIT) - 1);
+	ssize_t nrd;
+	size_t cont_len;
+	struct websvc_s voodoo;
+
+	if ((nrd = read(w->fd, rsp, rsp_len)) < 0) {
+		goto clo;
+	} else if ((size_t)nrd < rsp_len) {
+		buf[nrd] = '\0';
+	} else {
+		/* uh oh, mega request, wtf? */
+		buf[sizeof(buf) - 1] = '\0';
+	}
+
+	switch (websvc_from_request(&voodoo, rsp, nrd)) {
+	default:
+	case WEBSVC_F_UNK:
+		cont_len = websvc_unk(rsp, rsp_len, voodoo);
+		break;
+
+	case WEBSVC_F_SECDEF:
+		cont_len = websvc_secdef(rsp, rsp_len, voodoo);
+		break;
+	case WEBSVC_F_QUOTREQ:
+		cont_len = websvc_quotreq(rsp, rsp_len, voodoo);
+		break;
+	}
+
+	/* prepare the header */
+	paste_clen(buf + sizeof(HDR) - 1, sizeof(buf), cont_len);
+
+	/* and append the actual contents */
+	send(w->fd, buf, sizeof(BUF_INIT) - 1 + cont_len, 0);
+
+clo:
+	ev_io_shut(EV_A_ w);
+	return;
+}
+
+static void
+dccp_cb(EV_P_ ev_io *w, int UNUSED(re))
+{
+	static ev_io conns[8];
+	static size_t next_conn = 0;
+	union ud_sockaddr_u sa;
+	socklen_t sasz = sizeof(sa);
+	int s;
+
+	UMQS_DEBUG("interesting activity on %d\n", w->fd);
+
+	if ((s = accept(w->fd, &sa.sa, &sasz)) < 0) {
+		return;
+	}
+
+	if (conns[next_conn].fd > 0) {
+		ev_io_shut(EV_A_ conns + next_conn);
+	}
+
+	ev_io_init(conns + next_conn, dccp_data_cb, s, EV_READ);
+	conns[next_conn].data = NULL;
+	ev_io_start(EV_A_ conns + next_conn);
+	if (++next_conn >= countof(conns)) {
+		next_conn = 0;
+	}
 	return;
 }
 
@@ -638,6 +948,14 @@ sigpipe_cb(EV_P_ ev_signal *UNUSED(w), int UNUSED(revents))
 static void
 sighup_cb(EV_P_ ev_signal *UNUSED(w), int UNUSED(revents))
 {
+	rotate_outfile(EV_A);
+	return;
+}
+
+static void
+midnight_cb(EV_P_ ev_periodic *UNUSED(w), int UNUSED(r))
+{
+	rotate_outfile(EV_A);
 	return;
 }
 
@@ -650,38 +968,6 @@ prune_cb(EV_P_ ev_timer *w, int UNUSED(r))
 }
 
 
-/* graph guts */
-#include "ccy-graph.c"
-
-/* this must be configurable somehow */
-static void
-build_hops(graph_t g)
-{
-	ccyg_add_pair(g, (struct pair_s){ISO_4217_EUR, ISO_4217_AUD});
-	ccyg_add_pair(g, (struct pair_s){ISO_4217_EUR, ISO_4217_USD});
-	ccyg_add_pair(g, (struct pair_s){ISO_4217_AUD, ISO_4217_USD});
-	ccyg_add_pair(g, (struct pair_s){ISO_4217_GBP, ISO_4217_USD});
-	ccyg_add_pair(g, (struct pair_s){ISO_4217_NZD, ISO_4217_USD});
-	ccyg_add_pair(g, (struct pair_s){ISO_4217_EUR, ISO_4217_GBP});
-	ccyg_add_pair(g, (struct pair_s){ISO_4217_EUR, ISO_4217_NZD});
-	ccyg_add_pair(g, (struct pair_s){ISO_4217_AUD, ISO_4217_NZD});
-
-	/* population */
-	ccyg_populate(g);
-
-	/* and construct all paths */
-	npaths = ccyg_add_paths(g, (struct pair_s){ISO_4217_EUR, ISO_4217_AUD});
-	XQ_DEBUG("%zu virtual paths added\n", npaths);
-
-#if defined DEBUG_FLAG
-	XQ_DEBUG("\nGRAPH NOW\n");
-	prnt_graph(g);
-#endif	/* DEBUG_FLAG */
-	return;
-}
-
-
-
 #if defined __INTEL_COMPILER
 # pragma warning (disable:593)
 # pragma warning (disable:181)
@@ -689,8 +975,8 @@ build_hops(graph_t g)
 # pragma GCC diagnostic ignored "-Wswitch"
 # pragma GCC diagnostic ignored "-Wswitch-enum"
 #endif /* __INTEL_COMPILER */
-#include "xross-quo-clo.h"
-#include "xross-quo-clo.c"
+#include "um-quosnp-clo.h"
+#include "um-quosnp-clo.c"
 #if defined __INTEL_COMPILER
 # pragma warning (default:593)
 # pragma warning (default:181)
@@ -712,7 +998,7 @@ detach(void)
 		break;
 	default:
 		/* i am the parent */
-		XQ_DEBUG("daemonisation successful %d\n", pid);
+		UMQS_DEBUG("daemonisation successful %d\n", pid);
 		exit(0);
 	}
 
@@ -730,7 +1016,7 @@ detach(void)
 		(void)dup2(fd, STDERR_FILENO);
 	}
 #if defined DEBUG_FLAG
-	logerr = fopen("/tmp/xross-quo.log", "w");
+	logerr = fopen("/tmp/um-quosnp.log", "w");
 #else  /* !DEBUG_FLAG */
 	logerr = fdopen(fd, "w");
 #endif	/* DEBUG_FLAG */
@@ -740,24 +1026,25 @@ detach(void)
 int
 main(int argc, char *argv[])
 {
-	static graph_t g;
 	/* use the default event loop unless you have special needs */
 	struct ev_loop *loop;
 	/* args */
-	struct xq_args_info argi[1];
+	struct umqd_args_info argi[1];
 	/* ev goodies */
 	ev_signal sigint_watcher[1];
 	ev_signal sighup_watcher[1];
 	ev_signal sigterm_watcher[1];
 	ev_signal sigpipe_watcher[1];
+	ev_periodic midnight[1];
 	ev_timer prune[1];
+	ev_io dccp[2];
 	int res = 0;
 
 	/* big assignment for logging purposes */
 	logerr = stderr;
 
 	/* parse the command line */
-	if (xq_parser(argc, argv, argi)) {
+	if (umqd_parser(argc, argv, argi)) {
 		exit(1);
 	}
 
@@ -777,6 +1064,10 @@ main(int argc, char *argv[])
 	ev_signal_init(sighup_watcher, sighup_cb, SIGHUP);
 	ev_signal_start(EV_A_ sighup_watcher);
 
+	/* the midnight tick for file rotation, also upon sighup */
+	ev_periodic_init(midnight, midnight_cb, MIDNIGHT, ONE_DAY, NULL);
+	ev_periodic_start(EV_A_ midnight);
+
 	/* prune timer, check occasionally for old unused clients */
 	ev_timer_init(prune, prune_cb, PRUNE_INTV, PRUNE_INTV);
 	ev_timer_start(EV_A_ prune);
@@ -784,10 +1075,6 @@ main(int argc, char *argv[])
 	/* make some room for the control channel and the beef chans */
 	nbeef = argi->beef_given + 1;
 	beef = malloc(nbeef * sizeof(*beef));
-
-	/* generate the graph we're talking */
-	g = make_graph();
-	build_hops(g);
 
 	/* attach a multicast listener
 	 * we add this quite late so that it's unlikely that a plethora of
@@ -799,22 +1086,74 @@ main(int argc, char *argv[])
 		ev_io_start(EV_A_ beef);
 	}
 
+	/* make a channel for http/dccp requests */
+	{
+		union ud_sockaddr_u sa = {
+			.sa6 = {
+				.sin6_family = AF_INET6,
+				.sin6_addr = in6addr_any,
+				.sin6_port = 0,
+			},
+		};
+		socklen_t sa_len = sizeof(sa);
+		int s;
+
+		if ((s = make_dccp()) < 0) {
+			/* just to indicate we have no socket */
+			dccp[0].fd = -1;
+		} else if (sock_listener(s, &sa) < 0) {
+			/* grrr, whats wrong now */
+			close(s);
+			dccp[0].fd = -1;
+		} else {
+			/* everything's brilliant */
+			ev_io_init(dccp, dccp_cb, s, EV_READ);
+			ev_io_start(EV_A_ dccp);
+
+			getsockname(s, &sa.sa, &sa_len);
+		}
+
+
+		if (countof(dccp) < 2) {
+			;
+		} else if ((s = make_tcp()) < 0) {
+			/* just to indicate we have no socket */
+			dccp[1].fd = -1;
+		} else if (sock_listener(s, &sa) < 0) {
+			/* bugger */
+			close(s);
+			dccp[1].fd = -1;
+		} else {
+			/* yay */
+			ev_io_init(dccp + 1, dccp_cb, s, EV_READ);
+			ev_io_start(EV_A_ dccp + 1);
+
+			getsockname(s, &sa.sa, &sa_len);
+		}
+
+		if (s >= 0) {
+			make_brag_uri(&sa, sa_len);
+
+			fwrite(brag_uri, 1, brag_uri_offset, stdout);
+			fputc('\n', stdout);
+		}
+	}
+
 	/* go through all beef channels */
 	for (unsigned int i = 0; i < argi->beef_given; i++) {
 		int s = ud_mcast_init(argi->beef_arg[i]);
 		ev_io_init(beef + i + 1, mon_beef_cb, s, EV_READ);
 		ev_io_start(EV_A_ beef + i + 1);
-		/* make sure we let our beef handler know about our graph */
-		beef[i + 1].data = g;
-	}
-
-	/* also the first beef channel could be our output chan */
-	if (argi->beef_given) {
-		ute_out_ch = ud_chan_init(argi->beef_arg[0]);
 	}
 
 	/* init cli space */
 	init_cli();
+
+	/* init helper ute, we're not storing tick data in this file */
+	if ((u = ute_mktemp(UO_ANON | UO_RDWR)) == NULL) {
+		res = 1;
+		goto past_loop;
+	}
 
 	if (argi->daemonise_given && detach() < 0) {
 		perror("daemonisation failed");
@@ -826,23 +1165,14 @@ main(int argc, char *argv[])
 	ev_loop(EV_A_ 0);
 
 past_loop:
-	if (ute_out_ch) {
-		ud_chan_fini(ute_out_ch);
-		ute_out_ch = NULL;
-	}
-
 	/* detaching beef channels */
 	for (size_t i = 0; i < nbeef; i++) {
 		int s = beef[i].fd;
 		ev_io_stop(EV_A_ beef + i);
 		ud_mcast_fini(s);
-		beef[i].data = NULL;
 	}
 	/* free beef resources */
 	free(beef);
-
-	/* free the graph */
-	free_graph(g);
 
 	/* finish cli space */
 	fini_cli();
@@ -851,10 +1181,10 @@ past_loop:
 	ev_default_destroy();
 
 	/* kick the config context */
-	xq_parser_free(argi);
+	umqd_parser_free(argi);
 
 	/* unloop was called, so exit */
 	return res;
 }
 
-/* xross-quo.c ends here */
+/* um-quosnp.c ends here */

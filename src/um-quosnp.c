@@ -331,6 +331,49 @@ prune_clis(void)
 
 
 static utectx_t u = NULL;
+static struct {
+	struct sl1t_s bid;
+	struct sl1t_s ask;
+} *cache = NULL;
+static size_t ncache = 0;
+
+#if !defined AS_CONST_SL1T
+# define AS_CONST_SL1T(x)	((const_sl1t_t)(x))
+#endif	/* !AS_CONST_SL1T */
+
+static void
+bang(unsigned int tgtid, scom_t sp)
+{
+	static const size_t pgsz = 65536UL;
+
+	if (UNLIKELY(!tgtid)) {
+		return;
+	} else if (UNLIKELY(ncache < tgtid)) {
+		/* resize */
+		size_t nx64k = (tgtid * sizeof(*cache) + pgsz) & ~(pgsz - 1);
+
+		if (UNLIKELY(cache == NULL)) {
+			cache = mmap(NULL, nx64k, PROT_MEM, MAP_MEM, -1, 0);
+		} else {
+			size_t olsz = ncache * sizeof(*cache);
+			cache = mremap(cache, olsz, nx64k, MREMAP_MAYMOVE);
+		}
+
+		ncache = nx64k / sizeof(*cache);
+	}
+
+	switch (scom_thdr_ttf(sp)) {
+	case SL1T_TTF_BID:
+		cache[tgtid - 1].bid = *AS_CONST_SL1T(sp);
+		break;
+	case SL1T_TTF_ASK:
+		cache[tgtid - 1].ask = *AS_CONST_SL1T(sp);
+		break;
+	default:
+		break;
+	}
+	return;
+}
 
 static void
 snarf_meta(job_t j)
@@ -421,10 +464,8 @@ snarf_data(job_t j)
 			continue;
 		}
 
-		/* fiddle with the tblidx */
-		scom_thdr_set_tblidx(sp, CLI(c)->tgtid);
 		/* update our state table */
-		;
+		bang(CLI(c)->tgtid, sp);
 
 		/* leave a last_seen note */
 		CLI(c)->last_seen = tv->tv_sec;

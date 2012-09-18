@@ -690,21 +690,33 @@ websvc_quotreq(char *restrict tgt, size_t tsz, struct websvc_s sd)
 
 	UMQS_DEBUG("printing quotreq idx %hu\n", sd.quotreq.idx);
 
-	if (sd.quotreq.idx && sd.quotreq.idx < nsy) {
-		memcpy(tgt + idx, pre, sizeof(pre));
-		idx += sizeof(pre) - 1;
+	if (!sd.quotreq.idx) {
+		return 0;
+	}
+
+	/* copy pre */
+	memcpy(tgt + idx, pre, sizeof(pre));
+	idx += sizeof(pre) - 1;
+
+	if (sd.quotreq.idx < nsy) {
 		idx += __quotreq1(tgt + idx, tsz - idx, sd.quotreq.idx);
-		memcpy(tgt + idx, post, sizeof(post));
-		idx += sizeof(post) - 1;
 	} else if (sd.quotreq.idx == MASS_QUOT) {
-		memcpy(tgt + idx, pre, sizeof(pre));
-		idx += sizeof(pre) - 1;
+		static const char batch_pre[] = "<Batch>\n";
+		static const char batch_post[] = "</Batch>\n";
+
+		memcpy(tgt + idx, batch_pre, sizeof(batch_pre));
+		idx += sizeof(batch_pre) - 1;
+		/* loop over instruments */
 		for (size_t i = 1; i <= nsy; i++) {
 			idx += __quotreq1(tgt + idx, tsz - idx, i);
 		}
-		memcpy(tgt + idx, post, sizeof(post));
-		idx += sizeof(post) - 1;
+		memcpy(tgt + idx, batch_post, sizeof(batch_post));
+		idx += sizeof(batch_post) - 1;
 	}
+
+	/* copy post */
+	memcpy(tgt + idx, post, sizeof(post));
+	idx += sizeof(post) - 1;
 	return idx;
 }
 

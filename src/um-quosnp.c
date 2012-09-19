@@ -129,6 +129,9 @@ typedef intptr_t hx_t;
 typedef struct urifq_s *urifq_t;
 typedef struct urifi_s *urifi_t;
 
+typedef struct ev_io_q_s *ev_io_q_t;
+typedef struct ev_io_i_s *ev_io_i_t;
+
 struct key_s {
 	ud_sockaddr_t sa;
 	uint16_t id;
@@ -154,6 +157,16 @@ struct urifq_s {
 struct urifi_s {
 	struct gq_item_s i;
 	char uri[256];
+};
+
+/* ev io object queue */
+struct ev_io_q_s {
+	struct gq_s q[1];
+};
+
+struct ev_io_i_s {
+	struct gq_item_s i;
+	ev_io w[1];
 };
 
 /* children need access to beef resources */
@@ -304,6 +317,35 @@ pop_uri(void)
 {
 	void *res = gq_pop_head(urifq.fetchq);
 	return res;
+}
+
+
+/* ev io object queue */
+static struct ev_io_q_s ioq = {0};
+
+static ev_io_i_t
+make_io(void)
+{
+	ev_io_i_t res;
+
+	if (ioq.q->free->i1st == NULL) {
+		size_t nitems = ioq.q->nitems / sizeof(*res);
+
+		assert(ioq.q->free->ilst == NULL);
+		UMQS_DEBUG("IOQ RESIZE -> %zu\n", nitems + 16);
+		init_gq(ioq.q, sizeof(*res), nitems + 16);
+	}
+	/* get us a new client and populate the object */
+	res = (void*)gq_pop_head(ioq.q->free);
+	memset(res, 0, sizeof(*res));
+	return res;
+}
+
+static void
+free_io(ev_io_i_t io)
+{
+	gq_push_tail(ioq.q->free, (gq_item_t)io);
+	return;
 }
 
 
@@ -1138,12 +1180,14 @@ out_revok:
 static void
 ev_io_shut(EV_P_ ev_io *w)
 {
+/* attention, W *must* come from the ev io queue */
 	int fd = w->fd;
+	ev_io_i_t qio = w->data;
 
 	ev_io_stop(EV_A_ w);
 	shutdown(fd, SHUT_RDWR);
 	close(fd);
-	w->fd = -1;
+	free_io(qio);
 	return;
 }
 
@@ -1198,7 +1242,7 @@ Content-Length: "
 	if ((nrd = read(w->fd, rsp, rsp_len)) < 0) {
 		goto clo;
 	} else if ((size_t)nrd < rsp_len) {
-		buf[nrd] = '\0';
+		rsp[nrd] = '\0';
 	} else {
 		/* uh oh, mega request, wtf? */
 		buf[sizeof(buf) - 1] = '\0';
@@ -1232,10 +1276,9 @@ clo:
 static void
 dccp_cb(EV_P_ ev_io *w, int UNUSED(re))
 {
-	static ev_io conns[8];
-	static size_t next_conn = 0;
 	union ud_sockaddr_u sa;
 	socklen_t sasz = sizeof(sa);
+	ev_io_i_t qio;
 	int s;
 
 	UMQS_DEBUG("interesting activity on %d\n", w->fd);
@@ -1244,16 +1287,10 @@ dccp_cb(EV_P_ ev_io *w, int UNUSED(re))
 		return;
 	}
 
-	if (conns[next_conn].fd > 0) {
-		ev_io_shut(EV_A_ conns + next_conn);
-	}
-
-	ev_io_init(conns + next_conn, dccp_data_cb, s, EV_READ);
-	conns[next_conn].data = NULL;
-	ev_io_start(EV_A_ conns + next_conn);
-	if (++next_conn >= countof(conns)) {
-		next_conn = 0;
-	}
+	qio = make_io();
+	ev_io_init(qio->w, dccp_data_cb, s, EV_READ);
+	qio->w->data = qio;
+	ev_io_start(EV_A_ qio->w);
 	return;
 }
 

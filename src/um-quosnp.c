@@ -81,6 +81,7 @@
 #include <unserding/unserding.h>
 #include <unserding/protocore.h>
 
+#define DEFINE_GORY_STUFF
 #if defined HAVE_UTERUS_UTERUS_H
 # include <uterus/uterus.h>
 # include <uterus/m30.h>
@@ -660,19 +661,22 @@ static size_t
 __quotreq1(char *restrict tgt, size_t tsz, uint16_t idx)
 {
 	static size_t qid = 0;
+	static char b[32], a[32], bq[32], aq[32];
 	const char *sym = ute_idx2sym(u, idx);
-	double b = ffff_m30_d((m30_t)AS_CONST_SL1T(cache[idx - 1].bid)->pri);
-	double bsz = ffff_m30_d((m30_t)AS_CONST_SL1T(cache[idx - 1].bid)->qty);
-	double a = ffff_m30_d((m30_t)AS_CONST_SL1T(cache[idx - 1].ask)->pri);
-	double asz = ffff_m30_d((m30_t)AS_CONST_SL1T(cache[idx - 1].ask)->qty);
+
+	ffff_m30_s(b, (m30_t)AS_CONST_SL1T(cache[idx - 1].bid)->pri);
+	ffff_m30_s(bq, (m30_t)AS_CONST_SL1T(cache[idx - 1].bid)->qty);
+	ffff_m30_s(a, (m30_t)AS_CONST_SL1T(cache[idx - 1].ask)->pri);
+	ffff_m30_s(aq, (m30_t)AS_CONST_SL1T(cache[idx - 1].ask)->qty);
 
 	return snprintf(
 		tgt, tsz, "\
   <Quot QID=\"%zu\" \
-BidPx=\"%.6f\" OfrPx=\"%.6f\" BidSz=\"%.4f\" OfrSz=\"%.4f\">\n\
+BidPx=\"%s\" OfrPx=\"%s\" BidSz=\"%s\" OfrSz=\"%s\" \
+TxnTm=\"\" ValidUntilTm=\"\">\n\
     <Instrmt ID=\"%hu\" Sym=\"%s\"/>\n\
   </Quot>\n",
-		++qid, b, a, bsz, asz, idx, sym);
+		++qid, b, a, bq, aq, idx, sym);
 }
 
 static size_t

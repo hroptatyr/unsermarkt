@@ -124,7 +124,7 @@ struct cli_s {
 	uint16_t id;
 	uint16_t tgtid;
 
-	uint32_t last_seen;
+	volatile uint32_t last_seen;
 
 	char sym[64];
 };

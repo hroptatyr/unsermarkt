@@ -1053,7 +1053,7 @@ websvc_unk(char *restrict tgt, size_t tsz, struct websvc_s UNUSED(sd))
 }
 
 
-static void
+static int
 snarf_uri(char *restrict uri)
 {
 	struct addrinfo *ais = NULL;
@@ -1066,10 +1066,10 @@ snarf_uri(char *restrict uri)
 	/* snarf host and path from uri */
 	if ((host = strstr(uri, "://")) == NULL) {
 		fprintf(logerr, "cannot snarf host part off %s\n", uri);
-		return;
+		return -1;
 	} else if ((p = strchr(host += 3, '/')) == NULL) {
 		fprintf(logerr, "no path in URI %s\n", uri);
-		return;
+		return -1;
 	}
 	/* fiddle with the string a bit */
 	*p = '\0';
@@ -1086,10 +1086,10 @@ snarf_uri(char *restrict uri)
 	/* connection guts */
 	if (rslv(&ais, host, port) < 0) {
 		fprintf(logerr, "cannot resolve %s %hu\n", host, port);
-		return;
+		return -1;
 	} else if ((s = conn(ais)) < 0) {
 		fprintf(logerr, "cannot connect to %s %hu\n", host, port);
-		return;
+		return -1;
 	}
 	/* yay */
 	UMQS_DEBUG("d/l'ing /%s off %s %hu\n", path, host, port);
@@ -1101,22 +1101,27 @@ snarf_uri(char *restrict uri)
 		memcpy(req + 5 + plen, "\r\n\r\n", 5);
 		send(s, req, plen + 10, 0);
 	}
-
-	{
-		static char rpl[4096];
-		if (read(s, rpl, sizeof(rpl)) > 0) {
-			fputs(rpl, logerr);
-		}
-	}
-	close(s);
-	return;
+	return s;
 }
 
 static void
-check_urifq(void)
+check_urifq(EV_P)
 {
+	static void fetch_data_cb();
+
 	for (urifi_t fi; (fi = pop_uri()); free_uri(fi)) {
-		snarf_uri(fi->uri);
+		ev_io_i_t qio;
+		int s;
+
+		if ((s = snarf_uri(fi->uri)) < 0) {
+			continue;
+		}
+
+		/* retrieve the result through our queue */
+		qio = make_io();
+		ev_io_init(qio->w, fetch_data_cb, s, EV_READ);
+		qio->w->data = qio;
+		ev_io_start(EV_A_ qio->w);
 	}
 	return;
 }
@@ -1180,14 +1185,33 @@ out_revok:
 static void
 ev_io_shut(EV_P_ ev_io *w)
 {
-/* attention, W *must* come from the ev io queue */
 	int fd = w->fd;
-	ev_io_i_t qio = w->data;
 
 	ev_io_stop(EV_A_ w);
 	shutdown(fd, SHUT_RDWR);
 	close(fd);
+	w->fd = -1;
+	return;
+}
+
+static void
+ev_qio_shut(EV_P_ ev_io *w)
+{
+/* attention, W *must* come from the ev io queue */
+	ev_io_i_t qio = w->data;
+
+	ev_io_shut(EV_A_ w);
 	free_io(qio);
+	return;
+}
+
+static void
+fetch_data_cb(EV_P_ ev_io *w, int UNUSED(re))
+{
+	static char rpl[4096];
+
+	UMQS_DEBUG("fuck me dead, i've got a reply\n");
+	ev_qio_shut(EV_A_ w);
 	return;
 }
 
@@ -1269,7 +1293,7 @@ Content-Length: "
 	send(w->fd, buf, sizeof(BUF_INIT) - 1 + cont_len, 0);
 
 clo:
-	ev_io_shut(EV_A_ w);
+	ev_qio_shut(EV_A_ w);
 	return;
 }
 
@@ -1298,7 +1322,7 @@ static void
 prep_cb(EV_P_ ev_prepare *UNUSED(w), int UNUSED(revents))
 {
 	/* check the uri fetch queue */
-	check_urifq();
+	check_urifq(EV_A);
 	return;
 }
 

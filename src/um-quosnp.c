@@ -81,6 +81,7 @@
 #include <unserding/unserding.h>
 #include <unserding/protocore.h>
 
+#define DEFINE_GORY_STUFF
 #if defined HAVE_UTERUS_UTERUS_H
 # include <uterus/uterus.h>
 # include <uterus/m30.h>
@@ -142,6 +143,107 @@ struct cli_s {
 /* children need access to beef resources */
 static ev_io *beef = NULL;
 static size_t nbeef = 0;
+
+
+/* date and time funs, could use libdut from dateutils */
+static int
+__leapp(unsigned int y)
+{
+	return !(y % 4);
+}
+
+static void
+ffff_gmtime(struct tm *tm, const time_t t)
+{
+#define UTC_SECS_PER_DAY	(86400)
+	static uint16_t __mon_yday[] = {
+		/* cumulative, first element is a bit set of leap days to add */
+		0xfff8, 0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334
+	};
+	register int days;
+	register int secs;
+	register unsigned int yy;
+	const uint16_t *ip;
+
+
+	/* just go to day computation */
+	days = (int)(t / UTC_SECS_PER_DAY);
+	/* time stuff */
+	secs = (int)(t % UTC_SECS_PER_DAY);
+
+	/* gotta do the date now */
+	yy = 1970;
+	/* stolen from libc */
+#define DIV(a, b)		((a) / (b))
+/* we only care about 1901 to 2099 and there are no bullshit leap years */
+#define LEAPS_TILL(y)		(DIV(y, 4))
+	while (days < 0 || days >= (!__leapp(yy) ? 365 : 366)) {
+		/* Guess a corrected year, assuming 365 days per year. */
+		register unsigned int yg = yy + days / 365 - (days % 365 < 0);
+
+		/* Adjust DAYS and Y to match the guessed year.  */
+		days -= (yg - yy) * 365 +
+			LEAPS_TILL(yg - 1) - LEAPS_TILL(yy - 1);
+		yy = yg;
+	}
+	/* set the year */
+	tm->tm_year = (int)yy - 1900;
+
+	ip = __mon_yday;
+	/* unrolled */
+	yy = 13;
+	if (days < ip[--yy] &&
+	    days < ip[--yy] &&
+	    days < ip[--yy] &&
+	    days < ip[--yy] &&
+	    days < ip[--yy] &&
+	    days < ip[--yy] &&
+	    days < ip[--yy] &&
+	    days < ip[--yy] &&
+	    days < ip[--yy] &&
+	    days < ip[--yy] &&
+	    days < ip[--yy]) {
+		yy = 1;
+	}
+	/* set the rest of the tm structure */
+	tm->tm_mday = days - ip[yy] + 1;
+	tm->tm_yday = days;
+	tm->tm_mon = (int)yy - 1;
+
+	tm->tm_sec = secs % 60;
+	secs /= 60;
+	tm->tm_min = secs % 60;
+	secs /= 60;
+	tm->tm_hour = secs;
+
+	/* fix up leap years */
+	if (UNLIKELY(__leapp(tm->tm_year))) {
+		if ((ip[0] >> (yy)) & 1) {
+			if (UNLIKELY(tm->tm_yday == 59)) {
+				tm->tm_mon = 1;
+				tm->tm_mday = 29;
+			} else if (UNLIKELY(tm->tm_yday == ip[yy])) {
+				tm->tm_mday = tm->tm_yday - ip[tm->tm_mon--];
+			} else {
+				tm->tm_mday--;
+			}
+		}
+	}
+	return;
+}
+
+static void
+ffff_strfdtu(char *restrict buf, size_t bsz, time_t sec, unsigned int usec)
+{
+	struct tm tm[1];
+
+	ffff_gmtime(tm, sec);
+	/* libdut? */
+	strftime(buf, bsz, "%FT%T", tm);
+	buf[19] = '.';
+	snprintf(buf + 20, bsz - 20, "%06u+0000", usec);
+	return;
+}
 
 
 #if !defined HAVE_UTE_FREE
@@ -657,22 +759,53 @@ websvc_secdef(char *restrict tgt, size_t tsz, struct websvc_s sd)
 }
 
 static size_t
-__quotreq1(char *restrict tgt, size_t tsz, uint16_t idx)
+__quotreq1(char *restrict tgt, size_t tsz, uint16_t idx, struct timeval now)
 {
 	static size_t qid = 0;
+	static char bp[16], ap[16], bq[16], aq[16];
+	static char vtm[32];
+	static char txn[32];
+	static struct timeval now_cch;
 	const char *sym = ute_idx2sym(u, idx);
-	double b = ffff_m30_d((m30_t)AS_CONST_SL1T(cache[idx - 1].bid)->pri);
-	double bsz = ffff_m30_d((m30_t)AS_CONST_SL1T(cache[idx - 1].bid)->qty);
-	double a = ffff_m30_d((m30_t)AS_CONST_SL1T(cache[idx - 1].ask)->pri);
-	double asz = ffff_m30_d((m30_t)AS_CONST_SL1T(cache[idx - 1].ask)->qty);
+	const_sl1t_t b = cache[idx - 1].bid;
+	const_sl1t_t a = cache[idx - 1].ask;
+
+	/* find the more recent quote out of bid and ask */
+	{
+		time_t bs = sl1t_stmp_sec(b);
+		unsigned int bms = sl1t_stmp_msec(b);
+		time_t as = sl1t_stmp_sec(a);
+		unsigned int ams = sl1t_stmp_msec(a);
+
+		if (bs <= as) {
+			bs = as;
+			bms = ams;
+		}
+		if (UNLIKELY(bs == 0)) {
+			return 0;
+		}
+
+		ffff_strfdtu(txn, sizeof(txn), bs, bms * 1000);
+	}
+
+	ffff_m30_s(bp, (m30_t)b->pri);
+	ffff_m30_s(bq, (m30_t)b->qty);
+	ffff_m30_s(ap, (m30_t)a->pri);
+	ffff_m30_s(aq, (m30_t)a->qty);
+
+	if (now_cch.tv_sec != now.tv_sec) {
+		ffff_strfdtu(vtm, sizeof(vtm), now.tv_sec, now.tv_usec);
+		now_cch = now;
+	}
 
 	return snprintf(
 		tgt, tsz, "\
   <Quot QID=\"%zu\" \
-BidPx=\"%.6f\" OfrPx=\"%.6f\" BidSz=\"%.4f\" OfrSz=\"%.4f\">\n\
+BidPx=\"%s\" OfrPx=\"%s\" BidSz=\"%s\" OfrSz=\"%s\" \
+TxnTm=\"%s\" ValidUntilTm=\"%s\">\n\
     <Instrmt ID=\"%hu\" Sym=\"%s\"/>\n\
   </Quot>\n",
-		++qid, b, a, bsz, asz, idx, sym);
+		++qid, bp, ap, bq, aq, txn, vtm, idx, sym);
 }
 
 static size_t
@@ -687,6 +820,7 @@ websvc_quotreq(char *restrict tgt, size_t tsz, struct websvc_s sd)
 ";
 	size_t idx = 0;
 	size_t nsy = ute_nsyms(u);
+	struct timeval now[1];
 
 	UMQS_DEBUG("printing quotreq idx %hu\n", sd.quotreq.idx);
 
@@ -694,12 +828,15 @@ websvc_quotreq(char *restrict tgt, size_t tsz, struct websvc_s sd)
 		return 0;
 	}
 
+	/* get current time */
+	gettimeofday(now, NULL);
+
 	/* copy pre */
 	memcpy(tgt + idx, pre, sizeof(pre));
 	idx += sizeof(pre) - 1;
 
 	if (sd.quotreq.idx < nsy) {
-		idx += __quotreq1(tgt + idx, tsz - idx, sd.quotreq.idx);
+		idx += __quotreq1(tgt + idx, tsz - idx, sd.quotreq.idx, *now);
 	} else if (sd.quotreq.idx == MASS_QUOT) {
 		static const char batch_pre[] = "<Batch>\n";
 		static const char batch_post[] = "</Batch>\n";
@@ -708,7 +845,7 @@ websvc_quotreq(char *restrict tgt, size_t tsz, struct websvc_s sd)
 		idx += sizeof(batch_pre) - 1;
 		/* loop over instruments */
 		for (size_t i = 1; i <= nsy; i++) {
-			idx += __quotreq1(tgt + idx, tsz - idx, i);
+			idx += __quotreq1(tgt + idx, tsz - idx, i, *now);
 		}
 		memcpy(tgt + idx, batch_post, sizeof(batch_post));
 		idx += sizeof(batch_post) - 1;

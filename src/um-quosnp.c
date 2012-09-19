@@ -402,7 +402,7 @@ prune_clis(void)
 	/* prune clis */
 	for (cli_t i = 1; i <= ncli; i++) {
 		if (CLI(i)->last_seen + MAX_CLI_AGE < tv->tv_sec) {
-			UMQS_DEBUG("pruning %zu  %u  %ld\n", i, CLI(i)->last_seen, tv->tv_sec);
+			UMQS_DEBUG("pruning %zu\n", i);
 			prune_cli(i);
 		}
 	}

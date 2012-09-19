@@ -119,6 +119,7 @@ um_apfmon_LDFLAGS += -lreadline
 
 bin_PROGRAMS += um-quosnp
 um_quosnp_SOURCES = um-quosnp.c um-quosnp-clo.ggo
+um_quosnp_SOURCES += gq.c gq.h
 um_quosnp_CPPFLAGS = $(AM_CPPFLAGS) -D_GNU_SOURCE
 um_quosnp_CPPFLAGS += $(libev_CFLAGS)
 um_quosnp_CPPFLAGS += $(unserding_CFLAGS)

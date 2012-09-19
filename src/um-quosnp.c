@@ -74,6 +74,7 @@
 # undef EV_P
 # define EV_P  struct ev_loop *loop __attribute__((unused))
 #endif	/* HAVE_EV_H */
+#include <netdb.h>
 #include <sys/mman.h>
 #include <sys/socket.h>
 #include <sys/utsname.h>
@@ -94,6 +95,7 @@
 
 #include "nifty.h"
 #include "ud-sock.h"
+#include "gq.h"
 
 #if defined __INTEL_COMPILER
 # pragma warning (disable:981)
@@ -124,6 +126,9 @@ static FILE *logerr;
 typedef size_t cli_t;
 typedef intptr_t hx_t;
 
+typedef struct urifq_s *urifq_t;
+typedef struct urifi_s *urifi_t;
+
 struct key_s {
 	ud_sockaddr_t sa;
 	uint16_t id;
@@ -138,6 +143,17 @@ struct cli_s {
 	volatile uint32_t last_seen;
 
 	char sym[64];
+};
+
+/* uri fetch queue */
+struct urifq_s {
+	struct gq_s q[1];
+	struct gq_ll_s fetchq[1];
+};
+
+struct urifi_s {
+	struct gq_item_s i;
+	char uri[256];
 };
 
 /* children need access to beef resources */
@@ -243,6 +259,51 @@ ffff_strfdtu(char *restrict buf, size_t bsz, time_t sec, unsigned int usec)
 	buf[19] = '.';
 	snprintf(buf + 20, bsz - 20, "%06u+0000", usec);
 	return;
+}
+
+
+/* uri fetch queue */
+static struct urifq_s urifq = {0};
+
+static urifi_t
+make_uri(void)
+{
+	urifi_t res;
+
+	if (urifq.q->free->i1st == NULL) {
+		size_t nitems = urifq.q->nitems / sizeof(*res);
+		ptrdiff_t df;
+
+		assert(urifq.q->free->ilst == NULL);
+		UMQS_DEBUG("URIFQ RESIZE -> %zu\n", nitems + 16);
+		df = init_gq(urifq.q, sizeof(*res), nitems + 16);
+		gq_rbld_ll(urifq.fetchq, df);
+	}
+	/* get us a new client and populate the object */
+	res = (void*)gq_pop_head(urifq.q->free);
+	memset(res, 0, sizeof(*res));
+	return res;
+}
+
+static void
+free_uri(urifi_t uri)
+{
+	gq_push_tail(urifq.q->free, (gq_item_t)uri);
+	return;
+}
+
+static void
+push_uri(urifi_t uri)
+{
+	gq_push_tail(urifq.fetchq, (gq_item_t)uri);
+	return;
+}
+
+static urifi_t
+pop_uri(void)
+{
+	void *res = gq_pop_head(urifq.fetchq);
+	return res;
 }
 
 
@@ -486,6 +547,45 @@ sock_listener(int s, ud_sockaddr_t sa)
 	return listen(s, MAX_DCCP_CONNECTION_BACK_LOG);
 }
 
+static int
+rslv(struct addrinfo **res, const char *host, short unsigned int port)
+{
+	char strport[32];
+	struct addrinfo hints;
+
+	memset(&hints, 0, sizeof(struct addrinfo));
+	hints.ai_family = AF_UNSPEC;
+	hints.ai_socktype = SOCK_STREAM;
+	hints.ai_flags = 0;
+	hints.ai_protocol = 0;
+
+	/* Convert the port number into a string. */
+	snprintf(strport, sizeof(strport), "%hu", port);
+
+	return getaddrinfo(host, strport, &hints, res);
+}
+
+static int
+conn(struct addrinfo *ais)
+{
+	int s = -1;
+
+	for (struct addrinfo *aip = ais; aip; aip = aip->ai_next) {
+		if ((s = socket(aip->ai_family, aip->ai_socktype, 0)) < 0) {
+			/* great way to start the day */
+			;
+		} else if (connect(s, aip->ai_addr, aip->ai_addrlen) < 0) {
+			/* bugger */
+			close(s);
+		} else {
+			/* yippie */
+			break;
+		}
+	}
+	freeaddrinfo(ais);
+	return s;
+}
+
 
 static utectx_t u = NULL;
 static struct {
@@ -551,6 +651,7 @@ snarf_meta(job_t j)
 	while (ser->msgoff < plen && (tag = udpc_seria_tag(ser))) {
 		cli_t c;
 		uint16_t id;
+		int peruse_uri = 0;
 
 		if (UNLIKELY(tag != UDPC_TYPE_UI16)) {
 			break;
@@ -577,11 +678,13 @@ snarf_meta(job_t j)
 			/* known but the wrong id */
 			UMQS_DEBUG("reass %hu -> %hu\n", CLI(c)->tgtid, id);
 			CLI(c)->tgtid = id;
+			peruse_uri = 1;
 		} else /*if (CLI(c)->tgtid == 0)*/ {
 			/* unknown */
 			UMQS_DEBUG("ass'ing %s -> %hu\n", CLI(c)->sym, id);
 			CLI(c)->tgtid = id;
 			ute_bang_symidx(u, CLI(c)->sym, CLI(c)->tgtid);
+			peruse_uri = 1;
 		}
 
 		/* leave a last_seen note */
@@ -591,7 +694,17 @@ snarf_meta(job_t j)
 		tag = udpc_seria_tag(ser);
 		if (LIKELY(tag == UDPC_TYPE_STR)) {
 			char uri[256];
-			udpc_seria_des_str_into(uri, sizeof(uri), ser);
+			size_t nuri;
+
+			nuri = udpc_seria_des_str_into(uri, sizeof(uri), ser);
+
+			if (peruse_uri) {
+				urifi_t fi = make_uri();
+
+				UMQS_DEBUG("checking out %s ...\n", uri);
+				memcpy(fi->uri, uri, nuri + 1);
+				push_uri(fi);
+			}
 		}
 	}
 	return;
@@ -898,6 +1011,75 @@ websvc_unk(char *restrict tgt, size_t tsz, struct websvc_s UNUSED(sd))
 }
 
 
+static void
+snarf_uri(char *restrict uri)
+{
+	struct addrinfo *ais = NULL;
+	const char *host;
+	char *path;
+	char *p;
+	uint16_t port;
+	int s;
+
+	/* snarf host and path from uri */
+	if ((host = strstr(uri, "://")) == NULL) {
+		fprintf(logerr, "cannot snarf host part off %s\n", uri);
+		return;
+	} else if ((p = strchr(host += 3, '/')) == NULL) {
+		fprintf(logerr, "no path in URI %s\n", uri);
+		return;
+	}
+	/* fiddle with the string a bit */
+	*p = '\0';
+	path = p + 1;
+
+	/* try and find a port number */
+	if ((p = strchr(host, ':'))) {
+		*p = '\0';
+		port = strtoul(p + 1, NULL, 10);
+	} else {
+		port = 80U;
+	}
+
+	/* connection guts */
+	if (rslv(&ais, host, port) < 0) {
+		fprintf(logerr, "cannot resolve %s %hu\n", host, port);
+		return;
+	} else if ((s = conn(ais)) < 0) {
+		fprintf(logerr, "cannot connect to %s %hu\n", host, port);
+		return;
+	}
+	/* yay */
+	UMQS_DEBUG("d/l'ing /%s off %s %hu\n", path, host, port);
+	{
+		static char req[256] = "GET /";
+		size_t plen = strlen(path);
+
+		memcpy(req + 5, path, plen);
+		memcpy(req + 5 + plen, "\r\n\r\n", 5);
+		send(s, req, plen + 10, 0);
+	}
+
+	{
+		static char rpl[4096];
+		if (read(s, rpl, sizeof(rpl)) > 0) {
+			fputs(rpl, logerr);
+		}
+	}
+	close(s);
+	return;
+}
+
+static void
+check_urifq(void)
+{
+	for (urifi_t fi; (fi = pop_uri()); free_uri(fi)) {
+		snarf_uri(fi->uri);
+	}
+	return;
+}
+
+
 #define UTE_LE		(0x7574)
 #define UTE_BE		(0x5554)
 #define QMETA		(0x7572)
@@ -1075,6 +1257,13 @@ dccp_cb(EV_P_ ev_io *w, int UNUSED(re))
 	return;
 }
 
+static void
+prep_cb(EV_P_ ev_prepare *UNUSED(w), int UNUSED(revents))
+{
+	/* check the uri fetch queue */
+	check_urifq();
+	return;
+}
 
 static void
 sigint_cb(EV_P_ ev_signal *UNUSED(w), int UNUSED(revents))
@@ -1180,6 +1369,7 @@ main(int argc, char *argv[])
 	ev_signal sigterm_watcher[1];
 	ev_signal sigpipe_watcher[1];
 	ev_periodic midnight[1];
+	ev_prepare prp[1];
 	ev_timer prune[1];
 	ev_io dccp[2];
 	int res = 0;
@@ -1304,6 +1494,10 @@ main(int argc, char *argv[])
 		res = 1;
 		goto past_loop;
 	}
+
+	/* pre and post poll hooks */
+	ev_prepare_init(prp, prep_cb);
+	ev_prepare_start(EV_A_ prp);
 
 	/* now wait for events to arrive */
 	ev_loop(EV_A_ 0);

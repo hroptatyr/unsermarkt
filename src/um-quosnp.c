@@ -781,6 +781,9 @@ __quotreq1(char *restrict tgt, size_t tsz, uint16_t idx, struct timeval now)
 			bs = as;
 			bms = ams;
 		}
+		if (UNLIKELY(bs == 0)) {
+			return 0;
+		}
 
 		ffff_strfdtu(txn, sizeof(txn), bs, bms * 1000);
 	}

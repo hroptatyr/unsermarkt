@@ -749,30 +749,57 @@ static size_t
 __quotreq1(char *restrict tgt, size_t tsz, uint16_t idx, struct timeval now)
 {
 	static size_t qid = 0;
-	static char b[32], a[32], bq[32], aq[32];
+	static char bp[16], ap[16], bq[16], aq[16];
+	static char vtm[32];
 	static char txn[32];
 	static struct timeval now_cch;
 	const char *sym = ute_idx2sym(u, idx);
+	const_sl1t_t b = cache[idx - 1].bid;
+	const_sl1t_t a = cache[idx - 1].ask;
 
-	ffff_m30_s(b, (m30_t)AS_CONST_SL1T(cache[idx - 1].bid)->pri);
-	ffff_m30_s(bq, (m30_t)AS_CONST_SL1T(cache[idx - 1].bid)->qty);
-	ffff_m30_s(a, (m30_t)AS_CONST_SL1T(cache[idx - 1].ask)->pri);
-	ffff_m30_s(aq, (m30_t)cache[idx - 1].ask->qty);
+	ffff_m30_s(bp, (m30_t)b->pri);
+	ffff_m30_s(bq, (m30_t)b->qty);
+	ffff_m30_s(ap, (m30_t)a->pri);
+	ffff_m30_s(aq, (m30_t)a->qty);
 
 	if (now_cch.tv_sec != now.tv_sec) {
-		static struct tm tm_now[1];
+		struct tm tm_now[1];
+
 		ffff_gmtime(tm_now, now.tv_sec);
-		strftime(txn, sizeof(txn), "%FT%T", tm_now);
+		/* libdut? */
+		strftime(vtm, sizeof(vtm), "%FT%T", tm_now);
+		vtm[18] = '.';
+		snprintf(vtm + 19, sizeof(vtm) - 19, "%06ld+0000", now.tv_usec);
 		now_cch = now;
+	}
+
+	/* find the more recent quote out of bid and ask */
+	{
+		time_t bs = sl1t_stmp_sec(b);
+		unsigned int bms = sl1t_stmp_msec(b);
+		time_t as = sl1t_stmp_sec(a);
+		unsigned int ams = sl1t_stmp_msec(a);
+		struct tm tm[1];
+
+		if (bs <= as) {
+			bs = as;
+			bms = ams;
+		}
+
+		ffff_gmtime(tm, bs);
+		strftime(txn, sizeof(txn), "%FT%T", tm);
+		txn[18] = '.';
+		snprintf(txn + 19, sizeof(txn) - 19, "%03u+0000", bms);
 	}
 
 	return snprintf(
 		tgt, tsz, "\
   <Quot QID=\"%zu\" \
-BidPx=\"%s\" OfrPx=\"%s\" BidSz=\"%s\" OfrSz=\"%s\" TxnTm=\"%s.%06ld+0000\">\n\
+BidPx=\"%s\" OfrPx=\"%s\" BidSz=\"%s\" OfrSz=\"%s\" \
+TxnTm=\"%s\" ValidUntilTm=\"%s\">\n\
     <Instrmt ID=\"%hu\" Sym=\"%s\"/>\n\
   </Quot>\n",
-		++qid, b, a, bq, aq, txn, now_cch.tv_usec, idx, sym);
+		++qid, bp, ap, bq, aq, txn, vtm, idx, sym);
 }
 
 static size_t

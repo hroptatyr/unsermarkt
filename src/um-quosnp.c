@@ -232,6 +232,19 @@ ffff_gmtime(struct tm *tm, const time_t t)
 	return;
 }
 
+static void
+ffff_strfdtu(char *restrict buf, size_t bsz, time_t sec, unsigned int usec)
+{
+	struct tm tm[1];
+
+	ffff_gmtime(tm, sec);
+	/* libdut? */
+	strftime(buf, bsz, "%FT%T", tm);
+	buf[19] = '.';
+	snprintf(buf + 20, bsz - 20, "%06u+0000", usec);
+	return;
+}
+
 
 #if !defined HAVE_UTE_FREE
 /* for the moment we provide compatibility with uterus v0.2.2 */
@@ -757,39 +770,29 @@ __quotreq1(char *restrict tgt, size_t tsz, uint16_t idx, struct timeval now)
 	const_sl1t_t b = cache[idx - 1].bid;
 	const_sl1t_t a = cache[idx - 1].ask;
 
-	ffff_m30_s(bp, (m30_t)b->pri);
-	ffff_m30_s(bq, (m30_t)b->qty);
-	ffff_m30_s(ap, (m30_t)a->pri);
-	ffff_m30_s(aq, (m30_t)a->qty);
-
-	if (now_cch.tv_sec != now.tv_sec) {
-		struct tm tm_now[1];
-
-		ffff_gmtime(tm_now, now.tv_sec);
-		/* libdut? */
-		strftime(vtm, sizeof(vtm), "%FT%T", tm_now);
-		vtm[18] = '.';
-		snprintf(vtm + 19, sizeof(vtm) - 19, "%06ld+0000", now.tv_usec);
-		now_cch = now;
-	}
-
 	/* find the more recent quote out of bid and ask */
 	{
 		time_t bs = sl1t_stmp_sec(b);
 		unsigned int bms = sl1t_stmp_msec(b);
 		time_t as = sl1t_stmp_sec(a);
 		unsigned int ams = sl1t_stmp_msec(a);
-		struct tm tm[1];
 
 		if (bs <= as) {
 			bs = as;
 			bms = ams;
 		}
 
-		ffff_gmtime(tm, bs);
-		strftime(txn, sizeof(txn), "%FT%T", tm);
-		txn[18] = '.';
-		snprintf(txn + 19, sizeof(txn) - 19, "%03u+0000", bms);
+		ffff_strfdtu(txn, sizeof(txn), bs, bms * 1000);
+	}
+
+	ffff_m30_s(bp, (m30_t)b->pri);
+	ffff_m30_s(bq, (m30_t)b->qty);
+	ffff_m30_s(ap, (m30_t)a->pri);
+	ffff_m30_s(aq, (m30_t)a->qty);
+
+	if (now_cch.tv_sec != now.tv_sec) {
+		ffff_strfdtu(vtm, sizeof(vtm), now.tv_sec, now.tv_usec);
+		now_cch = now;
 	}
 
 	return snprintf(

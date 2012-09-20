@@ -1003,13 +1003,21 @@ websvc_from_request(struct websvc_s *tgt, const char *req, size_t UNUSED(len))
 	return tgt->ty = res;
 }
 
-static size_t
-websvc_secdef(char *restrict tgt, size_t tsz, struct websvc_s sd)
-{
-	ssize_t res = 0;
-	uint16_t idx = sd.secdef.idx;
+static const char fixml_pre[] = "\
+<?xml version=\"1.0\" encoding=\"utf-8\"?>\n\
+<FIXML xmlns=\"http://www.fixprotocol.org/FIXML-5-0-SP2\">\n\
+";
+static const char fixml_post[] = "\
+</FIXML>\n\
+";
+static const char fixml_batch_pre[] = "<Batch>\n";
+static const char fixml_batch_post[] = "</Batch>\n";
 
-	UMQS_DEBUG("printing secdef idx %hu\n", sd.secdef.idx);
+static size_t
+__secdef1(char *restrict tgt, size_t tsz, uint16_t idx)
+{
+	size_t res = 0;
+
 	if (cache[idx - 1].sd && tsz) {
 		res = cache[idx - 1].sdsz;
 
@@ -1020,6 +1028,41 @@ websvc_secdef(char *restrict tgt, size_t tsz, struct websvc_s sd)
 		tgt[res] = '\0';
 	}
 	return res;
+}
+
+static size_t
+websvc_secdef(char *restrict tgt, size_t tsz, struct websvc_s sd)
+{
+	size_t idx = 0;
+	size_t nsy = ute_nsyms(u);
+
+	UMQS_DEBUG("printing secdef idx %hu\n", sd.secdef.idx);
+
+	if (!sd.secdef.idx) {
+		return 0;
+	}
+
+	/* copy pre */
+	memcpy(tgt + idx, fixml_pre, sizeof(fixml_pre));
+	idx += sizeof(fixml_pre) - 1;
+
+	if (sd.secdef.idx < nsy) {
+		idx += __secdef1(tgt + idx, tsz - idx, sd.secdef.idx);
+	} else if (sd.quotreq.idx == MASS_QUOT) {
+		memcpy(tgt + idx, fixml_batch_pre, sizeof(fixml_batch_pre));
+		idx += sizeof(fixml_batch_pre) - 1;
+		/* loop over instruments */
+		for (size_t i = 1; i <= nsy; i++) {
+			idx += __secdef1(tgt + idx, tsz - idx, i);
+		}
+		memcpy(tgt + idx, fixml_batch_post, sizeof(fixml_batch_post));
+		idx += sizeof(fixml_batch_post) - 1;
+	}
+
+	/* copy post */
+	memcpy(tgt + idx, fixml_post, sizeof(fixml_post));
+	idx += sizeof(fixml_post) - 1;
+	return idx;
 }
 
 static size_t
@@ -1075,13 +1118,6 @@ TxnTm=\"%s\" ValidUntilTm=\"%s\">\n\
 static size_t
 websvc_quotreq(char *restrict tgt, size_t tsz, struct websvc_s sd)
 {
-	static const char pre[] = "\
-<?xml version=\"1.0\" encoding=\"utf-8\"?>\n\
-<FIXML>\n\
-";
-	static const char post[] = "\
-</FIXML>\n\
-";
 	size_t idx = 0;
 	size_t nsy = ute_nsyms(u);
 	struct timeval now[1];
@@ -1096,28 +1132,25 @@ websvc_quotreq(char *restrict tgt, size_t tsz, struct websvc_s sd)
 	gettimeofday(now, NULL);
 
 	/* copy pre */
-	memcpy(tgt + idx, pre, sizeof(pre));
-	idx += sizeof(pre) - 1;
+	memcpy(tgt + idx, fixml_pre, sizeof(fixml_pre));
+	idx += sizeof(fixml_pre) - 1;
 
 	if (sd.quotreq.idx < nsy) {
 		idx += __quotreq1(tgt + idx, tsz - idx, sd.quotreq.idx, *now);
 	} else if (sd.quotreq.idx == MASS_QUOT) {
-		static const char batch_pre[] = "<Batch>\n";
-		static const char batch_post[] = "</Batch>\n";
-
-		memcpy(tgt + idx, batch_pre, sizeof(batch_pre));
-		idx += sizeof(batch_pre) - 1;
+		memcpy(tgt + idx, fixml_batch_pre, sizeof(fixml_batch_pre));
+		idx += sizeof(fixml_batch_pre) - 1;
 		/* loop over instruments */
 		for (size_t i = 1; i <= nsy; i++) {
 			idx += __quotreq1(tgt + idx, tsz - idx, i, *now);
 		}
-		memcpy(tgt + idx, batch_post, sizeof(batch_post));
-		idx += sizeof(batch_post) - 1;
+		memcpy(tgt + idx, fixml_batch_post, sizeof(fixml_batch_post));
+		idx += sizeof(fixml_batch_post) - 1;
 	}
 
 	/* copy post */
-	memcpy(tgt + idx, post, sizeof(post));
-	idx += sizeof(post) - 1;
+	memcpy(tgt + idx, fixml_post, sizeof(fixml_post));
+	idx += sizeof(fixml_post) - 1;
 	return idx;
 }
 

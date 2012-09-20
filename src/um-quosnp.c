@@ -640,6 +640,8 @@ static struct {
 	struct sl1t_s ask[1];
 	const char *sd;
 	size_t sdsz;
+	const char *instrmt;
+	size_t instrmtsz;
 } *cache = NULL;
 static size_t ncache = 0;
 
@@ -716,6 +718,7 @@ static void
 bang_sd(const char *sd, size_t sdsz, uint16_t idx)
 {
 	static size_t secdefs_sz = 0UL;
+	const char *ins;
 
 	if (secdefs_sz + sdsz + 1 > secdefs_alsz) {
 		size_t nx64k = (secdefs_sz + sdsz + 1 + pgsz) & ~(pgsz - 1);
@@ -743,6 +746,21 @@ bang_sd(const char *sd, size_t sdsz, uint16_t idx)
 
 	/* advance the pointer, +1 for \nul */
 	secdefs_sz += sdsz + 1;
+
+	/* also try and snarf the Instrmt bit */
+	if ((ins = strstr(cache[idx - 1].sd, "<Instrmt"))) {
+		const char *eoins;
+
+		if ((eoins = strstr(ins, "</Instrmt>"))) {
+			eoins += 10;
+		} else if ((eoins = strstr(ins, "/>"))) {
+			eoins += 2;
+		} else {
+			eoins = ins;
+		}
+		cache[idx - 1].instrmt = ins;
+		cache[idx - 1].instrmtsz = eoins - ins;
+	}
 	return;
 }
 
@@ -1086,6 +1104,7 @@ websvc_secdef(char *restrict tgt, size_t tsz, struct websvc_s sd)
 static size_t
 __quotreq1(char *restrict tgt, size_t tsz, uint16_t idx, struct timeval now)
 {
+	static char eoquot[] = "</Quot>\n";
 	static size_t qid = 0;
 	static char bp[16], ap[16], bq[16], aq[16];
 	static char vtm[32];
@@ -1094,6 +1113,9 @@ __quotreq1(char *restrict tgt, size_t tsz, uint16_t idx, struct timeval now)
 	const char *sym = ute_idx2sym(u, idx);
 	const_sl1t_t b = cache[idx - 1].bid;
 	const_sl1t_t a = cache[idx - 1].ask;
+	const char *instrmt = cache[idx - 1].instrmt;
+	size_t instrmtsz = cache[idx - 1].instrmtsz;
+	int len;
 
 	/* find the more recent quote out of bid and ask */
 	{
@@ -1123,14 +1145,33 @@ __quotreq1(char *restrict tgt, size_t tsz, uint16_t idx, struct timeval now)
 		now_cch = now;
 	}
 
-	return snprintf(
+	len = snprintf(
 		tgt, tsz, "\
   <Quot QID=\"%zu\" \
 BidPx=\"%s\" OfrPx=\"%s\" BidSz=\"%s\" OfrSz=\"%s\" \
-TxnTm=\"%s\" ValidUntilTm=\"%s\">\n\
-    <Instrmt ID=\"%hu\" Sym=\"%s\"/>\n\
-  </Quot>\n",
-		++qid, bp, ap, bq, aq, txn, vtm, idx, sym);
+TxnTm=\"%s\" ValidUntilTm=\"%s\">",
+		++qid, bp, ap, bq, aq, txn, vtm);
+
+	/* see if there's an instrm block */
+	if (instrmt) {
+		if (instrmtsz > tsz - len) {
+			instrmtsz = tsz - len;
+		}
+		memcpy(tgt + len, instrmt, instrmtsz);
+		len += instrmtsz;
+	} else {
+		len += snprintf(
+			tgt + len, tsz - len, "\
+<Instrmt Sym=\"%s\" ID=\"%hu\" Src=\"M\"/>",
+			sym, idx);
+	}
+
+	/* close the Quot tag */
+	if (sizeof(eoquot) < tsz - len) {
+		memcpy(tgt + len, eoquot, sizeof(eoquot));
+		len += sizeof(eoquot) - 1;
+	}
+	return len;
 }
 
 static size_t

@@ -1333,11 +1333,11 @@ snarf_uri(char *restrict uri)
 	return s;
 }
 
+/* forward decl */
+static void fetch_data_cb();
 static void
 check_urifq(EV_P)
 {
-	static void fetch_data_cb();
-
 	for (urifi_t fi; (fi = pop_uri()); free_uri(fi)) {
 		ev_io_i_t qio;
 		int s;

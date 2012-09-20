@@ -640,8 +640,10 @@ static struct {
 	struct sl1t_s ask[1];
 	const char *sd;
 	size_t sdsz;
+	const char *instrmt;
+	size_t instrmtsz;
 } *cache = NULL;
-static size_t ncache = 0;
+static size_t cache_alsz = 0UL;
 
 static char *secdefs = NULL;
 static size_t secdefs_alsz = 0UL;
@@ -663,10 +665,102 @@ clean_up_secdefs(void)
 static void
 clean_up_cache(void)
 {
-	size_t nx64k = (ncache * sizeof(*cache) + pgsz) & ~(pgsz - 1);
-
 	UMQS_DEBUG("cleaning up cache\n");
-	munmap(cache, nx64k);
+	munmap(cache, cache_alsz);
+	return;
+}
+
+static void
+check_cache(unsigned int tgtid)
+{
+	static size_t ncache = 0;
+
+	if (UNLIKELY(tgtid > ncache)) {
+		/* resize */
+		size_t nx64k = (tgtid * sizeof(*cache) + pgsz) & ~(pgsz - 1);
+
+		if (UNLIKELY(cache == NULL)) {
+			cache = mmap(NULL, nx64k, PROT_MEM, MAP_MEM, -1, 0);
+			atexit(clean_up_cache);
+		} else {
+			size_t olsz = ncache * sizeof(*cache);
+			cache = mremap(cache, olsz, nx64k, MREMAP_MAYMOVE);
+		}
+
+		ncache = (cache_alsz = nx64k) / sizeof(*cache);
+	}
+	return;
+}
+
+static void
+bang_q(unsigned int tgtid, scom_t sp)
+{
+	if (UNLIKELY(!tgtid)) {
+		return;
+	}
+	/* make sure there's enough room */
+	check_cache(tgtid);
+
+	switch (scom_thdr_ttf(sp)) {
+	case SL1T_TTF_BID:
+		*cache[tgtid - 1].bid = *AS_CONST_SL1T(sp);
+		break;
+	case SL1T_TTF_ASK:
+		*cache[tgtid - 1].ask = *AS_CONST_SL1T(sp);
+		break;
+	default:
+		break;
+	}
+	return;
+}
+
+static void
+bang_sd(const char *sd, size_t sdsz, uint16_t idx)
+{
+	static size_t secdefs_sz = 0UL;
+	const char *ins;
+
+	if (secdefs_sz + sdsz + 1 > secdefs_alsz) {
+		size_t nx64k = (secdefs_sz + sdsz + 1 + pgsz) & ~(pgsz - 1);
+
+		if (UNLIKELY(secdefs == NULL)) {
+			secdefs = mmap(NULL, nx64k, PROT_MEM, MAP_MEM, -1, 0);
+			atexit(clean_up_secdefs);
+		} else {
+			secdefs = mremap(
+				secdefs, secdefs_alsz, nx64k, MREMAP_MAYMOVE);
+		}
+
+		secdefs_alsz = nx64k;
+	}
+
+	/* also make sure we can bang our stuff into the cache array */
+	check_cache(idx);
+
+	memcpy(secdefs + secdefs_sz, sd, sdsz);
+	secdefs[secdefs_sz + sdsz] = '\0';
+
+	/* let our cache know */
+	cache[idx - 1].sd = secdefs + secdefs_sz;
+	cache[idx - 1].sdsz = sdsz;
+
+	/* advance the pointer, +1 for \nul */
+	secdefs_sz += sdsz + 1;
+
+	/* also try and snarf the Instrmt bit */
+	if ((ins = strstr(cache[idx - 1].sd, "<Instrmt"))) {
+		const char *eoins;
+
+		if ((eoins = strstr(ins, "</Instrmt>"))) {
+			eoins += 10;
+		} else if ((eoins = strstr(ins, "/>"))) {
+			eoins += 2;
+		} else {
+			eoins = ins;
+		}
+		cache[idx - 1].instrmt = ins;
+		cache[idx - 1].instrmtsz = eoins - ins;
+	}
 	return;
 }
 
@@ -677,8 +771,9 @@ massage_fetch_uri_rpl(const char *buf, size_t bsz, uint16_t idx)
  * a positive value if the whole contents couldn't fit in BUF. */
 	static char hdr_cont_len[] = "Content-Length:";
 	static char delim[] = "\r\n\r\n";
-	static size_t secdefs_sz = 0UL;
 	const char *p;
+	const char *sd;
+	const char *eosd;
 	ssize_t sz;
 
 	if ((p = strcasestr(buf, hdr_cont_len)) == NULL) {
@@ -697,63 +792,16 @@ massage_fetch_uri_rpl(const char *buf, size_t bsz, uint16_t idx)
 	/* SZ is the size, p points to the content
 	 * AND the whole shebang is in this packet,
 	 * time for fireworks innit? */
-	if (secdefs_sz + sz + 1 > secdefs_alsz) {
-		size_t nx64k = (secdefs_sz + sz + 1 + pgsz) & ~(pgsz - 1);
-
-		if (UNLIKELY(secdefs == NULL)) {
-			secdefs = mmap(NULL, nx64k, PROT_MEM, MAP_MEM, -1, 0);
-			atexit(clean_up_secdefs);
-		} else {
-			secdefs = mremap(
-				secdefs, secdefs_alsz, nx64k, MREMAP_MAYMOVE);
-		}
-
-		secdefs_alsz = nx64k;
+	/* check for <SecDef> */
+	if ((sd = strstr(p, "<SecDef")) == NULL ||
+	    (eosd = strstr(sd, "</SecDef>")) == NULL) {
+		return 0;
 	}
-
-	memcpy(secdefs + secdefs_sz, p, sz);
-	secdefs[secdefs_sz + sz] = '\0';
-
-	/* let our cache know */
-	cache[idx - 1].sd = secdefs + secdefs_sz;
-	cache[idx - 1].sdsz = sz;
-
-	/* advance the pointer */
-	secdefs_sz += sz + 1;
+	/* make eosd point to behind </SecDef> */
+	eosd += 9;
+	/* recompute SZ */
+	bang_sd(sd, eosd - sd, idx);
 	return 0;
-}
-
-static void
-bang(unsigned int tgtid, scom_t sp)
-{
-	if (UNLIKELY(!tgtid)) {
-		return;
-	} else if (UNLIKELY(ncache < tgtid)) {
-		/* resize */
-		size_t nx64k = (tgtid * sizeof(*cache) + pgsz) & ~(pgsz - 1);
-
-		if (UNLIKELY(cache == NULL)) {
-			cache = mmap(NULL, nx64k, PROT_MEM, MAP_MEM, -1, 0);
-			atexit(clean_up_cache);
-		} else {
-			size_t olsz = ncache * sizeof(*cache);
-			cache = mremap(cache, olsz, nx64k, MREMAP_MAYMOVE);
-		}
-
-		ncache = nx64k / sizeof(*cache);
-	}
-
-	switch (scom_thdr_ttf(sp)) {
-	case SL1T_TTF_BID:
-		*cache[tgtid - 1].bid = *AS_CONST_SL1T(sp);
-		break;
-	case SL1T_TTF_ASK:
-		*cache[tgtid - 1].ask = *AS_CONST_SL1T(sp);
-		break;
-	default:
-		break;
-	}
-	return;
 }
 
 static void
@@ -867,7 +915,7 @@ snarf_data(job_t j)
 		}
 
 		/* update our state table */
-		bang(CLI(c)->tgtid, sp);
+		bang_q(CLI(c)->tgtid, sp);
 
 		/* leave a last_seen note */
 		CLI(c)->last_seen = tv->tv_sec;
@@ -991,13 +1039,21 @@ websvc_from_request(struct websvc_s *tgt, const char *req, size_t UNUSED(len))
 	return tgt->ty = res;
 }
 
-static size_t
-websvc_secdef(char *restrict tgt, size_t tsz, struct websvc_s sd)
-{
-	ssize_t res = 0;
-	uint16_t idx = sd.secdef.idx;
+static const char fixml_pre[] = "\
+<?xml version=\"1.0\" encoding=\"utf-8\"?>\n\
+<FIXML xmlns=\"http://www.fixprotocol.org/FIXML-5-0-SP2\">\n\
+";
+static const char fixml_post[] = "\
+</FIXML>\n\
+";
+static const char fixml_batch_pre[] = "<Batch>\n";
+static const char fixml_batch_post[] = "</Batch>\n";
 
-	UMQS_DEBUG("printing secdef idx %hu\n", sd.secdef.idx);
+static size_t
+__secdef1(char *restrict tgt, size_t tsz, uint16_t idx)
+{
+	size_t res = 0;
+
 	if (cache[idx - 1].sd && tsz) {
 		res = cache[idx - 1].sdsz;
 
@@ -1011,8 +1067,44 @@ websvc_secdef(char *restrict tgt, size_t tsz, struct websvc_s sd)
 }
 
 static size_t
+websvc_secdef(char *restrict tgt, size_t tsz, struct websvc_s sd)
+{
+	size_t idx = 0;
+	size_t nsy = ute_nsyms(u);
+
+	UMQS_DEBUG("printing secdef idx %hu\n", sd.secdef.idx);
+
+	if (!sd.secdef.idx) {
+		return 0;
+	}
+
+	/* copy pre */
+	memcpy(tgt + idx, fixml_pre, sizeof(fixml_pre));
+	idx += sizeof(fixml_pre) - 1;
+
+	if (sd.secdef.idx < nsy) {
+		idx += __secdef1(tgt + idx, tsz - idx, sd.secdef.idx);
+	} else if (sd.quotreq.idx == MASS_QUOT) {
+		memcpy(tgt + idx, fixml_batch_pre, sizeof(fixml_batch_pre));
+		idx += sizeof(fixml_batch_pre) - 1;
+		/* loop over instruments */
+		for (size_t i = 1; i <= nsy; i++) {
+			idx += __secdef1(tgt + idx, tsz - idx, i);
+		}
+		memcpy(tgt + idx, fixml_batch_post, sizeof(fixml_batch_post));
+		idx += sizeof(fixml_batch_post) - 1;
+	}
+
+	/* copy post */
+	memcpy(tgt + idx, fixml_post, sizeof(fixml_post));
+	idx += sizeof(fixml_post) - 1;
+	return idx;
+}
+
+static size_t
 __quotreq1(char *restrict tgt, size_t tsz, uint16_t idx, struct timeval now)
 {
+	static char eoquot[] = "</Quot>\n";
 	static size_t qid = 0;
 	static char bp[16], ap[16], bq[16], aq[16];
 	static char vtm[32];
@@ -1021,6 +1113,9 @@ __quotreq1(char *restrict tgt, size_t tsz, uint16_t idx, struct timeval now)
 	const char *sym = ute_idx2sym(u, idx);
 	const_sl1t_t b = cache[idx - 1].bid;
 	const_sl1t_t a = cache[idx - 1].ask;
+	const char *instrmt = cache[idx - 1].instrmt;
+	size_t instrmtsz = cache[idx - 1].instrmtsz;
+	int len;
 
 	/* find the more recent quote out of bid and ask */
 	{
@@ -1050,26 +1145,38 @@ __quotreq1(char *restrict tgt, size_t tsz, uint16_t idx, struct timeval now)
 		now_cch = now;
 	}
 
-	return snprintf(
+	len = snprintf(
 		tgt, tsz, "\
   <Quot QID=\"%zu\" \
 BidPx=\"%s\" OfrPx=\"%s\" BidSz=\"%s\" OfrSz=\"%s\" \
-TxnTm=\"%s\" ValidUntilTm=\"%s\">\n\
-    <Instrmt ID=\"%hu\" Sym=\"%s\"/>\n\
-  </Quot>\n",
-		++qid, bp, ap, bq, aq, txn, vtm, idx, sym);
+TxnTm=\"%s\" ValidUntilTm=\"%s\">",
+		++qid, bp, ap, bq, aq, txn, vtm);
+
+	/* see if there's an instrm block */
+	if (instrmt) {
+		if (instrmtsz > tsz - len) {
+			instrmtsz = tsz - len;
+		}
+		memcpy(tgt + len, instrmt, instrmtsz);
+		len += instrmtsz;
+	} else {
+		len += snprintf(
+			tgt + len, tsz - len, "\
+<Instrmt Sym=\"%s\" ID=\"%hu\" Src=\"M\"/>",
+			sym, idx);
+	}
+
+	/* close the Quot tag */
+	if (sizeof(eoquot) < tsz - len) {
+		memcpy(tgt + len, eoquot, sizeof(eoquot));
+		len += sizeof(eoquot) - 1;
+	}
+	return len;
 }
 
 static size_t
 websvc_quotreq(char *restrict tgt, size_t tsz, struct websvc_s sd)
 {
-	static const char pre[] = "\
-<?xml version=\"1.0\" encoding=\"utf-8\"?>\n\
-<FIXML>\n\
-";
-	static const char post[] = "\
-</FIXML>\n\
-";
 	size_t idx = 0;
 	size_t nsy = ute_nsyms(u);
 	struct timeval now[1];
@@ -1084,28 +1191,25 @@ websvc_quotreq(char *restrict tgt, size_t tsz, struct websvc_s sd)
 	gettimeofday(now, NULL);
 
 	/* copy pre */
-	memcpy(tgt + idx, pre, sizeof(pre));
-	idx += sizeof(pre) - 1;
+	memcpy(tgt + idx, fixml_pre, sizeof(fixml_pre));
+	idx += sizeof(fixml_pre) - 1;
 
 	if (sd.quotreq.idx < nsy) {
 		idx += __quotreq1(tgt + idx, tsz - idx, sd.quotreq.idx, *now);
 	} else if (sd.quotreq.idx == MASS_QUOT) {
-		static const char batch_pre[] = "<Batch>\n";
-		static const char batch_post[] = "</Batch>\n";
-
-		memcpy(tgt + idx, batch_pre, sizeof(batch_pre));
-		idx += sizeof(batch_pre) - 1;
+		memcpy(tgt + idx, fixml_batch_pre, sizeof(fixml_batch_pre));
+		idx += sizeof(fixml_batch_pre) - 1;
 		/* loop over instruments */
 		for (size_t i = 1; i <= nsy; i++) {
 			idx += __quotreq1(tgt + idx, tsz - idx, i, *now);
 		}
-		memcpy(tgt + idx, batch_post, sizeof(batch_post));
-		idx += sizeof(batch_post) - 1;
+		memcpy(tgt + idx, fixml_batch_post, sizeof(fixml_batch_post));
+		idx += sizeof(fixml_batch_post) - 1;
 	}
 
 	/* copy post */
-	memcpy(tgt + idx, post, sizeof(post));
-	idx += sizeof(post) - 1;
+	memcpy(tgt + idx, fixml_post, sizeof(fixml_post));
+	idx += sizeof(fixml_post) - 1;
 	return idx;
 }
 

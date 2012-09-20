@@ -643,7 +643,7 @@ static struct {
 	const char *instrmt;
 	size_t instrmtsz;
 } *cache = NULL;
-static size_t ncache = 0;
+static size_t cache_alsz = 0UL;
 
 static char *secdefs = NULL;
 static size_t secdefs_alsz = 0UL;
@@ -665,16 +665,16 @@ clean_up_secdefs(void)
 static void
 clean_up_cache(void)
 {
-	size_t nx64k = (ncache * sizeof(*cache) + pgsz) & ~(pgsz - 1);
-
 	UMQS_DEBUG("cleaning up cache\n");
-	munmap(cache, nx64k);
+	munmap(cache, cache_alsz);
 	return;
 }
 
 static void
 check_cache(unsigned int tgtid)
 {
+	static size_t ncache = 0;
+
 	if (UNLIKELY(tgtid > ncache)) {
 		/* resize */
 		size_t nx64k = (tgtid * sizeof(*cache) + pgsz) & ~(pgsz - 1);
@@ -687,7 +687,7 @@ check_cache(unsigned int tgtid)
 			cache = mremap(cache, olsz, nx64k, MREMAP_MAYMOVE);
 		}
 
-		ncache = nx64k / sizeof(*cache);
+		ncache = (cache_alsz = nx64k) / sizeof(*cache);
 	}
 	return;
 }

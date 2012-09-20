@@ -995,10 +995,17 @@ static size_t
 websvc_secdef(char *restrict tgt, size_t tsz, struct websvc_s sd)
 {
 	ssize_t res = 0;
+	uint16_t idx = sd.secdef.idx;
 
 	UMQS_DEBUG("printing secdef idx %hu\n", sd.secdef.idx);
-	if (tsz > 0) {
-		tgt[0] = '\0';
+	if (cache[idx - 1].sd && tsz) {
+		res = cache[idx - 1].sdsz;
+
+		if (tsz < (size_t)res) {
+			res = tsz - 1;
+		}
+		memcpy(tgt, cache[idx - 1].sd, res);
+		tgt[res] = '\0';
 	}
 	return res;
 }

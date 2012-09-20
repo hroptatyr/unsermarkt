@@ -690,64 +690,8 @@ check_cache(unsigned int tgtid)
 	return;
 }
 
-static ssize_t
-massage_fetch_uri_rpl(const char *buf, size_t bsz, uint16_t idx)
-{
-/* if successful returns 0, -1 if an error occurred and
- * a positive value if the whole contents couldn't fit in BUF. */
-	static char hdr_cont_len[] = "Content-Length:";
-	static char delim[] = "\r\n\r\n";
-	static size_t secdefs_sz = 0UL;
-	const char *p;
-	ssize_t sz;
-
-	if ((p = strcasestr(buf, hdr_cont_len)) == NULL) {
-		return -1;
-	} else if ((sz = strtol(p += sizeof(hdr_cont_len) - 1, NULL, 10)) < 0) {
-		/* too weird */
-		return -1;
-	} else if ((p = strstr(p, delim)) == NULL) {
-		/* can't find the content in this packet */
-		return sz;
-	} else if ((size_t)((p += 4) - buf + sz) > bsz) {
-		/* pity, the packet is too large to fit */
-		return sz;
-	}
-
-	/* SZ is the size, p points to the content
-	 * AND the whole shebang is in this packet,
-	 * time for fireworks innit? */
-	if (secdefs_sz + sz + 1 > secdefs_alsz) {
-		size_t nx64k = (secdefs_sz + sz + 1 + pgsz) & ~(pgsz - 1);
-
-		if (UNLIKELY(secdefs == NULL)) {
-			secdefs = mmap(NULL, nx64k, PROT_MEM, MAP_MEM, -1, 0);
-			atexit(clean_up_secdefs);
-		} else {
-			secdefs = mremap(
-				secdefs, secdefs_alsz, nx64k, MREMAP_MAYMOVE);
-		}
-
-		secdefs_alsz = nx64k;
-	}
-
-	/* also make sure we can bang our stuff into the cache array */
-	check_cache(idx);
-
-	memcpy(secdefs + secdefs_sz, p, sz);
-	secdefs[secdefs_sz + sz] = '\0';
-
-	/* let our cache know */
-	cache[idx - 1].sd = secdefs + secdefs_sz;
-	cache[idx - 1].sdsz = sz;
-
-	/* advance the pointer */
-	secdefs_sz += sz + 1;
-	return 0;
-}
-
 static void
-bang(unsigned int tgtid, scom_t sp)
+bang_q(unsigned int tgtid, scom_t sp)
 {
 	if (UNLIKELY(!tgtid)) {
 		return;
@@ -766,6 +710,80 @@ bang(unsigned int tgtid, scom_t sp)
 		break;
 	}
 	return;
+}
+
+static void
+bang_sd(const char *sd, size_t sdsz, uint16_t idx)
+{
+	static size_t secdefs_sz = 0UL;
+
+	if (secdefs_sz + sdsz + 1 > secdefs_alsz) {
+		size_t nx64k = (secdefs_sz + sdsz + 1 + pgsz) & ~(pgsz - 1);
+
+		if (UNLIKELY(secdefs == NULL)) {
+			secdefs = mmap(NULL, nx64k, PROT_MEM, MAP_MEM, -1, 0);
+			atexit(clean_up_secdefs);
+		} else {
+			secdefs = mremap(
+				secdefs, secdefs_alsz, nx64k, MREMAP_MAYMOVE);
+		}
+
+		secdefs_alsz = nx64k;
+	}
+
+	/* also make sure we can bang our stuff into the cache array */
+	check_cache(idx);
+
+	memcpy(secdefs + secdefs_sz, sd, sdsz);
+	secdefs[secdefs_sz + sdsz] = '\0';
+
+	/* let our cache know */
+	cache[idx - 1].sd = secdefs + secdefs_sz;
+	cache[idx - 1].sdsz = sdsz;
+
+	/* advance the pointer, +1 for \nul */
+	secdefs_sz += sdsz + 1;
+	return;
+}
+
+static ssize_t
+massage_fetch_uri_rpl(const char *buf, size_t bsz, uint16_t idx)
+{
+/* if successful returns 0, -1 if an error occurred and
+ * a positive value if the whole contents couldn't fit in BUF. */
+	static char hdr_cont_len[] = "Content-Length:";
+	static char delim[] = "\r\n\r\n";
+	const char *p;
+	const char *sd;
+	const char *eosd;
+	ssize_t sz;
+
+	if ((p = strcasestr(buf, hdr_cont_len)) == NULL) {
+		return -1;
+	} else if ((sz = strtol(p += sizeof(hdr_cont_len) - 1, NULL, 10)) < 0) {
+		/* too weird */
+		return -1;
+	} else if ((p = strstr(p, delim)) == NULL) {
+		/* can't find the content in this packet */
+		return sz;
+	} else if ((size_t)((p += 4) - buf + sz) > bsz) {
+		/* pity, the packet is too large to fit */
+		return sz;
+	}
+
+	/* SZ is the size, p points to the content
+	 * AND the whole shebang is in this packet,
+	 * time for fireworks innit? */
+	/* check for <SecDef> */
+	if ((sd = strstr(p, "<SecDef")) == NULL ||
+	    (eosd = strstr(sd, "</SecDef>")) == NULL) {
+		return 0;
+	}
+	/* make eosd point to behind </SecDef> */
+	eosd += 9;
+	/* recompute SZ */
+	bang_sd(sd, eosd - sd, idx);
+	return 0;
 }
 
 static void
@@ -879,7 +897,7 @@ snarf_data(job_t j)
 		}
 
 		/* update our state table */
-		bang(CLI(c)->tgtid, sp);
+		bang_q(CLI(c)->tgtid, sp);
 
 		/* leave a last_seen note */
 		CLI(c)->last_seen = tv->tv_sec;

@@ -157,6 +157,7 @@ struct urifq_s {
 struct urifi_s {
 	struct gq_item_s i;
 	char uri[256];
+	uint16_t idx;
 };
 
 /* ev io object queue */
@@ -167,6 +168,10 @@ struct ev_io_q_s {
 struct ev_io_i_s {
 	struct gq_item_s i;
 	ev_io w[1];
+	uint16_t idx;
+	/* reply buffer, pointer and size */
+	char *rpl;
+	size_t rsz;
 };
 
 /* children need access to beef resources */
@@ -633,12 +638,69 @@ static utectx_t u = NULL;
 static struct {
 	struct sl1t_s bid[1];
 	struct sl1t_s ask[1];
+	const char *sd;
+	size_t sdsz;
 } *cache = NULL;
 static size_t ncache = 0;
 
 #if !defined AS_CONST_SL1T
 # define AS_CONST_SL1T(x)	((const_sl1t_t)(x))
 #endif	/* !AS_CONST_SL1T */
+
+static ssize_t
+massage_fetch_uri_rpl(const char *buf, size_t bsz, uint16_t idx)
+{
+/* if successful returns 0, -1 if an error occurred and
+ * a positive value if the whole contents couldn't fit in BUF. */
+	static char hdr_cont_len[] = "Content-Length:";
+	static char delim[] = "\r\n\r\n";
+	static char *secdefs = NULL;
+	static size_t secdefs_sz = 0UL;
+	static size_t secdefs_alsz = 0UL;
+	const char *p;
+	ssize_t sz;
+
+	if ((p = strcasestr(buf, hdr_cont_len)) == NULL) {
+		return -1;
+	} else if ((sz = strtol(p += sizeof(hdr_cont_len) - 1, NULL, 10)) < 0) {
+		/* too weird */
+		return -1;
+	} else if ((p = strstr(p, delim)) == NULL) {
+		/* can't find the content in this packet */
+		return sz;
+	} else if ((size_t)((p += 4) - buf + sz) > bsz) {
+		/* pity, the packet is too large to fit */
+		return sz;
+	}
+
+	/* SZ is the size, p points to the content
+	 * AND the whole shebang is in this packet,
+	 * time for fireworks innit? */
+	if (secdefs_sz + sz + 1 > secdefs_alsz) {
+		static const size_t pgsz = 65536UL;
+		size_t nx64k = (secdefs_sz + sz + 1 + pgsz) & ~(pgsz - 1);
+
+		if (UNLIKELY(secdefs == NULL)) {
+			secdefs = mmap(NULL, nx64k, PROT_MEM, MAP_MEM, -1, 0);
+		} else {
+			secdefs = mremap(
+				secdefs, secdefs_alsz, nx64k, MREMAP_MAYMOVE);
+		}
+
+		secdefs_alsz = nx64k;
+	}
+
+	memcpy(secdefs + secdefs_sz, p, sz);
+	secdefs[secdefs_sz + sz] = '\0';
+
+	/* let our cache know */
+	cache[idx - 1].sd = secdefs + secdefs_sz;
+	cache[idx - 1].sdsz = sz;
+
+	/* advance the pointer */
+	secdefs_sz += sz + 1;
+	return 0;
+}
 
 static void
 bang(unsigned int tgtid, scom_t sp)
@@ -745,6 +807,7 @@ snarf_meta(job_t j)
 
 				UMQS_DEBUG("checking out %s ...\n", uri);
 				memcpy(fi->uri, uri, nuri + 1);
+				fi->idx = id;
 				push_uri(fi);
 			}
 		}
@@ -1120,6 +1183,7 @@ check_urifq(EV_P)
 		/* retrieve the result through our queue */
 		qio = make_io();
 		ev_io_init(qio->w, fetch_data_cb, s, EV_READ);
+		qio->idx = fi->idx;
 		qio->w->data = qio;
 		ev_io_start(EV_A_ qio->w);
 	}
@@ -1209,8 +1273,24 @@ static void
 fetch_data_cb(EV_P_ ev_io *w, int UNUSED(re))
 {
 	static char rpl[4096];
+	ev_io_i_t qio;
+	ssize_t nrd;
 
-	UMQS_DEBUG("fuck me dead, i've got a reply\n");
+	if (UNLIKELY((qio = w->data) == NULL)) {
+		goto clo;
+	} else if ((nrd = read(w->fd, rpl, sizeof(rpl))) < 0) {
+		goto clo;
+	} else if ((size_t)nrd < sizeof(rpl)) {
+		rpl[nrd] = '\0';
+	} else {
+		/* uh oh, mega request, wtf? */
+		rpl[sizeof(rpl) - 1] = '\0';
+	}
+
+	/* quick parsing */
+	massage_fetch_uri_rpl(rpl, nrd, qio->idx);
+
+clo:
 	ev_qio_shut(EV_A_ w);
 	return;
 }

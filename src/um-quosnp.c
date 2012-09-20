@@ -1704,6 +1704,10 @@ main(int argc, char *argv[])
 		socklen_t sa_len = sizeof(sa);
 		int s;
 
+		if (argi->websvc_port_given) {
+			sa.sa6.sin6_port = htons(argi->websvc_port_arg);
+		}
+
 		if ((s = make_dccp()) < 0) {
 			/* just to indicate we have no socket */
 			dccp[0].fd = -1;

@@ -643,9 +643,32 @@ static struct {
 } *cache = NULL;
 static size_t ncache = 0;
 
+static char *secdefs = NULL;
+static size_t secdefs_alsz = 0UL;
+
+static const size_t pgsz = 65536UL;
+
 #if !defined AS_CONST_SL1T
 # define AS_CONST_SL1T(x)	((const_sl1t_t)(x))
 #endif	/* !AS_CONST_SL1T */
+
+static void
+clean_up_secdefs(void)
+{
+	UMQS_DEBUG("cleaning up secdefs\n");
+	munmap(secdefs, secdefs_alsz);
+	return;
+}
+
+static void
+clean_up_cache(void)
+{
+	size_t nx64k = (ncache * sizeof(*cache) + pgsz) & ~(pgsz - 1);
+
+	UMQS_DEBUG("cleaning up cache\n");
+	munmap(cache, nx64k);
+	return;
+}
 
 static ssize_t
 massage_fetch_uri_rpl(const char *buf, size_t bsz, uint16_t idx)
@@ -654,9 +677,7 @@ massage_fetch_uri_rpl(const char *buf, size_t bsz, uint16_t idx)
  * a positive value if the whole contents couldn't fit in BUF. */
 	static char hdr_cont_len[] = "Content-Length:";
 	static char delim[] = "\r\n\r\n";
-	static char *secdefs = NULL;
 	static size_t secdefs_sz = 0UL;
-	static size_t secdefs_alsz = 0UL;
 	const char *p;
 	ssize_t sz;
 
@@ -677,11 +698,11 @@ massage_fetch_uri_rpl(const char *buf, size_t bsz, uint16_t idx)
 	 * AND the whole shebang is in this packet,
 	 * time for fireworks innit? */
 	if (secdefs_sz + sz + 1 > secdefs_alsz) {
-		static const size_t pgsz = 65536UL;
 		size_t nx64k = (secdefs_sz + sz + 1 + pgsz) & ~(pgsz - 1);
 
 		if (UNLIKELY(secdefs == NULL)) {
 			secdefs = mmap(NULL, nx64k, PROT_MEM, MAP_MEM, -1, 0);
+			atexit(clean_up_secdefs);
 		} else {
 			secdefs = mremap(
 				secdefs, secdefs_alsz, nx64k, MREMAP_MAYMOVE);
@@ -705,8 +726,6 @@ massage_fetch_uri_rpl(const char *buf, size_t bsz, uint16_t idx)
 static void
 bang(unsigned int tgtid, scom_t sp)
 {
-	static const size_t pgsz = 65536UL;
-
 	if (UNLIKELY(!tgtid)) {
 		return;
 	} else if (UNLIKELY(ncache < tgtid)) {
@@ -715,6 +734,7 @@ bang(unsigned int tgtid, scom_t sp)
 
 		if (UNLIKELY(cache == NULL)) {
 			cache = mmap(NULL, nx64k, PROT_MEM, MAP_MEM, -1, 0);
+			atexit(clean_up_cache);
 		} else {
 			size_t olsz = ncache * sizeof(*cache);
 			cache = mremap(cache, olsz, nx64k, MREMAP_MAYMOVE);

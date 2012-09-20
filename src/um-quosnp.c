@@ -670,6 +670,26 @@ clean_up_cache(void)
 	return;
 }
 
+static void
+check_cache(unsigned int tgtid)
+{
+	if (UNLIKELY(tgtid > ncache)) {
+		/* resize */
+		size_t nx64k = (tgtid * sizeof(*cache) + pgsz) & ~(pgsz - 1);
+
+		if (UNLIKELY(cache == NULL)) {
+			cache = mmap(NULL, nx64k, PROT_MEM, MAP_MEM, -1, 0);
+			atexit(clean_up_cache);
+		} else {
+			size_t olsz = ncache * sizeof(*cache);
+			cache = mremap(cache, olsz, nx64k, MREMAP_MAYMOVE);
+		}
+
+		ncache = nx64k / sizeof(*cache);
+	}
+	return;
+}
+
 static ssize_t
 massage_fetch_uri_rpl(const char *buf, size_t bsz, uint16_t idx)
 {
@@ -711,6 +731,9 @@ massage_fetch_uri_rpl(const char *buf, size_t bsz, uint16_t idx)
 		secdefs_alsz = nx64k;
 	}
 
+	/* also make sure we can bang our stuff into the cache array */
+	check_cache(idx);
+
 	memcpy(secdefs + secdefs_sz, p, sz);
 	secdefs[secdefs_sz + sz] = '\0';
 
@@ -728,20 +751,9 @@ bang(unsigned int tgtid, scom_t sp)
 {
 	if (UNLIKELY(!tgtid)) {
 		return;
-	} else if (UNLIKELY(ncache < tgtid)) {
-		/* resize */
-		size_t nx64k = (tgtid * sizeof(*cache) + pgsz) & ~(pgsz - 1);
-
-		if (UNLIKELY(cache == NULL)) {
-			cache = mmap(NULL, nx64k, PROT_MEM, MAP_MEM, -1, 0);
-			atexit(clean_up_cache);
-		} else {
-			size_t olsz = ncache * sizeof(*cache);
-			cache = mremap(cache, olsz, nx64k, MREMAP_MAYMOVE);
-		}
-
-		ncache = nx64k / sizeof(*cache);
 	}
+	/* make sure there's enough room */
+	check_cache(tgtid);
 
 	switch (scom_thdr_ttf(sp)) {
 	case SL1T_TTF_BID:

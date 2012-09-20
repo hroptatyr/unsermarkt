@@ -717,11 +717,14 @@ bang_q(unsigned int tgtid, scom_t sp)
 static void
 bang_sd(const char *sd, size_t sdsz, uint16_t idx)
 {
+	static char aid[] = "<AID AltId=\"\"       AltIdSrc=\"100\"/>";
 	static size_t secdefs_sz = 0UL;
+	size_t post_sz = secdefs_sz + sdsz;
 	const char *ins;
+	size_t insz;
 
-	if (secdefs_sz + sdsz + 1 > secdefs_alsz) {
-		size_t nx64k = (secdefs_sz + sdsz + 1 + pgsz) & ~(pgsz - 1);
+	if (post_sz + sizeof(aid) > secdefs_alsz) {
+		size_t nx64k = (post_sz + sizeof(aid) + pgsz) & ~(pgsz - 1);
 
 		if (UNLIKELY(secdefs == NULL)) {
 			secdefs = mmap(NULL, nx64k, PROT_MEM, MAP_MEM, -1, 0);
@@ -739,28 +742,60 @@ bang_sd(const char *sd, size_t sdsz, uint16_t idx)
 
 	memcpy(secdefs + secdefs_sz, sd, sdsz);
 	secdefs[secdefs_sz + sdsz] = '\0';
+	/* reassign sd */
+	sd = secdefs + secdefs_sz;
+
+	/* also try and snarf the Instrmt bit */
+	if ((ins = strstr(sd, "<Instrmt"))) {
+		static char fixml_instrmt_post[] = "</Instrmt>";
+		size_t aidz = sizeof(aid) - 1;
+		char *eoins;
+		int post = 0;
+
+		if ((eoins = strstr(ins, fixml_instrmt_post))) {
+			;
+		} else if ((eoins = strstr(ins, "/>"))) {
+			*eoins = '>';
+			eoins += 1;
+			aidz += sizeof(fixml_instrmt_post) - 1;
+			post = 1;
+		} else {
+			/* fubar'd */
+			return;
+		}
+
+		memmove(eoins + aidz, eoins, sd + sdsz - eoins + 1/*for \nul*/);
+
+		/* glue in our AID */
+		memcpy(eoins, aid, aidz);
+		{
+			int len = snprintf(eoins + 12, 5, "%hu", idx);
+			eoins[12 + len] = '"';
+		}
+
+		/* update the total secdef size */
+		sdsz += aidz;
+
+		if (post) {
+			/* expand our Instrmt element */
+			size_t postz = sizeof(fixml_instrmt_post) - 1;
+
+			aidz -= postz;
+			memcpy(eoins + aidz, fixml_instrmt_post, postz);
+		}
+
+		aidz += sizeof(fixml_instrmt_post) - 1;
+		insz = eoins + aidz - ins;
+	}
 
 	/* let our cache know */
-	cache[idx - 1].sd = secdefs + secdefs_sz;
+	cache[idx - 1].sd = sd;
 	cache[idx - 1].sdsz = sdsz;
+	cache[idx - 1].instrmt = ins;
+	cache[idx - 1].instrmtsz = insz;
 
 	/* advance the pointer, +1 for \nul */
 	secdefs_sz += sdsz + 1;
-
-	/* also try and snarf the Instrmt bit */
-	if ((ins = strstr(cache[idx - 1].sd, "<Instrmt"))) {
-		const char *eoins;
-
-		if ((eoins = strstr(ins, "</Instrmt>"))) {
-			eoins += 10;
-		} else if ((eoins = strstr(ins, "/>"))) {
-			eoins += 2;
-		} else {
-			eoins = ins;
-		}
-		cache[idx - 1].instrmt = ins;
-		cache[idx - 1].instrmtsz = eoins - ins;
-	}
 	return;
 }
 
@@ -1162,7 +1197,7 @@ TxnTm=\"%s\" ValidUntilTm=\"%s\">",
 	} else {
 		len += snprintf(
 			tgt + len, tsz - len, "\
-<Instrmt Sym=\"%s\" ID=\"%hu\" Src=\"M\"/>",
+<Instrmt Sym=\"%s\" ID=\"%hu\" Src=\"100\"/>",
 			sym, idx);
 	}
 

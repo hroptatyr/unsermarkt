@@ -124,7 +124,7 @@ struct cli_s {
 	uint16_t id;
 	uint16_t tgtid;
 
-	uint32_t last_seen;
+	volatile uint32_t last_seen;
 
 	char sym[64];
 };
@@ -383,6 +383,13 @@ snarf_meta(job_t j)
 
 		/* leave a last_seen note */
 		CLI(c)->last_seen = tv->tv_sec;
+
+		/* next up is brag uri, possibly */
+		tag = udpc_seria_tag(ser);
+		if (LIKELY(tag == UDPC_TYPE_STR)) {
+			char uri[256];
+			udpc_seria_des_str_into(uri, sizeof(uri), ser);
+		}
 	}
 	return;
 }

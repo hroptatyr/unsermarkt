@@ -16,3 +16,6 @@ option "beef" -
 	"Multicast payload channels, can be used multiple times"
 	int optional multiple
 
+option "websvc-port" -
+	"Port for dccp and web services, default is to use a random port"
+	int optional

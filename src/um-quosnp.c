@@ -74,6 +74,7 @@
 # undef EV_P
 # define EV_P  struct ev_loop *loop __attribute__((unused))
 #endif	/* HAVE_EV_H */
+#include <netdb.h>
 #include <sys/mman.h>
 #include <sys/socket.h>
 #include <sys/utsname.h>
@@ -81,6 +82,7 @@
 #include <unserding/unserding.h>
 #include <unserding/protocore.h>
 
+#define DEFINE_GORY_STUFF
 #if defined HAVE_UTERUS_UTERUS_H
 # include <uterus/uterus.h>
 # include <uterus/m30.h>
@@ -93,6 +95,7 @@
 
 #include "nifty.h"
 #include "ud-sock.h"
+#include "gq.h"
 
 #if defined __INTEL_COMPILER
 # pragma warning (disable:981)
@@ -123,6 +126,12 @@ static FILE *logerr;
 typedef size_t cli_t;
 typedef intptr_t hx_t;
 
+typedef struct urifq_s *urifq_t;
+typedef struct urifi_s *urifi_t;
+
+typedef struct ev_io_q_s *ev_io_q_t;
+typedef struct ev_io_i_s *ev_io_i_t;
+
 struct key_s {
 	ud_sockaddr_t sa;
 	uint16_t id;
@@ -134,14 +143,215 @@ struct cli_s {
 	uint16_t id;
 	uint16_t tgtid;
 
-	uint32_t last_seen;
+	volatile uint32_t last_seen;
 
 	char sym[64];
+};
+
+/* uri fetch queue */
+struct urifq_s {
+	struct gq_s q[1];
+	struct gq_ll_s fetchq[1];
+};
+
+struct urifi_s {
+	struct gq_item_s i;
+	char uri[256];
+	uint16_t idx;
+};
+
+/* ev io object queue */
+struct ev_io_q_s {
+	struct gq_s q[1];
+};
+
+struct ev_io_i_s {
+	struct gq_item_s i;
+	ev_io w[1];
+	uint16_t idx;
+	/* reply buffer, pointer and size */
+	char *rpl;
+	size_t rsz;
 };
 
 /* children need access to beef resources */
 static ev_io *beef = NULL;
 static size_t nbeef = 0;
+
+
+/* date and time funs, could use libdut from dateutils */
+static int
+__leapp(unsigned int y)
+{
+	return !(y % 4);
+}
+
+static void
+ffff_gmtime(struct tm *tm, const time_t t)
+{
+#define UTC_SECS_PER_DAY	(86400)
+	static uint16_t __mon_yday[] = {
+		/* cumulative, first element is a bit set of leap days to add */
+		0xfff8, 0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334
+	};
+	register int days;
+	register int secs;
+	register unsigned int yy;
+	const uint16_t *ip;
+
+
+	/* just go to day computation */
+	days = (int)(t / UTC_SECS_PER_DAY);
+	/* time stuff */
+	secs = (int)(t % UTC_SECS_PER_DAY);
+
+	/* gotta do the date now */
+	yy = 1970;
+	/* stolen from libc */
+#define DIV(a, b)		((a) / (b))
+/* we only care about 1901 to 2099 and there are no bullshit leap years */
+#define LEAPS_TILL(y)		(DIV(y, 4))
+	while (days < 0 || days >= (!__leapp(yy) ? 365 : 366)) {
+		/* Guess a corrected year, assuming 365 days per year. */
+		register unsigned int yg = yy + days / 365 - (days % 365 < 0);
+
+		/* Adjust DAYS and Y to match the guessed year.  */
+		days -= (yg - yy) * 365 +
+			LEAPS_TILL(yg - 1) - LEAPS_TILL(yy - 1);
+		yy = yg;
+	}
+	/* set the year */
+	tm->tm_year = (int)yy - 1900;
+
+	ip = __mon_yday;
+	/* unrolled */
+	yy = 13;
+	if (days < ip[--yy] &&
+	    days < ip[--yy] &&
+	    days < ip[--yy] &&
+	    days < ip[--yy] &&
+	    days < ip[--yy] &&
+	    days < ip[--yy] &&
+	    days < ip[--yy] &&
+	    days < ip[--yy] &&
+	    days < ip[--yy] &&
+	    days < ip[--yy] &&
+	    days < ip[--yy]) {
+		yy = 1;
+	}
+	/* set the rest of the tm structure */
+	tm->tm_mday = days - ip[yy] + 1;
+	tm->tm_yday = days;
+	tm->tm_mon = (int)yy - 1;
+
+	tm->tm_sec = secs % 60;
+	secs /= 60;
+	tm->tm_min = secs % 60;
+	secs /= 60;
+	tm->tm_hour = secs;
+
+	/* fix up leap years */
+	if (UNLIKELY(__leapp(tm->tm_year))) {
+		if ((ip[0] >> (yy)) & 1) {
+			if (UNLIKELY(tm->tm_yday == 59)) {
+				tm->tm_mon = 1;
+				tm->tm_mday = 29;
+			} else if (UNLIKELY(tm->tm_yday == ip[yy])) {
+				tm->tm_mday = tm->tm_yday - ip[tm->tm_mon--];
+			} else {
+				tm->tm_mday--;
+			}
+		}
+	}
+	return;
+}
+
+static void
+ffff_strfdtu(char *restrict buf, size_t bsz, time_t sec, unsigned int usec)
+{
+	struct tm tm[1];
+
+	ffff_gmtime(tm, sec);
+	/* libdut? */
+	strftime(buf, bsz, "%FT%T", tm);
+	buf[19] = '.';
+	snprintf(buf + 20, bsz - 20, "%06u+0000", usec);
+	return;
+}
+
+
+/* uri fetch queue */
+static struct urifq_s urifq = {0};
+
+static urifi_t
+make_uri(void)
+{
+	urifi_t res;
+
+	if (urifq.q->free->i1st == NULL) {
+		size_t nitems = urifq.q->nitems / sizeof(*res);
+		ptrdiff_t df;
+
+		assert(urifq.q->free->ilst == NULL);
+		UMQS_DEBUG("URIFQ RESIZE -> %zu\n", nitems + 16);
+		df = init_gq(urifq.q, sizeof(*res), nitems + 16);
+		gq_rbld_ll(urifq.fetchq, df);
+	}
+	/* get us a new client and populate the object */
+	res = (void*)gq_pop_head(urifq.q->free);
+	memset(res, 0, sizeof(*res));
+	return res;
+}
+
+static void
+free_uri(urifi_t uri)
+{
+	gq_push_tail(urifq.q->free, (gq_item_t)uri);
+	return;
+}
+
+static void
+push_uri(urifi_t uri)
+{
+	gq_push_tail(urifq.fetchq, (gq_item_t)uri);
+	return;
+}
+
+static urifi_t
+pop_uri(void)
+{
+	void *res = gq_pop_head(urifq.fetchq);
+	return res;
+}
+
+
+/* ev io object queue */
+static struct ev_io_q_s ioq = {0};
+
+static ev_io_i_t
+make_io(void)
+{
+	ev_io_i_t res;
+
+	if (ioq.q->free->i1st == NULL) {
+		size_t nitems = ioq.q->nitems / sizeof(*res);
+
+		assert(ioq.q->free->ilst == NULL);
+		UMQS_DEBUG("IOQ RESIZE -> %zu\n", nitems + 16);
+		init_gq(ioq.q, sizeof(*res), nitems + 16);
+	}
+	/* get us a new client and populate the object */
+	res = (void*)gq_pop_head(ioq.q->free);
+	memset(res, 0, sizeof(*res));
+	return res;
+}
+
+static void
+free_io(ev_io_i_t io)
+{
+	gq_push_tail(ioq.q->free, (gq_item_t)io);
+	return;
+}
 
 
 #if !defined HAVE_UTE_FREE
@@ -300,7 +510,7 @@ prune_clis(void)
 	/* prune clis */
 	for (cli_t i = 1; i <= ncli; i++) {
 		if (CLI(i)->last_seen + MAX_CLI_AGE < tv->tv_sec) {
-			UMQS_DEBUG("pruning %zu  %u  %ld\n", i, CLI(i)->last_seen, tv->tv_sec);
+			UMQS_DEBUG("pruning %zu\n", i);
 			prune_cli(i);
 		}
 	}
@@ -384,38 +594,112 @@ sock_listener(int s, ud_sockaddr_t sa)
 	return listen(s, MAX_DCCP_CONNECTION_BACK_LOG);
 }
 
+static int
+rslv(struct addrinfo **res, const char *host, short unsigned int port)
+{
+	char strport[32];
+	struct addrinfo hints;
+
+	memset(&hints, 0, sizeof(struct addrinfo));
+	hints.ai_family = AF_UNSPEC;
+	hints.ai_socktype = SOCK_STREAM;
+	hints.ai_flags = 0;
+	hints.ai_protocol = 0;
+
+	/* Convert the port number into a string. */
+	snprintf(strport, sizeof(strport), "%hu", port);
+
+	return getaddrinfo(host, strport, &hints, res);
+}
+
+static int
+conn(struct addrinfo *ais)
+{
+	int s = -1;
+
+	for (struct addrinfo *aip = ais; aip; aip = aip->ai_next) {
+		if ((s = socket(aip->ai_family, aip->ai_socktype, 0)) < 0) {
+			/* great way to start the day */
+			;
+		} else if (connect(s, aip->ai_addr, aip->ai_addrlen) < 0) {
+			/* bugger */
+			close(s);
+		} else {
+			/* yippie */
+			break;
+		}
+	}
+	freeaddrinfo(ais);
+	return s;
+}
+
 
 static utectx_t u = NULL;
 static struct {
 	struct sl1t_s bid[1];
 	struct sl1t_s ask[1];
+	const char *sd;
+	size_t sdsz;
+	const char *instrmt;
+	size_t instrmtsz;
 } *cache = NULL;
-static size_t ncache = 0;
+static size_t cache_alsz = 0UL;
+
+static char *secdefs = NULL;
+static size_t secdefs_alsz = 0UL;
+
+static const size_t pgsz = 65536UL;
 
 #if !defined AS_CONST_SL1T
 # define AS_CONST_SL1T(x)	((const_sl1t_t)(x))
 #endif	/* !AS_CONST_SL1T */
 
 static void
-bang(unsigned int tgtid, scom_t sp)
+clean_up_secdefs(void)
 {
-	static const size_t pgsz = 65536UL;
+	UMQS_DEBUG("cleaning up secdefs\n");
+	munmap(secdefs, secdefs_alsz);
+	return;
+}
 
-	if (UNLIKELY(!tgtid)) {
-		return;
-	} else if (UNLIKELY(ncache < tgtid)) {
+static void
+clean_up_cache(void)
+{
+	UMQS_DEBUG("cleaning up cache\n");
+	munmap(cache, cache_alsz);
+	return;
+}
+
+static void
+check_cache(unsigned int tgtid)
+{
+	static size_t ncache = 0;
+
+	if (UNLIKELY(tgtid > ncache)) {
 		/* resize */
 		size_t nx64k = (tgtid * sizeof(*cache) + pgsz) & ~(pgsz - 1);
 
 		if (UNLIKELY(cache == NULL)) {
 			cache = mmap(NULL, nx64k, PROT_MEM, MAP_MEM, -1, 0);
+			atexit(clean_up_cache);
 		} else {
 			size_t olsz = ncache * sizeof(*cache);
 			cache = mremap(cache, olsz, nx64k, MREMAP_MAYMOVE);
 		}
 
-		ncache = nx64k / sizeof(*cache);
+		ncache = (cache_alsz = nx64k) / sizeof(*cache);
 	}
+	return;
+}
+
+static void
+bang_q(unsigned int tgtid, scom_t sp)
+{
+	if (UNLIKELY(!tgtid)) {
+		return;
+	}
+	/* make sure there's enough room */
+	check_cache(tgtid);
 
 	switch (scom_thdr_ttf(sp)) {
 	case SL1T_TTF_BID:
@@ -428,6 +712,131 @@ bang(unsigned int tgtid, scom_t sp)
 		break;
 	}
 	return;
+}
+
+static void
+bang_sd(const char *sd, size_t sdsz, uint16_t idx)
+{
+	static char aid[] = "<AID AltId=\"\"       AltIdSrc=\"100\"/>";
+	static size_t secdefs_sz = 0UL;
+	size_t post_sz = secdefs_sz + sdsz;
+	const char *ins;
+	size_t insz;
+
+	if (post_sz + sizeof(aid) > secdefs_alsz) {
+		size_t nx64k = (post_sz + sizeof(aid) + pgsz) & ~(pgsz - 1);
+
+		if (UNLIKELY(secdefs == NULL)) {
+			secdefs = mmap(NULL, nx64k, PROT_MEM, MAP_MEM, -1, 0);
+			atexit(clean_up_secdefs);
+		} else {
+			secdefs = mremap(
+				secdefs, secdefs_alsz, nx64k, MREMAP_MAYMOVE);
+		}
+
+		secdefs_alsz = nx64k;
+	}
+
+	/* also make sure we can bang our stuff into the cache array */
+	check_cache(idx);
+
+	memcpy(secdefs + secdefs_sz, sd, sdsz);
+	secdefs[secdefs_sz + sdsz] = '\0';
+	/* reassign sd */
+	sd = secdefs + secdefs_sz;
+
+	/* also try and snarf the Instrmt bit */
+	if ((ins = strstr(sd, "<Instrmt"))) {
+		static char fixml_instrmt_post[] = "</Instrmt>";
+		size_t aidz = sizeof(aid) - 1;
+		char *eoins;
+		int post = 0;
+
+		if ((eoins = strstr(ins, fixml_instrmt_post))) {
+			;
+		} else if ((eoins = strstr(ins, "/>"))) {
+			*eoins = '>';
+			eoins += 1;
+			aidz += sizeof(fixml_instrmt_post) - 1;
+			post = 1;
+		} else {
+			/* fubar'd */
+			return;
+		}
+
+		memmove(eoins + aidz, eoins, sd + sdsz - eoins + 1/*for \nul*/);
+
+		/* glue in our AID */
+		memcpy(eoins, aid, aidz);
+		{
+			int len = snprintf(eoins + 12, 5, "%hu", idx);
+			eoins[12 + len] = '"';
+		}
+
+		/* update the total secdef size */
+		sdsz += aidz;
+
+		if (post) {
+			/* expand our Instrmt element */
+			size_t postz = sizeof(fixml_instrmt_post) - 1;
+
+			aidz -= postz;
+			memcpy(eoins + aidz, fixml_instrmt_post, postz);
+		}
+
+		aidz += sizeof(fixml_instrmt_post) - 1;
+		insz = eoins + aidz - ins;
+	}
+
+	/* let our cache know */
+	cache[idx - 1].sd = sd;
+	cache[idx - 1].sdsz = sdsz;
+	cache[idx - 1].instrmt = ins;
+	cache[idx - 1].instrmtsz = insz;
+
+	/* advance the pointer, +1 for \nul */
+	secdefs_sz += sdsz + 1;
+	return;
+}
+
+static ssize_t
+massage_fetch_uri_rpl(const char *buf, size_t bsz, uint16_t idx)
+{
+/* if successful returns 0, -1 if an error occurred and
+ * a positive value if the whole contents couldn't fit in BUF. */
+	static char hdr_cont_len[] = "Content-Length:";
+	static char delim[] = "\r\n\r\n";
+	const char *p;
+	const char *sd;
+	const char *eosd;
+	ssize_t sz;
+
+	if ((p = strcasestr(buf, hdr_cont_len)) == NULL) {
+		return -1;
+	} else if ((sz = strtol(p += sizeof(hdr_cont_len) - 1, NULL, 10)) < 0) {
+		/* too weird */
+		return -1;
+	} else if ((p = strstr(p, delim)) == NULL) {
+		/* can't find the content in this packet */
+		return sz;
+	} else if ((size_t)((p += 4) - buf + sz) > bsz) {
+		/* pity, the packet is too large to fit */
+		return sz;
+	}
+
+	/* SZ is the size, p points to the content
+	 * AND the whole shebang is in this packet,
+	 * time for fireworks innit? */
+	/* check for <SecDef> */
+	if ((sd = strstr(p, "<SecDef")) == NULL ||
+	    (eosd = strstr(sd, "</SecDef>")) == NULL) {
+		return 0;
+	}
+	/* make eosd point to behind </SecDef> */
+	eosd += 9;
+	/* recompute SZ */
+	bang_sd(sd, eosd - sd, idx);
+	return 0;
 }
 
 static void
@@ -449,6 +858,7 @@ snarf_meta(job_t j)
 	while (ser->msgoff < plen && (tag = udpc_seria_tag(ser))) {
 		cli_t c;
 		uint16_t id;
+		int peruse_uri = 0;
 
 		if (UNLIKELY(tag != UDPC_TYPE_UI16)) {
 			break;
@@ -475,15 +885,35 @@ snarf_meta(job_t j)
 			/* known but the wrong id */
 			UMQS_DEBUG("reass %hu -> %hu\n", CLI(c)->tgtid, id);
 			CLI(c)->tgtid = id;
+			peruse_uri = 1;
 		} else /*if (CLI(c)->tgtid == 0)*/ {
 			/* unknown */
 			UMQS_DEBUG("ass'ing %s -> %hu\n", CLI(c)->sym, id);
 			CLI(c)->tgtid = id;
 			ute_bang_symidx(u, CLI(c)->sym, CLI(c)->tgtid);
+			peruse_uri = 1;
 		}
 
 		/* leave a last_seen note */
 		CLI(c)->last_seen = tv->tv_sec;
+
+		/* next up is brag uri, possibly */
+		tag = udpc_seria_tag(ser);
+		if (LIKELY(tag == UDPC_TYPE_STR)) {
+			char uri[256];
+			size_t nuri;
+
+			nuri = udpc_seria_des_str_into(uri, sizeof(uri), ser);
+
+			if (peruse_uri) {
+				urifi_t fi = make_uri();
+
+				UMQS_DEBUG("checking out %s ...\n", uri);
+				memcpy(fi->uri, uri, nuri + 1);
+				fi->idx = id;
+				push_uri(fi);
+			}
+		}
 	}
 	return;
 }
@@ -520,7 +950,7 @@ snarf_data(job_t j)
 		}
 
 		/* update our state table */
-		bang(CLI(c)->tgtid, sp);
+		bang_q(CLI(c)->tgtid, sp);
 
 		/* leave a last_seen note */
 		CLI(c)->last_seen = tv->tv_sec;
@@ -644,49 +1074,147 @@ websvc_from_request(struct websvc_s *tgt, const char *req, size_t UNUSED(len))
 	return tgt->ty = res;
 }
 
-static size_t
-websvc_secdef(char *restrict tgt, size_t tsz, struct websvc_s sd)
-{
-	ssize_t res = 0;
+static const char fixml_pre[] = "\
+<?xml version=\"1.0\" encoding=\"utf-8\"?>\n\
+<FIXML xmlns=\"http://www.fixprotocol.org/FIXML-5-0-SP2\">\n\
+";
+static const char fixml_post[] = "\
+</FIXML>\n\
+";
+static const char fixml_batch_pre[] = "<Batch>\n";
+static const char fixml_batch_post[] = "</Batch>\n";
 
-	UMQS_DEBUG("printing secdef idx %hu\n", sd.secdef.idx);
-	if (tsz > 0) {
-		tgt[0] = '\0';
+static size_t
+__secdef1(char *restrict tgt, size_t tsz, uint16_t idx)
+{
+	size_t res = 0;
+
+	if (cache[idx - 1].sd && tsz) {
+		res = cache[idx - 1].sdsz;
+
+		if (tsz < (size_t)res) {
+			res = tsz - 1;
+		}
+		memcpy(tgt, cache[idx - 1].sd, res);
+		tgt[res] = '\0';
 	}
 	return res;
 }
 
 static size_t
-__quotreq1(char *restrict tgt, size_t tsz, uint16_t idx)
+websvc_secdef(char *restrict tgt, size_t tsz, struct websvc_s sd)
 {
-	static size_t qid = 0;
-	const char *sym = ute_idx2sym(u, idx);
-	double b = ffff_m30_d((m30_t)AS_CONST_SL1T(cache[idx - 1].bid)->pri);
-	double bsz = ffff_m30_d((m30_t)AS_CONST_SL1T(cache[idx - 1].bid)->qty);
-	double a = ffff_m30_d((m30_t)AS_CONST_SL1T(cache[idx - 1].ask)->pri);
-	double asz = ffff_m30_d((m30_t)AS_CONST_SL1T(cache[idx - 1].ask)->qty);
+	size_t idx = 0;
+	size_t nsy = ute_nsyms(u);
 
-	return snprintf(
+	UMQS_DEBUG("printing secdef idx %hu\n", sd.secdef.idx);
+
+	if (!sd.secdef.idx) {
+		return 0;
+	}
+
+	/* copy pre */
+	memcpy(tgt + idx, fixml_pre, sizeof(fixml_pre));
+	idx += sizeof(fixml_pre) - 1;
+
+	if (sd.secdef.idx < nsy) {
+		idx += __secdef1(tgt + idx, tsz - idx, sd.secdef.idx);
+	} else if (sd.quotreq.idx == MASS_QUOT) {
+		memcpy(tgt + idx, fixml_batch_pre, sizeof(fixml_batch_pre));
+		idx += sizeof(fixml_batch_pre) - 1;
+		/* loop over instruments */
+		for (size_t i = 1; i <= nsy; i++) {
+			idx += __secdef1(tgt + idx, tsz - idx, i);
+		}
+		memcpy(tgt + idx, fixml_batch_post, sizeof(fixml_batch_post));
+		idx += sizeof(fixml_batch_post) - 1;
+	}
+
+	/* copy post */
+	memcpy(tgt + idx, fixml_post, sizeof(fixml_post));
+	idx += sizeof(fixml_post) - 1;
+	return idx;
+}
+
+static size_t
+__quotreq1(char *restrict tgt, size_t tsz, uint16_t idx, struct timeval now)
+{
+	static char eoquot[] = "</Quot>\n";
+	static size_t qid = 0;
+	static char bp[16], ap[16], bq[16], aq[16];
+	static char vtm[32];
+	static char txn[32];
+	static struct timeval now_cch;
+	const char *sym = ute_idx2sym(u, idx);
+	const_sl1t_t b = cache[idx - 1].bid;
+	const_sl1t_t a = cache[idx - 1].ask;
+	const char *instrmt = cache[idx - 1].instrmt;
+	size_t instrmtsz = cache[idx - 1].instrmtsz;
+	int len;
+
+	/* find the more recent quote out of bid and ask */
+	{
+		time_t bs = sl1t_stmp_sec(b);
+		unsigned int bms = sl1t_stmp_msec(b);
+		time_t as = sl1t_stmp_sec(a);
+		unsigned int ams = sl1t_stmp_msec(a);
+
+		if (bs <= as) {
+			bs = as;
+			bms = ams;
+		}
+		if (UNLIKELY(bs == 0)) {
+			return 0;
+		}
+
+		ffff_strfdtu(txn, sizeof(txn), bs, bms * 1000);
+	}
+
+	ffff_m30_s(bp, (m30_t)b->pri);
+	ffff_m30_s(bq, (m30_t)b->qty);
+	ffff_m30_s(ap, (m30_t)a->pri);
+	ffff_m30_s(aq, (m30_t)a->qty);
+
+	if (now_cch.tv_sec != now.tv_sec) {
+		ffff_strfdtu(vtm, sizeof(vtm), now.tv_sec, now.tv_usec);
+		now_cch = now;
+	}
+
+	len = snprintf(
 		tgt, tsz, "\
   <Quot QID=\"%zu\" \
-BidPx=\"%.6f\" OfrPx=\"%.6f\" BidSz=\"%.4f\" OfrSz=\"%.4f\">\n\
-    <Instrmt ID=\"%hu\" Sym=\"%s\"/>\n\
-  </Quot>\n",
-		++qid, b, a, bsz, asz, idx, sym);
+BidPx=\"%s\" OfrPx=\"%s\" BidSz=\"%s\" OfrSz=\"%s\" \
+TxnTm=\"%s\" ValidUntilTm=\"%s\">",
+		++qid, bp, ap, bq, aq, txn, vtm);
+
+	/* see if there's an instrm block */
+	if (instrmt) {
+		if (instrmtsz > tsz - len) {
+			instrmtsz = tsz - len;
+		}
+		memcpy(tgt + len, instrmt, instrmtsz);
+		len += instrmtsz;
+	} else {
+		len += snprintf(
+			tgt + len, tsz - len, "\
+<Instrmt Sym=\"%s\" ID=\"%hu\" Src=\"100\"/>",
+			sym, idx);
+	}
+
+	/* close the Quot tag */
+	if (sizeof(eoquot) < tsz - len) {
+		memcpy(tgt + len, eoquot, sizeof(eoquot));
+		len += sizeof(eoquot) - 1;
+	}
+	return len;
 }
 
 static size_t
 websvc_quotreq(char *restrict tgt, size_t tsz, struct websvc_s sd)
 {
-	static const char pre[] = "\
-<?xml version=\"1.0\" encoding=\"utf-8\"?>\n\
-<FIXML>\n\
-";
-	static const char post[] = "\
-</FIXML>\n\
-";
 	size_t idx = 0;
 	size_t nsy = ute_nsyms(u);
+	struct timeval now[1];
 
 	UMQS_DEBUG("printing quotreq idx %hu\n", sd.quotreq.idx);
 
@@ -694,29 +1222,29 @@ websvc_quotreq(char *restrict tgt, size_t tsz, struct websvc_s sd)
 		return 0;
 	}
 
+	/* get current time */
+	gettimeofday(now, NULL);
+
 	/* copy pre */
-	memcpy(tgt + idx, pre, sizeof(pre));
-	idx += sizeof(pre) - 1;
+	memcpy(tgt + idx, fixml_pre, sizeof(fixml_pre));
+	idx += sizeof(fixml_pre) - 1;
 
 	if (sd.quotreq.idx < nsy) {
-		idx += __quotreq1(tgt + idx, tsz - idx, sd.quotreq.idx);
+		idx += __quotreq1(tgt + idx, tsz - idx, sd.quotreq.idx, *now);
 	} else if (sd.quotreq.idx == MASS_QUOT) {
-		static const char batch_pre[] = "<Batch>\n";
-		static const char batch_post[] = "</Batch>\n";
-
-		memcpy(tgt + idx, batch_pre, sizeof(batch_pre));
-		idx += sizeof(batch_pre) - 1;
+		memcpy(tgt + idx, fixml_batch_pre, sizeof(fixml_batch_pre));
+		idx += sizeof(fixml_batch_pre) - 1;
 		/* loop over instruments */
 		for (size_t i = 1; i <= nsy; i++) {
-			idx += __quotreq1(tgt + idx, tsz - idx, i);
+			idx += __quotreq1(tgt + idx, tsz - idx, i, *now);
 		}
-		memcpy(tgt + idx, batch_post, sizeof(batch_post));
-		idx += sizeof(batch_post) - 1;
+		memcpy(tgt + idx, fixml_batch_post, sizeof(fixml_batch_post));
+		idx += sizeof(fixml_batch_post) - 1;
 	}
 
 	/* copy post */
-	memcpy(tgt + idx, post, sizeof(post));
-	idx += sizeof(post) - 1;
+	memcpy(tgt + idx, fixml_post, sizeof(fixml_post));
+	idx += sizeof(fixml_post) - 1;
 	return idx;
 }
 
@@ -751,6 +1279,81 @@ websvc_unk(char *restrict tgt, size_t tsz, struct websvc_s UNUSED(sd))
 	}
 	memcpy(tgt, rsp, sizeof(rsp));
 	return sizeof(rsp) - 1;
+}
+
+
+static int
+snarf_uri(char *restrict uri)
+{
+	struct addrinfo *ais = NULL;
+	const char *host;
+	char *path;
+	char *p;
+	uint16_t port;
+	int s;
+
+	/* snarf host and path from uri */
+	if ((host = strstr(uri, "://")) == NULL) {
+		fprintf(logerr, "cannot snarf host part off %s\n", uri);
+		return -1;
+	} else if ((p = strchr(host += 3, '/')) == NULL) {
+		fprintf(logerr, "no path in URI %s\n", uri);
+		return -1;
+	}
+	/* fiddle with the string a bit */
+	*p = '\0';
+	path = p + 1;
+
+	/* try and find a port number */
+	if ((p = strchr(host, ':'))) {
+		*p = '\0';
+		port = strtoul(p + 1, NULL, 10);
+	} else {
+		port = 80U;
+	}
+
+	/* connection guts */
+	if (rslv(&ais, host, port) < 0) {
+		fprintf(logerr, "cannot resolve %s %hu\n", host, port);
+		return -1;
+	} else if ((s = conn(ais)) < 0) {
+		fprintf(logerr, "cannot connect to %s %hu\n", host, port);
+		return -1;
+	}
+	/* yay */
+	UMQS_DEBUG("d/l'ing /%s off %s %hu\n", path, host, port);
+	{
+		static char req[256] = "GET /";
+		size_t plen = strlen(path);
+
+		memcpy(req + 5, path, plen);
+		memcpy(req + 5 + plen, "\r\n\r\n", 5);
+		send(s, req, plen + 10, 0);
+	}
+	return s;
+}
+
+static void
+check_urifq(EV_P)
+{
+	static void fetch_data_cb();
+
+	for (urifi_t fi; (fi = pop_uri()); free_uri(fi)) {
+		ev_io_i_t qio;
+		int s;
+
+		if ((s = snarf_uri(fi->uri)) < 0) {
+			continue;
+		}
+
+		/* retrieve the result through our queue */
+		qio = make_io();
+		ev_io_init(qio->w, fetch_data_cb, s, EV_READ);
+		qio->idx = fi->idx;
+		qio->w->data = qio;
+		ev_io_start(EV_A_ qio->w);
+	}
+	return;
 }
 
 
@@ -822,6 +1425,43 @@ ev_io_shut(EV_P_ ev_io *w)
 }
 
 static void
+ev_qio_shut(EV_P_ ev_io *w)
+{
+/* attention, W *must* come from the ev io queue */
+	ev_io_i_t qio = w->data;
+
+	ev_io_shut(EV_A_ w);
+	free_io(qio);
+	return;
+}
+
+static void
+fetch_data_cb(EV_P_ ev_io *w, int UNUSED(re))
+{
+	static char rpl[4096];
+	ev_io_i_t qio;
+	ssize_t nrd;
+
+	if (UNLIKELY((qio = w->data) == NULL)) {
+		goto clo;
+	} else if ((nrd = read(w->fd, rpl, sizeof(rpl))) < 0) {
+		goto clo;
+	} else if ((size_t)nrd < sizeof(rpl)) {
+		rpl[nrd] = '\0';
+	} else {
+		/* uh oh, mega request, wtf? */
+		rpl[sizeof(rpl) - 1] = '\0';
+	}
+
+	/* quick parsing */
+	massage_fetch_uri_rpl(rpl, nrd, qio->idx);
+
+clo:
+	ev_qio_shut(EV_A_ w);
+	return;
+}
+
+static void
 paste_clen(char *restrict buf, size_t bsz, size_t len)
 {
 /* print ascii repr of LEN at BUF. */
@@ -872,7 +1512,7 @@ Content-Length: "
 	if ((nrd = read(w->fd, rsp, rsp_len)) < 0) {
 		goto clo;
 	} else if ((size_t)nrd < rsp_len) {
-		buf[nrd] = '\0';
+		rsp[nrd] = '\0';
 	} else {
 		/* uh oh, mega request, wtf? */
 		buf[sizeof(buf) - 1] = '\0';
@@ -899,17 +1539,16 @@ Content-Length: "
 	send(w->fd, buf, sizeof(BUF_INIT) - 1 + cont_len, 0);
 
 clo:
-	ev_io_shut(EV_A_ w);
+	ev_qio_shut(EV_A_ w);
 	return;
 }
 
 static void
 dccp_cb(EV_P_ ev_io *w, int UNUSED(re))
 {
-	static ev_io conns[8];
-	static size_t next_conn = 0;
 	union ud_sockaddr_u sa;
 	socklen_t sasz = sizeof(sa);
+	ev_io_i_t qio;
 	int s;
 
 	UMQS_DEBUG("interesting activity on %d\n", w->fd);
@@ -918,19 +1557,20 @@ dccp_cb(EV_P_ ev_io *w, int UNUSED(re))
 		return;
 	}
 
-	if (conns[next_conn].fd > 0) {
-		ev_io_shut(EV_A_ conns + next_conn);
-	}
-
-	ev_io_init(conns + next_conn, dccp_data_cb, s, EV_READ);
-	conns[next_conn].data = NULL;
-	ev_io_start(EV_A_ conns + next_conn);
-	if (++next_conn >= countof(conns)) {
-		next_conn = 0;
-	}
+	qio = make_io();
+	ev_io_init(qio->w, dccp_data_cb, s, EV_READ);
+	qio->w->data = qio;
+	ev_io_start(EV_A_ qio->w);
 	return;
 }
 
+static void
+prep_cb(EV_P_ ev_prepare *UNUSED(w), int UNUSED(revents))
+{
+	/* check the uri fetch queue */
+	check_urifq(EV_A);
+	return;
+}
 
 static void
 sigint_cb(EV_P_ ev_signal *UNUSED(w), int UNUSED(revents))
@@ -1036,6 +1676,7 @@ main(int argc, char *argv[])
 	ev_signal sigterm_watcher[1];
 	ev_signal sigpipe_watcher[1];
 	ev_periodic midnight[1];
+	ev_prepare prp[1];
 	ev_timer prune[1];
 	ev_io dccp[2];
 	int res = 0;
@@ -1097,6 +1738,10 @@ main(int argc, char *argv[])
 		};
 		socklen_t sa_len = sizeof(sa);
 		int s;
+
+		if (argi->websvc_port_given) {
+			sa.sa6.sin6_port = htons(argi->websvc_port_arg);
+		}
 
 		if ((s = make_dccp()) < 0) {
 			/* just to indicate we have no socket */
@@ -1160,6 +1805,10 @@ main(int argc, char *argv[])
 		res = 1;
 		goto past_loop;
 	}
+
+	/* pre and post poll hooks */
+	ev_prepare_init(prp, prep_cb);
+	ev_prepare_start(EV_A_ prp);
 
 	/* now wait for events to arrive */
 	ev_loop(EV_A_ 0);

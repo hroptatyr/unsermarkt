@@ -124,9 +124,11 @@ um_quosnp_CPPFLAGS = $(AM_CPPFLAGS) -D_GNU_SOURCE
 um_quosnp_CPPFLAGS += $(libev_CFLAGS)
 um_quosnp_CPPFLAGS += $(unserding_CFLAGS)
 um_quosnp_CPPFLAGS += $(uterus_CFLAGS)
+um_quosnp_CPPFLAGS += $(fixc_CFLAGS)
 um_quosnp_LDFLAGS = $(AM_LDFLAGS)
 um_quosnp_LDFLAGS += $(uterus_LIBS)
 um_quosnp_LDFLAGS += $(unserding_LIBS)
+um_quosnp_LDFLAGS += $(fixc_LIBS)
 um_quosnp_LDFLAGS += $(libev_LIBS)
 endif  ## HAVE_LIBEV
 BUILT_SOURCES += um-quomon-clo.c um-quomon-clo.h

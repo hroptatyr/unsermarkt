@@ -266,7 +266,7 @@ ffff_gmtime(struct tm *tm, const time_t t)
 	return;
 }
 
-static void
+static size_t
 ffff_strfdtu(char *restrict buf, size_t bsz, time_t sec, unsigned int usec)
 {
 	struct tm tm[1];
@@ -275,8 +275,7 @@ ffff_strfdtu(char *restrict buf, size_t bsz, time_t sec, unsigned int usec)
 	/* libdut? */
 	strftime(buf, bsz, "%FT%T", tm);
 	buf[19] = '.';
-	snprintf(buf + 20, bsz - 20, "%06u+0000", usec);
-	return;
+	return 20U + snprintf(buf + 20, bsz - 20, "%06u+0000", usec);
 }
 
 

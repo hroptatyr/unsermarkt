@@ -753,12 +753,14 @@ bang_sd(fixc_msg_t msg, uint16_t idx)
 	{
 		void *tgt = secdefs + secdefs_sz;
 		size_t tsz = secdefs_alsz - secdefs_sz;
+		void *ins;
 
 		msz = fixc_msg_cpy(tgt, tsz, msg);
+		ins = fixc_extr_ctxt(tgt, FIXML_COMP_Instrument, 0);
 
 		/* let our cache know */
 		cache[idx - 1].msg = tgt;
-		cache[idx - 1].ins = NULL;
+		cache[idx - 1].ins = ins;
 
 		/* advance the pointer, +1 for \nul */
 		secdefs_sz += msz + 1;

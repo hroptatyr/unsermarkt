@@ -1763,7 +1763,7 @@ Content-Length: "
 #define BUF_INIT	HDR CLEN_SPEC "\r\n\r\n"
 	/* hdr is a format string and hdr_len is as wide as the result printed
 	 * later on */
-	static char buf[65536] = BUF_INIT;
+	static char buf[65536 * 8] = BUF_INIT;
 	char *rsp = buf + sizeof(BUF_INIT) - 1;
 	const size_t rsp_len = sizeof(buf) - (sizeof(BUF_INIT) - 1);
 	ssize_t nrd;

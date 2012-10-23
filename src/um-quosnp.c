@@ -82,6 +82,7 @@
 #if defined HAVE_LIBFIXC_FIX_H
 # include <libfixc/fix.h>
 # include <libfixc/fixml-msg.h>
+# include <libfixc/fixml-comp.h>
 # include <libfixc/fixml-attr.h>
 #endif	/* HAVE_LIBFIXC_FIX_H */
 
@@ -1336,7 +1337,43 @@ __quotreq1(fixc_msg_t msg, uint16_t idx, struct timeval now)
 	/* see if there's an instrm block */
 	if (cache[idx - 1].ins) {
 		/* fixc_add_msg(msg, cache[idx - 1].ins); */
-		;
+		fixc_msg_t ins = cache[idx - 1].ins;
+
+		for (size_t i = 0; i < ins->nflds; i++) {
+			struct fixc_fld_s fld = ins->flds[i];
+			const char *v = ins->pr + fld.off;
+			size_t vz = strlen(v);
+			size_t mi = msg->nflds;
+
+			fixc_add_tag(msg, (fixc_attr_t)fld.tag, v, vz);
+			/* bang .cnt and .tpc */
+			ins->flds[mi].tpc = fld.tpc;
+			ins->flds[mi].cnt = fld.cnt;
+		}
+	} else {
+		/* have to mimick the instr somehow */
+		static char buf[8];
+		const char *sym = ute_idx2sym(u, idx);
+		size_t ssz = strlen(sym);
+		size_t mi;
+
+		mi = msg->nflds;
+		fixc_add_tag(msg, (fixc_attr_t)FIXML_ATTR_Symbol, sym, ssz);
+		msg->flds[mi].tpc = FIXML_COMP_Instrument;
+		msg->flds[mi].cnt = 0;
+
+		mi = msg->nflds;
+		ssz = snprintf(buf, sizeof(buf), "%hu", idx);
+		fixc_add_tag(msg, (fixc_attr_t)FIXML_ATTR_SecurityID, buf, ssz);
+		msg->flds[mi].tpc = FIXML_COMP_Instrument;
+		msg->flds[mi].cnt = 1;
+
+		mi = msg->nflds;
+		fixc_add_tag(
+			msg, (fixc_attr_t)FIXML_ATTR_SecurityIDSource,
+			"100", 3);
+		msg->flds[mi].tpc = FIXML_COMP_Instrument;
+		msg->flds[mi].cnt = 2;
 	}
 	return;
 }

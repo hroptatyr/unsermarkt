@@ -1181,8 +1181,6 @@ websvc_secdef(char *restrict tgt, size_t tsz, struct websvc_s sd)
 		}
 	}
 
-	fixc_dump(msg);
-
 	/* render the whole shebang */
 	idx = fixc_render_fixml(tgt, tsz, msg);
 	/* start a fix msg for that */

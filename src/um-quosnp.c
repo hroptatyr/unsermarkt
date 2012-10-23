@@ -656,14 +656,15 @@ static struct {
 } *cache = NULL;
 static size_t cache_alsz = 0UL;
 
-static char *secdefs = NULL;
-static size_t secdefs_alsz = 0UL;
-
 static const size_t pgsz = 65536UL;
 
 #if !defined AS_CONST_SL1T
 # define AS_CONST_SL1T(x)	((const_sl1t_t)(x))
 #endif	/* !AS_CONST_SL1T */
+
+#if !defined HAVE_LIBFIXC_FIX_H
+static char *secdefs = NULL;
+static size_t secdefs_alsz = 0UL;
 
 static void
 clean_up_secdefs(void)
@@ -672,6 +673,7 @@ clean_up_secdefs(void)
 	munmap(secdefs, secdefs_alsz);
 	return;
 }
+#endif	/* HAVE_LIBFIXC_FIX_H */
 
 static void
 clean_up_cache(void)
@@ -729,23 +731,6 @@ bang_q(unsigned int tgtid, scom_t sp)
 static void
 bang_sd(fixc_msg_t msg, uint16_t idx)
 {
-	static size_t secdefs_sz = 0UL;
-	size_t msz = fixc_msg_z(msg);
-
-	if (UNLIKELY(secdefs_sz + msz > secdefs_alsz)) {
-		size_t nx64k = (secdefs_sz + msz + pgsz) & ~(pgsz - 1);
-
-		if (UNLIKELY(secdefs == NULL)) {
-			secdefs = mmap(NULL, nx64k, PROT_MEM, MAP_MEM, -1, 0);
-			atexit(clean_up_secdefs);
-		} else {
-			secdefs = mremap(
-				secdefs, secdefs_alsz, nx64k, MREMAP_MAYMOVE);
-		}
-
-		secdefs_alsz = nx64k;
-	}
-
 	/* also make sure we can bang our stuff into the cache array */
 	check_cache(idx);
 
@@ -753,23 +738,13 @@ bang_sd(fixc_msg_t msg, uint16_t idx)
 	if (cache[idx - 1].ins != NULL) {
 		free_fixc(cache[idx - 1].ins);
 	}
-
-	/* roll out the message and bang it into our secdefs space */
-	{
-		void *tgt = secdefs + secdefs_sz;
-		size_t tsz = secdefs_alsz - secdefs_sz;
-		void *ins;
-
-		msz = fixc_msg_cpy(tgt, tsz, msg);
-		ins = fixc_extr_ctxt(tgt, FIXML_COMP_Instrument, 0);
-
-		/* let our cache know */
-		cache[idx - 1].msg = tgt;
-		cache[idx - 1].ins = ins;
-
-		/* advance the pointer, +1 for \nul */
-		secdefs_sz += msz + 1;
+	if (cache[idx - 1].msg != NULL) {
+		free_fixc(cache[idx - 1].msg);
 	}
+
+	/* let our cache know */
+	cache[idx - 1].msg = msg;
+	cache[idx - 1].ins = fixc_extr_ctxt(msg, FIXML_COMP_Instrument, 0);
 	return;
 }
 #else  /* !HAVE_LIBFIXC_FIX_H */

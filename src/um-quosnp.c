@@ -749,6 +749,11 @@ bang_sd(fixc_msg_t msg, uint16_t idx)
 	/* also make sure we can bang our stuff into the cache array */
 	check_cache(idx);
 
+	/* free former resources */
+	if (cache[idx - 1].ins != NULL) {
+		free_fixc(cache[idx - 1].ins);
+	}
+
 	/* roll out the message and bang it into our secdefs space */
 	{
 		void *tgt = secdefs + secdefs_sz;

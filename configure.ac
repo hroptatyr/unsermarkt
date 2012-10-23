@@ -180,6 +180,26 @@ if test "${have_twsapi}" = "yes"; then
 fi
 AM_CONDITIONAL([HAVE_TWSAPI], [test "${have_twsapi}" = "yes"])
 
+## check for sqlite3 libs
+PKG_CHECK_MODULES([sqlite], [sqlite3 >= 3.7],
+	[have_sqlite="yes"], [have_sqlite="no"])
+AM_CONDITIONAL([HAVE_SQLITE], [test "${have_sqlite}" = "yes"])
+
+## check for libfixc
+PKG_CHECK_MODULES([fixc], [libfixc], [have_fixc="yes"], [have_fixc="no"])
+if test "${have_fixc}" = "yes"; then
+	## check for the header
+	SXE_DUMP_LIBS
+	CPPFLAGS="${CPPFLAGS} ${fixc_CFLAGS}"
+	AC_CHECK_HEADERS([libfixc/fix.h])
+	SXE_RESTORE_LIBS
+
+	if test "${ac_cv_header_libfixc_fix_h}" != "yes"; then
+		have_fixc="no"
+	fi
+fi
+AM_CONDITIONAL([HAVE_FIXC], [test "${have_fixc}" = "yes"])
+
 ## just shortly before we're going libtool, check for the ldflags
 SXE_CHECK_LDFLAGS
 

@@ -79,6 +79,12 @@
 #include <sys/socket.h>
 #include <sys/utsname.h>
 
+#if defined HAVE_LIBFIXC_FIX_H
+# include <libfixc/fix.h>
+# include <libfixc/fixml-msg.h>
+# include <libfixc/fixml-attr.h>
+#endif	/* HAVE_LIBFIXC_FIX_H */
+
 #include <unserding/unserding.h>
 #include <unserding/protocore.h>
 
@@ -266,7 +272,7 @@ ffff_gmtime(struct tm *tm, const time_t t)
 	return;
 }
 
-static void
+static size_t
 ffff_strfdtu(char *restrict buf, size_t bsz, time_t sec, unsigned int usec)
 {
 	struct tm tm[1];
@@ -275,8 +281,7 @@ ffff_strfdtu(char *restrict buf, size_t bsz, time_t sec, unsigned int usec)
 	/* libdut? */
 	strftime(buf, bsz, "%FT%T", tm);
 	buf[19] = '.';
-	snprintf(buf + 20, bsz - 20, "%06u+0000", usec);
-	return;
+	return 20U + snprintf(buf + 20, bsz - 20, "%06u+0000", usec);
 }
 
 
@@ -638,10 +643,15 @@ static utectx_t u = NULL;
 static struct {
 	struct sl1t_s bid[1];
 	struct sl1t_s ask[1];
+#if defined HAVE_LIBFIXC_FIX_H
+	fixc_msg_t msg;
+	fixc_msg_t ins;
+#else  /* !HAVE_LIBFIXC_FIX_H */
 	const char *sd;
 	size_t sdsz;
 	const char *instrmt;
 	size_t instrmtsz;
+#endif	/* HAVE_LIBFIXC_FIX_H */
 } *cache = NULL;
 static size_t cache_alsz = 0UL;
 
@@ -714,6 +724,47 @@ bang_q(unsigned int tgtid, scom_t sp)
 	return;
 }
 
+#if defined HAVE_LIBFIXC_FIX_H
+static void
+bang_sd(fixc_msg_t msg, uint16_t idx)
+{
+	static size_t secdefs_sz = 0UL;
+	size_t msz = fixc_msg_z(msg);
+
+	if (UNLIKELY(secdefs_sz + msz > secdefs_alsz)) {
+		size_t nx64k = (secdefs_sz + msz + pgsz) & ~(pgsz - 1);
+
+		if (UNLIKELY(secdefs == NULL)) {
+			secdefs = mmap(NULL, nx64k, PROT_MEM, MAP_MEM, -1, 0);
+			atexit(clean_up_secdefs);
+		} else {
+			secdefs = mremap(
+				secdefs, secdefs_alsz, nx64k, MREMAP_MAYMOVE);
+		}
+
+		secdefs_alsz = nx64k;
+	}
+
+	/* also make sure we can bang our stuff into the cache array */
+	check_cache(idx);
+
+	/* roll out the message and bang it into our secdefs space */
+	{
+		void *tgt = secdefs + secdefs_sz;
+		size_t tsz = secdefs_alsz - secdefs_sz;
+
+		msz = fixc_msg_cpy(tgt, tsz, msg);
+
+		/* let our cache know */
+		cache[idx - 1].msg = tgt;
+		cache[idx - 1].ins = NULL;
+
+		/* advance the pointer, +1 for \nul */
+		secdefs_sz += msz + 1;
+	}
+	return;
+}
+#else  /* !HAVE_LIBFIXC_FIX_H */
 static void
 bang_sd(const char *sd, size_t sdsz, uint16_t idx)
 {
@@ -798,6 +849,7 @@ bang_sd(const char *sd, size_t sdsz, uint16_t idx)
 	secdefs_sz += sdsz + 1;
 	return;
 }
+#endif	/* !HAVE_LIBFIXC_FIX_H */
 
 static ssize_t
 massage_fetch_uri_rpl(const char *buf, size_t bsz, uint16_t idx)
@@ -807,8 +859,6 @@ massage_fetch_uri_rpl(const char *buf, size_t bsz, uint16_t idx)
 	static char hdr_cont_len[] = "Content-Length:";
 	static char delim[] = "\r\n\r\n";
 	const char *p;
-	const char *sd;
-	const char *eosd;
 	ssize_t sz;
 
 	if ((p = strcasestr(buf, hdr_cont_len)) == NULL) {
@@ -824,18 +874,32 @@ massage_fetch_uri_rpl(const char *buf, size_t bsz, uint16_t idx)
 		return sz;
 	}
 
+#if defined HAVE_LIBFIXC_FIX_H
+	/* P should now point to the content of size SZ */
+	{
+		fixc_msg_t msg = make_fixc_from_fixml(p, sz);
+
+		bang_sd(msg, idx);
+	}
+#else  /* !HAVE_LIBFIXC_FIX_H */
 	/* SZ is the size, p points to the content
 	 * AND the whole shebang is in this packet,
 	 * time for fireworks innit? */
 	/* check for <SecDef> */
-	if ((sd = strstr(p, "<SecDef")) == NULL ||
-	    (eosd = strstr(sd, "</SecDef>")) == NULL) {
-		return 0;
+	{
+		const char *sd;
+		const char *eosd;
+
+		if ((sd = strstr(p, "<SecDef")) == NULL ||
+		    (eosd = strstr(sd, "</SecDef>")) == NULL) {
+			return 0;
+		}
+		/* make eosd point to behind </SecDef> */
+		eosd += 9;
+		/* recompute SZ */
+		bang_sd(sd, eosd - sd, idx);
 	}
-	/* make eosd point to behind </SecDef> */
-	eosd += 9;
-	/* recompute SZ */
-	bang_sd(sd, eosd - sd, idx);
+#endif	/* HAVE_LIBFIXC_FIX_H */
 	return 0;
 }
 
@@ -1074,6 +1138,76 @@ websvc_from_request(struct websvc_s *tgt, const char *req, size_t UNUSED(len))
 	return tgt->ty = res;
 }
 
+#if defined HAVE_LIBFIXC_FIX_H
+static void
+__secdef1(fixc_msg_t msg, uint16_t idx)
+{
+	static const struct fixc_fld_s msgtyp = {
+		.tag = FIXC_MSG_TYPE,
+		.typ = FIXC_TYP_MSGTYP,
+		.mtyp = (fixc_msgt_t)FIXML_MSG_SecurityDefinition,
+	};
+	fixc_msg_t cchmsg = cache[idx - 1].msg;
+
+	if (UNLIKELY(cchmsg == NULL)) {
+		return;
+	}
+
+	/* the message type */
+	fixc_add_fld(msg, msgtyp);
+
+	/* add all fields */
+	for (size_t i = 0; i < cchmsg->nflds; i++) {
+		struct fixc_fld_s cchfld = cchmsg->flds[i];
+		const char *v = cchmsg->pr + cchfld.off;
+		size_t vz = strlen(v);
+		size_t j = msg->nflds;
+
+		fixc_add_tag(msg, (fixc_attr_t)cchfld.tag, v, vz);
+		/* copy the .tpc and .cnt */
+		msg->flds[j].tpc = cchfld.tpc;
+		msg->flds[j].cnt = cchfld.cnt;
+	}
+	return;
+}
+
+static size_t
+websvc_secdef(char *restrict tgt, size_t tsz, struct websvc_s sd)
+{
+	size_t idx = 0;
+	size_t nsy = ute_nsyms(u);
+	fixc_msg_t msg;
+
+	UMQS_DEBUG("printing secdef idx %hu\n", sd.secdef.idx);
+
+	if (!sd.secdef.idx) {
+		return 0;
+	}
+
+
+	/* start a fix msg for that */
+	msg = make_fixc_msg((fixc_msgt_t)FIXC_MSGT_UNK);
+
+	if (sd.secdef.idx < nsy) {
+		__secdef1(msg, sd.secdef.idx);
+	} else if (sd.quotreq.idx == MASS_QUOT) {
+		/* loop over instruments */
+		msg->f35.mtyp = FIXC_MSGT_BATCH;
+		for (size_t i = 1; i <= nsy; i++) {
+			__secdef1(msg, i);
+		}
+	}
+
+	fixc_dump(msg);
+
+	/* render the whole shebang */
+	idx = fixc_render_fixml(tgt, tsz, msg);
+	/* start a fix msg for that */
+	free_fixc(msg);
+	return idx;
+}
+
+#else  /* !HAVE_LIBFIXC_FIX_H */
 static const char fixml_pre[] = "\
 <?xml version=\"1.0\" encoding=\"utf-8\"?>\n\
 <FIXML xmlns=\"http://www.fixprotocol.org/FIXML-5-0-SP2\">\n\
@@ -1087,7 +1221,7 @@ static const char fixml_batch_post[] = "</Batch>\n";
 static size_t
 __secdef1(char *restrict tgt, size_t tsz, uint16_t idx)
 {
-	size_t res = 0;
+	size_t res = 0UL;
 
 	if (cache[idx - 1].sd && tsz) {
 		res = cache[idx - 1].sdsz;
@@ -1135,7 +1269,116 @@ websvc_secdef(char *restrict tgt, size_t tsz, struct websvc_s sd)
 	idx += sizeof(fixml_post) - 1;
 	return idx;
 }
+#endif	/* HAVE_LIBFIXC_FIX_H */
 
+#if defined HAVE_LIBFIXC_FIX_H
+static void
+__quotreq1(fixc_msg_t msg, uint16_t idx, struct timeval now)
+{
+	static size_t qid = 0;
+	static char p[32];
+	static char vtm[32];
+	static char txn[32];
+	static size_t txz, vtz;
+	static const struct fixc_fld_s msgtyp = {
+		.tag = 35,
+		.typ = FIXC_TYP_MSGTYP,
+		.mtyp = (fixc_msgt_t)FIXML_MSG_Quote,
+	};
+	static struct timeval now_cch;
+	const_sl1t_t b = cache[idx - 1].bid;
+	const_sl1t_t a = cache[idx - 1].ask;
+	size_t z;
+
+	/* find the more recent quote out of bid and ask */
+	{
+		time_t bs = sl1t_stmp_sec(b);
+		unsigned int bms = sl1t_stmp_msec(b);
+		time_t as = sl1t_stmp_sec(a);
+		unsigned int ams = sl1t_stmp_msec(a);
+
+		if (bs <= as) {
+			bs = as;
+			bms = ams;
+		}
+		if (UNLIKELY(bs == 0)) {
+			return;
+		}
+
+		txz = ffff_strfdtu(txn, sizeof(txn), bs, bms * 1000);
+	}
+
+	if (now_cch.tv_sec != now.tv_sec) {
+		vtz = ffff_strfdtu(vtm, sizeof(vtm), now.tv_sec, now.tv_usec);
+		now_cch = now;
+	}
+
+	/* the message type */
+	fixc_add_fld(msg, msgtyp);
+
+	fixc_add_fld(msg, (struct fixc_fld_s){.tag = FIXML_ATTR_QuoteID/*QID*/,
+				     .typ = FIXC_TYP_INT, .i32 = ++qid});
+	z = ffff_m30_s(p, (m30_t)b->pri);
+	fixc_add_tag(msg, (fixc_attr_t)132/*BidPx*/, p, z);
+
+	z = ffff_m30_s(p, (m30_t)a->pri);
+	fixc_add_tag(msg, (fixc_attr_t)133/*OfrPx*/, p, z);
+
+	z = ffff_m30_s(p, (m30_t)b->qty);
+	fixc_add_tag(msg, (fixc_attr_t)134/*BidSz*/, p, z);
+
+	z = ffff_m30_s(p, (m30_t)a->qty);
+	fixc_add_tag(msg, (fixc_attr_t)135/*OfrSz*/, p, z);
+
+	fixc_add_tag(msg, (fixc_attr_t)60/*TxnTm*/, txn, txz);
+	fixc_add_tag(msg, (fixc_attr_t)62/*ValidUntilTm*/, vtm, vtz);
+
+	/* see if there's an instrm block */
+	if (cache[idx - 1].ins) {
+		/* fixc_add_msg(msg, cache[idx - 1].ins); */
+		;
+	}
+	return;
+}
+
+static size_t
+websvc_quotreq(char *restrict tgt, size_t tsz, struct websvc_s sd)
+{
+	size_t idx = 0;
+	size_t nsy = ute_nsyms(u);
+	struct timeval now[1];
+	fixc_msg_t msg;
+
+	UMQS_DEBUG("printing quotreq idx %hu\n", sd.quotreq.idx);
+
+	if (!sd.quotreq.idx) {
+		return 0;
+	}
+
+	/* get current time */
+	gettimeofday(now, NULL);
+
+	/* start a fix msg for that */
+	msg = make_fixc_msg((fixc_msgt_t)FIXC_MSGT_UNK);
+
+	if (sd.quotreq.idx < nsy) {
+		__quotreq1(msg, sd.quotreq.idx, *now);
+	} else if (sd.quotreq.idx == MASS_QUOT) {
+		/* loop over instruments */
+		msg->f35.mtyp = FIXC_MSGT_BATCH;
+		for (size_t i = 1; i <= nsy; i++) {
+			__quotreq1(msg, i, *now);
+		}
+	}
+
+	/* render the whole shebang */
+	idx = fixc_render_fixml(tgt, tsz, msg);
+	/* start a fix msg for that */
+	free_fixc(msg);
+	return idx;
+}
+
+#else  /* !HAVE_LIBFIXC_FIX_H */
 static size_t
 __quotreq1(char *restrict tgt, size_t tsz, uint16_t idx, struct timeval now)
 {
@@ -1247,6 +1490,7 @@ websvc_quotreq(char *restrict tgt, size_t tsz, struct websvc_s sd)
 	idx += sizeof(fixml_post) - 1;
 	return idx;
 }
+#endif	/* HAVE_LIBFIXC_FIX_H */
 
 static size_t
 websvc_unk(char *restrict tgt, size_t tsz, struct websvc_s UNUSED(sd))

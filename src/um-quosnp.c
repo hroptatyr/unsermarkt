@@ -729,6 +729,44 @@ bang_q(unsigned int tgtid, scom_t sp)
 
 #if defined HAVE_LIBFIXC_FIX_H
 static void
+bang_aid(fixc_msg_t ins, uint16_t idx)
+{
+	static const struct fixc_fld_s f454 = {
+		.tag = (fixc_attr_t)FIXML_ATTR_NoSecurityAltID,
+		.typ = FIXC_TYP_INT,
+		.tpc = (fixc_comp_t)FIXML_COMP_SecAltIDGrp,
+		.cnt = 0,
+		.i32 = 1,
+	};
+	static char sidx[32];
+	size_t i454 = 0;
+	size_t sz;
+
+	for (size_t i = 1; i < ins->nflds; i++) {
+		if (ins->flds[i].tag == 454U) {
+			i454 = i;
+			break;
+		}
+	}
+	if (!i454) {
+		fixc_add_fld(ins, f454);
+	}
+	/* just bang one more */
+	sz = snprintf(sidx, sizeof(sidx), "%hu", idx);
+	fixc_add_tag(ins, (fixc_attr_t)FIXML_ATTR_SecurityAltID, sidx, sz);
+	/* we know the actual tpc */
+	ins->flds[ins->nflds - 1].tpc = FIXML_COMP_SecAltIDGrp;
+	ins->flds[ins->nflds - 1].cnt = 0U;
+
+	fixc_add_tag(
+		ins, (fixc_attr_t)FIXML_ATTR_SecurityAltIDSource, "100", 3U);
+	/* we know the actual tpc */
+	ins->flds[ins->nflds - 1].tpc = FIXML_COMP_SecAltIDGrp;
+	ins->flds[ins->nflds - 1].cnt = 1U;
+	return;
+}
+
+static void
 bang_sd(fixc_msg_t msg, uint16_t idx)
 {
 	fixc_msg_t ins;
@@ -750,6 +788,9 @@ bang_sd(fixc_msg_t msg, uint16_t idx)
 	/* let our cache know */
 	cache[idx - 1].msg = msg;
 	cache[idx - 1].ins = ins;
+
+	/* make sure our AIDs (455/456) go on there as well */
+	bang_aid(ins, idx);
 	return;
 }
 #else  /* !HAVE_LIBFIXC_FIX_H */

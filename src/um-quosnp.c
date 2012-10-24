@@ -1142,11 +1142,10 @@ __secdef1(fixc_msg_t msg, uint16_t idx)
 	/* add all fields */
 	for (size_t i = 0; i < cchmsg->nflds; i++) {
 		struct fixc_fld_s cchfld = cchmsg->flds[i];
-		const char *v = cchmsg->pr + cchfld.off;
-		size_t vz = strlen(v);
+		struct fixc_tag_data_s d = fixc_get_tag_data(cchmsg, i);
 		size_t j = msg->nflds;
 
-		fixc_add_tag(msg, (fixc_attr_t)cchfld.tag, v, vz);
+		fixc_add_tag(msg, (fixc_attr_t)cchfld.tag, d.s, d.z);
 		/* copy the .tpc and .cnt */
 		msg->flds[j].tpc = cchfld.tpc;
 		msg->flds[j].cnt = cchfld.cnt;
@@ -1321,11 +1320,10 @@ __quotreq1(fixc_msg_t msg, uint16_t idx, struct timeval now)
 
 		for (size_t i = 0; i < ins->nflds; i++) {
 			struct fixc_fld_s fld = ins->flds[i];
-			const char *v = ins->pr + fld.off;
-			size_t vz = strlen(v);
+			struct fixc_tag_data_s d = fixc_get_tag_data(ins, i);
 			size_t mi = msg->nflds;
 
-			fixc_add_tag(msg, (fixc_attr_t)fld.tag, v, vz);
+			fixc_add_tag(msg, (fixc_attr_t)fld.tag, d.s, d.z);
 			/* bang .cnt and .tpc */
 			ins->flds[mi].tpc = fld.tpc;
 			ins->flds[mi].cnt = fld.cnt;

@@ -731,6 +731,8 @@ bang_q(unsigned int tgtid, scom_t sp)
 static void
 bang_sd(fixc_msg_t msg, uint16_t idx)
 {
+	fixc_msg_t ins;
+
 	/* also make sure we can bang our stuff into the cache array */
 	check_cache(idx);
 
@@ -742,9 +744,12 @@ bang_sd(fixc_msg_t msg, uint16_t idx)
 		free_fixc(cache[idx - 1].msg);
 	}
 
+	/* get the instrument bit for later reuse */
+	ins = fixc_extr_ctxt_deep(msg, FIXML_COMP_Instrument, 0);
+
 	/* let our cache know */
 	cache[idx - 1].msg = msg;
-	cache[idx - 1].ins = fixc_extr_ctxt(msg, FIXML_COMP_Instrument, 0);
+	cache[idx - 1].ins = ins;
 	return;
 }
 #else  /* !HAVE_LIBFIXC_FIX_H */

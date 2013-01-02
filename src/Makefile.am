@@ -218,7 +218,6 @@ pf_tws_LDFLAGS += $(unserding_LIBS)
 pf_tws_LDFLAGS += $(libev_LIBS)
 pf_tws_LDADD = libtwscapi.la
 
-if HAVE_EXPAT
 if HAVE_GPERF
 bin_PROGRAMS += quo-tws
 EXTRA_quo_tws_SOURCES =
@@ -237,15 +236,12 @@ quo_tws_CPPFLAGS += $(uterus_CFLAGS)
 quo_tws_CPPFLAGS += $(unserding_CFLAGS)
 quo_tws_CPPFLAGS += $(twsapi_CFLAGS)
 quo_tws_CPPFLAGS += $(libev_CFLAGS)
-quo_tws_CPPFLAGS += $(expat_CFLAGS)
 quo_tws_LDFLAGS = $(AM_LDFLAGS)
 quo_tws_LDFLAGS += $(uterus_LIBS)
 quo_tws_LDFLAGS += $(unserding_LIBS)
 quo_tws_LDFLAGS += $(libev_LIBS)
-quo_tws_LDFLAGS += $(expat_LIBS)
 quo_tws_LDADD = libtwscapi.la
 endif  ## HAVE_GPERF
-endif  ## HAVE_EXPAT
 endif  ## HAVE_LIBEV
 endif  ## HAVE_TWSAPI
 BUILT_SOURCES += ox-tws-clo.c ox-tws-clo.h

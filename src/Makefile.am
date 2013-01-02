@@ -170,7 +170,6 @@ tws_snarf_la_CPPFLAGS += $(uterus_CFLAGS)
 tws_snarf_la_CPPFLAGS += $(unserding_CFLAGS)
 tws_snarf_la_LDFLAGS += $(unserding_LIBS)
 ## grrr, automake passes --tag=CXX to libtool
-tws_snarf_la_LINK = $(LINK) $(tws_snarf_la_LDFLAGS)
 
 noinst_LTLIBRARIES += tws-order.la
 tws_order_la_LDFLAGS = -module -rpath /none
@@ -181,7 +180,6 @@ tws_order_la_CPPFLAGS += $(twstools_CFLAGS)
 tws_order_la_CPPFLAGS += $(uterus_CFLAGS)
 tws_order_la_CPPFLAGS += $(unserding_CFLAGS)
 tws_order_la_LDFLAGS += $(unserding_LIBS)
-tws_order_la_LINK = $(LINK) $(tws_snarf_la_LDFLAGS)
 endif  ## HAVE_TWSTOOLS
 
 if HAVE_TWSAPI
@@ -202,7 +200,6 @@ ox_tws_LDFLAGS = $(AM_LDFLAGS)
 ox_tws_LDFLAGS += $(unserding_LIBS)
 ox_tws_LDFLAGS += $(libev_LIBS)
 ox_tws_LDADD = libtwscapi.la
-ox_tws_LINK = $(LINK) $(ox_tws_LDFLAGS)
 
 bin_PROGRAMS += pf-tws
 EXTRA_pf_tws_SOURCES =
@@ -220,7 +217,6 @@ pf_tws_LDFLAGS = $(AM_LDFLAGS)
 pf_tws_LDFLAGS += $(unserding_LIBS)
 pf_tws_LDFLAGS += $(libev_LIBS)
 pf_tws_LDADD = libtwscapi.la
-pf_tws_LINK = $(LINK) $(pf_tws_LDFLAGS)
 
 if HAVE_EXPAT
 if HAVE_GPERF
@@ -248,7 +244,6 @@ quo_tws_LDFLAGS += $(unserding_LIBS)
 quo_tws_LDFLAGS += $(libev_LIBS)
 quo_tws_LDFLAGS += $(expat_LIBS)
 quo_tws_LDADD = libtwscapi.la
-quo_tws_LINK = $(LINK) $(quo_tws_LDFLAGS)
 endif  ## HAVE_GPERF
 endif  ## HAVE_EXPAT
 endif  ## HAVE_LIBEV
@@ -305,7 +300,6 @@ annul_virtfx_LDFLAGS += $(twsapi_LIBS) -lstdc++
 annul_virtfx_LDFLAGS += $(libev_LIBS)
 annul_virtfx_LDADD =
 annul_virtfx_LDADD += -lm
-annul_virtfx_LINK = $(LINK) $(annul_virtfx_LDFLAGS)
 endif  HAVE_LIBEV
 endif  HAVE_TWSAPI
 
@@ -370,7 +364,6 @@ gen_tws_SOURCES = gen-tws.c
 gen_tws_CPPFLAGS = $(AM_CPPFLAGS) -DSTANDALONE
 gen_tws_LDADD = libtwscapi.la
 gen_tws_LDFLAGS = $(AM_LDFLAGS)
-gen_tws_LINK = $(LINK) $(gen_tws_LDFLAGS)
 endif  HAVE_TWSAPI
 
 

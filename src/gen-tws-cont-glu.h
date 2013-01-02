@@ -60,6 +60,9 @@ tws_cont_y(char *restrict buf, size_t bsz, unsigned int ns, tws_const_cont_t c);
 extern ssize_t
 tws_sdef_y(char *restrict buf, size_t bsz, unsigned int ns, tws_const_sdef_t d);
 
+/* return the comboLegs list of C. */
+extern tws_clst_t tws_cont_cleg(tws_cont_t c);
+
 #if defined __cplusplus
 }
 #endif	/* __cplusplus */

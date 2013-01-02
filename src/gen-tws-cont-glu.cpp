@@ -343,6 +343,9 @@ void
 tws_free_cont(tws_cont_t c)
 {
 	if (c) {
+		if (((IB::Contract*)c)->comboLegs) {
+			delete ((IB::Contract*)c)->comboLegs;
+		}
 		delete (IB::Contract*)c;
 	}
 	return;
@@ -397,6 +400,18 @@ tws_cont_x(tws_cont_t tgt, unsigned int nsid, unsigned int aid, const char *val)
 	default:
 		return -1;
 	}
+}
+
+tws_clst_t
+tws_cont_cleg(tws_cont_t ins)
+{
+/* singleton to return the comboLegs slot of a IB contract */
+	IB::Contract *c = (IB::Contract*)ins;
+
+	if (c->comboLegs == NULL) {
+		c->comboLegs = new IB::Contract::ComboLegList();
+	}
+	return (tws_clst_t)c->comboLegs;
 }
 
 // until there's a better place

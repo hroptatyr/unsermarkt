@@ -139,7 +139,7 @@ init_gq(gq_t q, size_t mbsz, size_t at_least)
 	/* fill up the free list */
 	{
 		char *const ep = (char*)nu_items + olsz;
-		const char *const eep = ep + (nusz - olsz);
+		char *const eep = ep + (nusz - olsz);
 		gq_item_t eip = (void*)ep;
 
 		for (char *sp = ep; sp < eep; sp += mbsz) {

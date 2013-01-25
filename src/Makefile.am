@@ -4,12 +4,10 @@ AM_CPPFLAGS = -D_POSIX_C_SOURCE=200112L -D_XOPEN_SOURCE=600 -D_BSD_SOURCE
 AM_LDFLAGS =
 
 headerdir = $(includedir)/unserding
-moddir = $(libdir)/unserding
 
 bin_PROGRAMS =
 noinst_PROGRAMS =
 lib_LTLIBRARIES =
-mod_LTLIBRARIES =
 noinst_LTLIBRARIES =
 noinst_HEADERS =
 header_HEADERS =
@@ -22,35 +20,6 @@ noinst_HEADERS += boobs.h
 noinst_HEADERS += nifty.h
 noinst_HEADERS += ud-sock.h
 noinst_HEADERS += wrp-debug.h
-
-if HAVE_MXML
-if HAVE_SQLITE
-mod_LTLIBRARIES += dso-unsermarkt.la
-dso_unsermarkt_la_LDFLAGS = -module
-dso_unsermarkt_la_CPPFLAGS = $(AM_CPPFLAGS) -D_GNU_SOURCE
-dso_unsermarkt_la_SOURCES = dso-unsermarkt.c
-dso_unsermarkt_la_SOURCES += md5.c md5.h
-dso_unsermarkt_la_SOURCES += htws.c htws.h
-dso_unsermarkt_la_SOURCES += oq.c oq.h
-dso_unsermarkt_la_SOURCES += uschi.c uschi.h
-dso_unsermarkt_la_SOURCES += order.h
-dso_unsermarkt_la_SOURCES += instr.h
-dso_unsermarkt_la_SOURCES += match.h
-dso_unsermarkt_la_SOURCES += um-conn.h
-dso_unsermarkt_la_SOURCES += um-stamp.h
-dso_unsermarkt_la_SOURCES += um-types.h
-dso_unsermarkt_la_SOURCES += um-xml.h
-dso_unsermarkt_la_CPPFLAGS += $(unserding_CFLAGS)
-dso_unsermarkt_la_CPPFLAGS += $(uterus_CFLAGS)
-dso_unsermarkt_la_CPPFLAGS += $(mxml_CFLAGS)
-dso_unsermarkt_la_CPPFLAGS += $(sqlite_CFLAGS)
-dso_unsermarkt_la_LDFLAGS += $(mxml_LIBS)
-dso_unsermarkt_la_LDFLAGS += $(sqlite_LIBS)
-EXTRA_dso_unsermarkt_la_SOURCES =
-EXTRA_dso_unsermarkt_la_SOURCES += con6ity.c
-EXTRA_dso_unsermarkt_la_SOURCES += mmls.c
-endif  ## HAVE_SQLITE
-endif  ## HAVE_MXML
 
 noinst_PROGRAMS += umoc
 umoc_LDFLAGS = $(unserding_LDFLAGS)
@@ -189,7 +158,7 @@ bin_PROGRAMS += um-netdania
 um_netdania_SOURCES = um-netdania.c um-netdania.h um-netdania-clo.ggo
 um_netdania_CPPFLAGS = $(AM_CPPFLAGS)
 um_netdania_CPPFLAGS += $(uterus_CFLAGS)
-um_netdania_CPPFLAGS += $(unserding_CFLAGS)
+um_netdania_CPPFLAGS += $(unserding_CFLAGS) -DUD_NEW_API
 um_netdania_CPPFLAGS += $(libev_CFLAGS)
 um_netdania_LDFLAGS = $(AM_LDFLAGS)
 um_netdania_LDFLAGS += $(unserding_LIBS)

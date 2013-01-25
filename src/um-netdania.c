@@ -62,7 +62,6 @@
 #include <errno.h>
 
 #include <unserding/unserding.h>
-#include <unserding/protocore.h>
 
 /* to get a take on them m30s and m62s */
 #define DEFINE_GORY_STUFF
@@ -94,8 +93,8 @@
 typedef const struct nd_pkt_s *nd_pkt_t;
 
 struct nd_pkt_s {
-	union ud_sockaddr_u sa;
-	socklen_t lsa;
+	struct sockaddr ss;
+	socklen_t sz;
 	size_t bsz;
 	char *buf;
 };
@@ -120,7 +119,9 @@ error(const char *fmt, ...)
 }
 
 static int
-init_sockaddr(ud_sockaddr_t sa, const char *name, uint16_t port)
+init_sockaddr(
+	struct sockaddr_storage *sa, socklen_t *sz,
+	const char *name, uint16_t port)
 {
 	struct addrinfo hints;
 	struct addrinfo *res;
@@ -134,17 +135,16 @@ init_sockaddr(ud_sockaddr_t sa, const char *name, uint16_t port)
 		return -1;
 	}
 	memcpy(sa, res->ai_addr, res->ai_addrlen);
-	sa->sa6.sin6_port = htons(port);
+	*sz = res->ai_addrlen;
+	((struct sockaddr_in6*)sa)->sin6_port = htons(port);
 	freeaddrinfo(res);
 	return 0;
 }
 
 
 static char iobuf[4096];
-static const char **gsyms;
+static char **gsyms;
 static size_t ngsyms = 0;
-static ud_chan_t hdl = NULL;
-static unsigned int pno = 0;
 static struct timeval last_brag[1] = {0, 0};
 
 /* ute services come in 2 flavours little endian "ut" and big endian "UT" */
@@ -163,16 +163,17 @@ static int
 init_nd(void)
 {
 	static const char host[] = "balancer.netdania.com";
-	union ud_sockaddr_u sa[1];
+	struct sockaddr_storage sa[1];
+	socklen_t sz[1];
 	int res;
 
-	if (init_sockaddr(sa, host, 80) < 0) {
+	if (init_sockaddr(sa, sz, host, 80) < 0) {
 		error("Error resolving host %s", host);
 		return -1;
 	} else if ((res = socket(PF_INET, SOCK_STREAM, 0)) < 0) {
 		error("Error getting socket");
 		return -1;
-	} else if (connect(res, &sa->sa, sizeof(*sa)) < 0) {
+	} else if (connect(res, (void*)sa, sz[0]) < 0) {
 		error("Error connecting to sock %d", res);
 		close(res);
 		return -1;
@@ -181,7 +182,7 @@ init_nd(void)
 }
 
 static int
-subs_nd(int s, const char **syms, size_t nsyms)
+subs_nd(int s, char **syms, size_t nsyms)
 {
 	static const char pre[] = "\
 GET /StreamingServer/StreamingServer?xstream&group=www.netdania.com&user=.&pass=.&appid=quotelist_awt&xcmd&type=1&reqid=";
@@ -577,7 +578,7 @@ dump_job(nd_pkt_t j)
 	while (p < ep) {
 		switch (*p++) {
 		case TF_UNK: {
-			uint8_t len = p + 1 < ep ? read_u8(&p) : 0;
+			uint8_t len = (uint8_t)(p + 1 < ep ? read_u8(&p) : 0);
 
 			if (UNLIKELY(p + len > ep)) {
 				len = ep - p;
@@ -613,41 +614,50 @@ dump_job(nd_pkt_t j)
 	return j->bsz;
 }
 
-static void
-brag(void)
+static inline int
+ud_pack_sl1t(ud_sock_t s, const_sl1t_t q)
 {
-	char buf[UDPC_PKTLEN];
-	struct udpc_seria_s ser[1];
+	return ud_pack_msg(
+		s, (struct ud_msg_s){
+			.svc = UTE_CMD,
+			.data = q,
+			.dlen = sizeof(*q),
+		});
+}
 
-#define PKT(x)		(ud_packet_t){ sizeof(x), x }
-#define MAKE_PKT							\
-	udpc_make_pkt(PKT(buf), -1, pno++, UDPC_PKT_RPL(UTE_QMETA));	\
-	udpc_seria_init(ser, UDPC_PAYLOAD(buf), UDPC_PAYLLEN(sizeof(buf)))
-#define SEND_PKT							\
-	if (udpc_seria_msglen(ser)) {					\
-		size_t msglen = UDPC_HDRLEN + udpc_seria_msglen(ser);	\
-		ud_chan_send(hdl, (ud_packet_t){msglen, buf});		\
-	}
+static int
+ud_pack_brag(ud_sock_t s, uint32_t idx, const char *sym, size_t syz)
+{
+	struct __brag_wire_s {
+		uint16_t idx;
+		uint8_t syz;
+		uint8_t urz;
+		char symuri[256 - sizeof(uint32_t)];
+	};
+	struct __brag_wire_s msg = {
+		.idx = htons((uint16_t)idx),
+		.syz = (uint8_t)syz,
+		.urz = (uint8_t)0,
+	};
+	memcpy(msg.symuri, sym, (uint8_t)syz);
+	return ud_pack_msg(
+		s, (struct ud_msg_s){
+			.svc = UTE_QMETA,
+			.data = &msg,
+			.dlen = offsetof(struct __brag_wire_s, symuri) +
+				(uint8_t)syz + (uint8_t)0,
+		});
+}
 
-	MAKE_PKT;
+static void
+brag(ud_sock_t s)
+{
 	for (size_t i = 0; i < ngsyms; i++) {
-		size_t len = strlen(gsyms[i]);
+		size_t gsymz = strlen(gsyms[i]);
 
-		if (udpc_seria_msglen(ser) + len + 2 + 4 > UDPC_PLLEN) {
-			/* send off the old guy */
-			SEND_PKT;
-			/* and make a new one */
-			MAKE_PKT;
-		}
-		/* add the new guy in town */
-		udpc_seria_add_ui16(ser, i + 1);
-		udpc_seria_add_str(ser, gsyms[i], len);
+		ud_pack_brag(s, i + 1, gsyms[i], gsymz);
 	}
-	/* send remainder also */
-	SEND_PKT;
-#undef PKT
-#undef MAKE_PKT
-#undef SEND_PKT
+	ud_flush(s);
 	return;
 }
 
@@ -747,23 +757,15 @@ inspect_rec(char **p, struct sl1t_s *l1t, size_t nl1t)
 	for (size_t i = 0; i < nl1t; i++) {
 		if (l1t[i].v[0]) {
 			sl1t_set_stmp_sec(l1t + i, sec);
-			sl1t_set_stmp_msec(l1t + i, msec);
-			sl1t_set_tblidx(l1t + i, rid);
+			sl1t_set_stmp_msec(l1t + i, (uint16_t)msec);
+			sl1t_set_tblidx(l1t + i, (uint16_t)rid);
 		}
 	}
 	return;
 }
 
-static inline void
-udpc_seria_add_scom(udpc_seria_t sctx, scom_t s, size_t len)
-{
-	memcpy(sctx->msg + sctx->msgoff, s, len);
-	sctx->msgoff += len;
-	return;
-}
-
 static void
-send_job(nd_pkt_t j)
+send_job(ud_sock_t s, nd_pkt_t j)
 {
 	enum {
 		TF_UNK = 0x00,
@@ -772,22 +774,8 @@ send_job(nd_pkt_t j)
 	};
 	char *p = j->buf, *ep = p + j->bsz;
 	/* unserding goodness */
-	char buf[UDPC_PKTLEN];
-	struct udpc_seria_s ser[1];
 	struct sl1t_s l1t[4];
 
-#define PKT(x)		(ud_packet_t){sizeof(x), x}
-#define MAKE_PKT							\
-	udpc_make_pkt(PKT(buf), -1, pno++, UTE_CMD);			\
-	udpc_seria_init(ser, UDPC_PAYLOAD(buf), UDPC_PAYLLEN(sizeof(buf)))
-#define SEND_PKT							\
-	if (udpc_seria_msglen(ser)) {					\
-		size_t len = UDPC_HDRLEN + udpc_seria_msglen(ser);	\
-		ud_packet_t pkt = {len, buf};				\
-		ud_chan_send(hdl, pkt);					\
-	}
-
-	MAKE_PKT;
 	while (p < ep) {
 		if (*p++ == TF_MSG) {
 			memset(l1t, 0, sizeof(l1t));
@@ -795,19 +783,14 @@ send_job(nd_pkt_t j)
 
 			for (size_t i = 0; i < countof(l1t); i++) {
 				if (scom_thdr_tblidx(AS_SCOM(l1t + i))) {
-					udpc_seria_add_scom(
-						ser,
-						AS_SCOM(l1t + i), sizeof(*l1t));
+					ud_pack_sl1t(s, l1t + i);
 				}
 			}
 		} else {
 			break;
 		}
 	}
-	SEND_PKT;
-#undef PKT
-#undef MAKE_PKT
-#undef SEND_PKT
+	ud_flush(s);
 	return;
 }
 
@@ -824,15 +807,16 @@ mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
 			.buf = iobuf,
 			.bsz = sizeof(iobuf),
 		}};
-	ssize_t nread;
+	ssize_t nrd;
 	struct timeval now[1];
+	ud_sock_t s = w->data;
 
-	nread = recvfrom(w->fd, j->buf, j->bsz, 0, &j->sa.sa, &j->lsa);
+	nrd = recvfrom(w->fd, j->buf, j->bsz, 0, (void*)&j->ss, (void*)&j->sz);
 
 	/* handle the reading */
-	if (UNLIKELY(nread < 0)) {
+	if (UNLIKELY(nrd < 0)) {
 		goto out_revok;
-	} else if (nread == 0) {
+	} else if (nrd == 0) {
 		/* no need to bother */
 		goto out_revok;
 	}
@@ -842,15 +826,15 @@ mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
 		/* time is fucked */
 		;
 	} else if (now->tv_sec - last_brag->tv_sec > BRAG_INTV) {
-		brag();
+		brag(s);
 		/* keep track of last brag date */
 		*last_brag = *now;
 	}
 
 	/* prepare the job */
-	UM_DEBUG("read %zd/%zu\n", nread, j->bsz);
-	nread += sizeof(iobuf) - j->bsz;
-	j->bsz = nread;
+	UM_DEBUG("read %zd/%zu\n", nrd, j->bsz);
+	nrd += sizeof(iobuf) - j->bsz;
+	j->bsz = nrd;
 	j->buf = iobuf;
 	if (LIKELY(!rawp)) {
 		size_t nproc;
@@ -858,9 +842,9 @@ mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
 
 		nproc = dump_job(j);
 		j->bsz = nproc;
-		send_job(j);
+		send_job(s, j);
 
-		if ((nmove = nread - nproc) > 0) {
+		if ((nmove = nrd - nproc) > 0) {
 			memmove(iobuf, j->buf + nproc, nmove);
 		}
 		j->buf = iobuf + nmove;
@@ -945,6 +929,8 @@ main(int argc, char *argv[])
 	ev_io beef[1];
 	ev_timer keep_alive[1];
 	/* unserding resources */
+	ud_sock_t s;
+	/* netdania resources */
 	int nd_sock;
 
 	/* parse the command line */
@@ -971,18 +957,32 @@ main(int argc, char *argv[])
 	ev_signal_start(EV_A_ sighup_watcher);
 
 	/* attach to the beef channel */
-	hdl = ud_chan_init(argi->beef_given ? argi->beef_arg : 7868/*ND*/);
+	{
+		struct ud_sockopt_s opt = {UD_PUB};
+
+		if (argi->beef_given) {
+			opt.port = (short unsigned int)argi->beef_arg;
+		} else {
+			opt.port = 7868U/*ND*/;
+		}
+
+		if ((s = ud_socket(opt)) == NULL) {
+			perror("cannot initialise ud socket");
+			goto nopub;
+		}
+	}
 
 	/* connect to netdania balancer */
 	if ((nd_sock = init_nd()) < 0) {
 		goto out;
 	}
 
+	beef->data = s;
 	ev_io_init(beef, mon_beef_cb, nd_sock, EV_READ);
 	ev_io_start(EV_A_ beef);
 
 	/* quickly perform the subscription */
-	subs_nd(nd_sock, (const char**)argi->inputs, argi->inputs_num);
+	subs_nd(nd_sock, argi->inputs, argi->inputs_num);
 
 	/* set a timer to see if we lack quotes */
 	ev_timer_init(keep_alive, keep_alive_cb, MAX_AGE, MAX_AGE);
@@ -997,8 +997,9 @@ main(int argc, char *argv[])
 
 out:
 	/* detach ud resources */
-	ud_chan_fini(hdl);
+	ud_close(s);
 
+nopub:
 	/* destroy the default evloop */
 	ev_default_destroy();
 

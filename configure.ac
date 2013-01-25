@@ -76,7 +76,7 @@ AM_CONDITIONAL([HAVE_LIBEV], [test "${sxe_cv_feat_libev}" = "yes"])
 PKG_CHECK_MODULES([LUA], [lua >= 5.1.0], [:], [:])
 
 ## check for unserding
-PKG_CHECK_MODULES([unserding], [unserding >= 0.2.2])
+PKG_CHECK_MODULES([unserding], [unserding >= 0.3.0])
 
 ## check for ute
 PKG_CHECK_MODULES([uterus], [uterus >= 0.2.2], [have_uterus="yes"], [])

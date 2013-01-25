@@ -974,7 +974,10 @@ main(int argc, char *argv[])
 	hdl = ud_chan_init(argi->beef_given ? argi->beef_arg : 7868/*ND*/);
 
 	/* connect to netdania balancer */
-	nd_sock = init_nd();
+	if ((nd_sock = init_nd()) < 0) {
+		goto out;
+	}
+
 	ev_io_init(beef, mon_beef_cb, nd_sock, EV_READ);
 	ev_io_start(EV_A_ beef);
 
@@ -992,6 +995,7 @@ main(int argc, char *argv[])
 	ev_io_stop(EV_A_ beef);
 	close(nd_sock);
 
+out:
 	/* detach ud resources */
 	ud_chan_fini(hdl);
 

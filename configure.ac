@@ -76,7 +76,15 @@ AM_CONDITIONAL([HAVE_LIBEV], [test "${sxe_cv_feat_libev}" = "yes"])
 PKG_CHECK_MODULES([LUA], [lua >= 5.1.0], [:], [:])
 
 ## check for unserding
-PKG_CHECK_MODULES([unserding], [unserding >= 0.3.0])
+PKG_CHECK_MODULES([unserding], [unserding >= 0.3.0], [
+	## check for unsermoddir variable
+	AC_MSG_CHECKING([whither unserding DSOs go])
+	_PKG_CONFIG([unsermoddir], [variable=unsermoddir], [unserding])
+	AC_MSG_RESULT([${pkg_cv_unsermoddir}])
+	unsermoddir="${pkg_cv_unsermoddir}"
+	AC_SUBST([unsermoddir])
+])
+
 
 ## check for ute
 PKG_CHECK_MODULES([uterus], [uterus >= 0.2.2], [have_uterus="yes"], [])

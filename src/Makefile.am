@@ -176,37 +176,6 @@ tk_example_CPPFLAGS += $(unserding_CFLAGS)
 tk_example_LDFLAGS = $(AM_LDFLAGS)
 tk_example_LDFLAGS += $(unserding_LIBS)
 
-noinst_PROGRAMS += annul-pf
-annul_pf_SOURCES = annul-pf.c
-annul_pf_SOURCES += iso4217.c iso4217.h
-annul_pf_SOURCES += ccy-graph.h
-annul_pf_CPPFLAGS = $(AM_CPPFLAGS)
-annul_pf_CPPFLAGS += $(uterus_CFLAGS)
-annul_pf_CPPFLAGS += $(unserding_CFLAGS)
-annul_pf_LDFLAGS = $(AM_LDFLAGS)
-annul_pf_LDFLAGS += $(unserding_LIBS)
-annul_pf_LDADD =
-annul_pf_LDADD += -lm
-
-if HAVE_TWSAPI
-if HAVE_LIBEV
-noinst_PROGRAMS += annul-virtfx
-annul_virtfx_SOURCES = annul-virtfx.cpp
-annul_virtfx_SOURCES += gq.c gq.h
-annul_virtfx_CPPFLAGS = $(AM_CPPFLAGS)
-annul_virtfx_CPPFLAGS += $(uterus_CFLAGS)
-annul_virtfx_CPPFLAGS += $(twsapi_CFLAGS)
-annul_virtfx_CPPFLAGS += $(libev_CFLAGS)
-annul_virtfx_LDFLAGS = $(AM_LDFLAGS)
-annul_virtfx_LDFLAGS += $(uterus_LIBS)
-annul_virtfx_LDFLAGS += $(twsapi_LIBS) -lstdc++
-annul_virtfx_LDFLAGS += $(libev_LIBS)
-annul_virtfx_LDADD =
-annul_virtfx_LDADD += -lm
-endif  HAVE_LIBEV
-endif  HAVE_TWSAPI
-BUILT_SOURCES += annul-virtfx-clo.c annul-virtfx-clo.h
-
 
 noinst_PROGRAMS += ccy-graph
 ccy_graph_SOURCES = ccy-graph.c ccy-graph.h

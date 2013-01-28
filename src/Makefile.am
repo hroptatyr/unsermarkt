@@ -33,6 +33,9 @@ umoc_CPPFLAGS += $(unserding_CFLAGS)
 umoc_CPPFLAGS += $(uterus_CFLAGS)
 
 noinst_PROGRAMS += oq
+oq_SOURCES = oq.c oq.h
+oq_SOURCES += match.h
+EXTRA_oq_SOURCES = mmls.c
 oq_CPPFLAGS = $(AM_CPPFLAGS) -DSTANDALONE
 oq_CPPFLAGS += $(unserding_CFLAGS) $(uterus_CFLAGS)
 

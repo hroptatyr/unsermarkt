@@ -226,19 +226,15 @@ shout_syms(const struct xmit_s *ctx)
  * indices) in advance so that logging monitors actually know what
  * we're on about */
 	for (size_t i = 1; i <= ctx->nsyms; i++) {
-		struct um_qmeta_s qmsg;
+		struct um_qmeta_s brg[1];
 
-		if ((qmsg.sym = ute_idx2sym(ctx->ute, i)) == NULL) {
-			continue;
-		} else if ((qmsg.symlen = strlen(qmsg.sym)) == 0U) {
+		if (bang_qmeta(brg, ctx, i) < 0) {
+			/* packing failed */
 			continue;
 		}
-		/* bang index and pack */
-		qmsg.idx = (uint16_t)i;
-		qmsg.uri = NULL;
-		qmsg.urilen = 0U;
 
-		um_pack_brag(ctx->ud, &qmsg);
+		/* pack the guy */
+		um_pack_brag(ctx->ud, brg);
 	}
 	/* make sure it gets sent */
 	ud_flush(ctx->ud);

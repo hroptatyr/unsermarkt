@@ -182,7 +182,7 @@ unsermod_LTLIBRARIES += svc-uterus.la
 svc_uterus_la_SOURCES = svc-uterus.c svc-uterus.h
 svc_uterus_la_CPPFLAGS = $(AM_CPPFLAGS) -DUNSERMON_DSO
 svc_uterus_la_CPPFLAGS += -DUD_NEW_API
-svc_uterus_la_CPPFLAGS += $(unserding_CFLAGS)
+svc_uterus_la_CPPFLAGS += $(unserding_CFLAGS) -DUD_NEW_API
 svc_uterus_la_LDFLAGS = $(AM_LDFLAGS) $(XCCLDFLAGS) $(AM_MODFLAGS)
 
 

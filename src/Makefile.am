@@ -168,14 +168,6 @@ um_netdania_LDFLAGS += $(libev_LIBS)
 endif  ## HAVE_LIBEV
 BUILT_SOURCES += um-netdania-clo.c um-netdania-clo.h
 
-noinst_PROGRAMS += tk-example
-tk_example_SOURCES = tk-example.c
-tk_example_CPPFLAGS = $(AM_CPPFLAGS)
-tk_example_CPPFLAGS += $(uterus_CFLAGS)
-tk_example_CPPFLAGS += $(unserding_CFLAGS)
-tk_example_LDFLAGS = $(AM_LDFLAGS)
-tk_example_LDFLAGS += $(unserding_LIBS)
-
 
 noinst_PROGRAMS += ccy-graph
 ccy_graph_SOURCES = ccy-graph.c ccy-graph.h

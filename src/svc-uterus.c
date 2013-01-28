@@ -72,6 +72,7 @@ struct __brag_wire_s {
 
 
 /* helpers */
+#if defined UNSERMON_DSO
 static inline size_t
 pr_tsmstz(char *restrict buf, time_t sec, uint32_t msec, char sep)
 {
@@ -189,6 +190,7 @@ __pr_cdl(char *tgt, scom_t st)
 	p += ffff_m30_s(p, (m30_t)cdl->cnt);
 	return p - tgt;
 }
+#endif	/* UNSERMON_DSO */
 
 
 /* packing service */

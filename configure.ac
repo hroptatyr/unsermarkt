@@ -144,49 +144,6 @@ if test -n "${GPERF}"; then
 	AC_DEFINE([HAVE_GPERF], [1], [define when gperf tool is present])
 fi
 
-## check for twstools
-PKG_CHECK_MODULES([twstools], [twstools >= 0.4.0],
-	[have_twstools="yes"], [have_twstools="no"])
-if test "${have_twstools}" = "yes"; then
-	## check for the header
-	SXE_DUMP_LIBS
-	AC_LANG([C++])
-	CPPFLAGS="${CPPFLAGS} ${twstools_CFLAGS}"
-	AC_CHECK_HEADERS([twstools/twsdo.h])
-	AC_LANG([C])
-	SXE_RESTORE_LIBS
-fi
-AM_CONDITIONAL([HAVE_TWSTOOLS], [test "${have_twstools}" = "yes"])
-
-## check for twsapi
-PKG_CHECK_MODULES([twsapi], [twsapi >= 0.4.1],
-	[have_twsapi="yes"], [have_twsapi="no"])
-if test "${have_twsapi}" = "yes"; then
-	## check for handshake functions in there
-	AC_MSG_CHECKING([if twsapi has handshake functions])
-	SXE_DUMP_LIBS
-	AC_LANG([C++])
-	CPPFLAGS="${CPPFLAGS} ${twsapi_CFLAGS}"
-	LIBS="${LIBS} ${twsapi_LIBS} -lstdc++"
-	AC_LINK_IFELSE([AC_LANG_PROGRAM([[
-#include <twsapi/EPosixClientSocket.h>
-]], [[
-	IB::EPosixClientSocket *cli = NULL;
-	cli->prepareHandshake(-1, 0);
-	cli->handshake();
-	cli->wavegoodbye();
-]])], [have_twsapi_handshake="yes"], [have_twsapi_handshake="no"])
-	SXE_RESTORE_LIBS
-	AC_LANG([C])
-	AC_MSG_RESULT([${have_twsapi_handshake}])
-
-	if test "${have_twsapi_handshake}" = "yes"; then
-		AC_DEFINE([HAVE_TWSAPI_HANDSHAKE], [1],
-			[define when libtwsapi has handshake functions])
-	fi
-fi
-AM_CONDITIONAL([HAVE_TWSAPI], [test "${have_twsapi}" = "yes"])
-
 ## check for sqlite3 libs
 PKG_CHECK_MODULES([sqlite], [sqlite3 >= 3.7],
 	[have_sqlite="yes"], [have_sqlite="no"])

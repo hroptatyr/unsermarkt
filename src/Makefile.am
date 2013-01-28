@@ -22,19 +22,27 @@ noinst_HEADERS += boobs.h
 noinst_HEADERS += nifty.h
 noinst_HEADERS += ud-sock.h
 noinst_HEADERS += wrp-debug.h
+noinst_HEADERS += um-types.h
 
 noinst_PROGRAMS += umoc
+umoc_SOURCES = umoc.c
+umoc_SOURCES += order.h
 umoc_LDFLAGS = $(unserding_LDFLAGS)
 umoc_CPPFLAGS = $(AM_CPPFLAGS) -D_GNU_SOURCE
 umoc_CPPFLAGS += $(unserding_CFLAGS)
 umoc_CPPFLAGS += $(uterus_CFLAGS)
 
 noinst_PROGRAMS += oq
+oq_SOURCES = oq.c oq.h
+oq_SOURCES += match.h
+EXTRA_oq_SOURCES = mmls.c
 oq_CPPFLAGS = $(AM_CPPFLAGS) -DSTANDALONE
 oq_CPPFLAGS += $(unserding_CFLAGS) $(uterus_CFLAGS)
 
 if HAVE_SQLITE
 noinst_PROGRAMS += uschi
+uschi_SOURCES = uschi.c uschi.h
+uschi_SOURCES += instr.h
 uschi_CPPFLAGS = $(AM_CPPFLAGS) -DSTANDALONE
 uschi_CPPFLAGS += $(sqlite_CFLAGS)
 uschi_CPPFLAGS += $(unserding_CFLAGS)
@@ -133,28 +141,6 @@ ox_matchall_LDFLAGS += $(libev_LIBS)
 endif  ## HAVE_LIBEV
 BUILT_SOURCES += ox-matchall-clo.c ox-matchall-clo.h
 
-if HAVE_TWSTOOLS
-noinst_LTLIBRARIES += tws-snarf.la
-tws_snarf_la_LDFLAGS = -module -rpath /none
-tws_snarf_la_SOURCES = tws-snarf.cpp
-tws_snarf_la_CPPFLAGS = $(AM_CPPFLAGS)
-tws_snarf_la_CPPFLAGS += $(twstools_CFLAGS)
-tws_snarf_la_CPPFLAGS += $(uterus_CFLAGS)
-tws_snarf_la_CPPFLAGS += $(unserding_CFLAGS)
-tws_snarf_la_LDFLAGS += $(unserding_LIBS)
-## grrr, automake passes --tag=CXX to libtool
-
-noinst_LTLIBRARIES += tws-order.la
-tws_order_la_LDFLAGS = -module -rpath /none
-tws_order_la_SOURCES = tws-order.cpp
-tws_order_la_SOURCES += iso4217.c iso4217.h
-tws_order_la_CPPFLAGS = $(AM_CPPFLAGS)
-tws_order_la_CPPFLAGS += $(twstools_CFLAGS)
-tws_order_la_CPPFLAGS += $(uterus_CFLAGS)
-tws_order_la_CPPFLAGS += $(unserding_CFLAGS)
-tws_order_la_LDFLAGS += $(unserding_LIBS)
-endif  ## HAVE_TWSTOOLS
-
 if HAVE_LIBEV
 bin_PROGRAMS += um-netdania
 um_netdania_SOURCES = um-netdania.c um-netdania.h um-netdania-clo.ggo
@@ -167,45 +153,6 @@ um_netdania_LDFLAGS += $(unserding_LIBS)
 um_netdania_LDFLAGS += $(libev_LIBS)
 endif  ## HAVE_LIBEV
 BUILT_SOURCES += um-netdania-clo.c um-netdania-clo.h
-
-noinst_PROGRAMS += tk-example
-tk_example_SOURCES = tk-example.c
-tk_example_CPPFLAGS = $(AM_CPPFLAGS)
-tk_example_CPPFLAGS += $(uterus_CFLAGS)
-tk_example_CPPFLAGS += $(unserding_CFLAGS)
-tk_example_LDFLAGS = $(AM_LDFLAGS)
-tk_example_LDFLAGS += $(unserding_LIBS)
-
-noinst_PROGRAMS += annul-pf
-annul_pf_SOURCES = annul-pf.c
-annul_pf_SOURCES += iso4217.c iso4217.h
-annul_pf_SOURCES += ccy-graph.h
-annul_pf_CPPFLAGS = $(AM_CPPFLAGS)
-annul_pf_CPPFLAGS += $(uterus_CFLAGS)
-annul_pf_CPPFLAGS += $(unserding_CFLAGS)
-annul_pf_LDFLAGS = $(AM_LDFLAGS)
-annul_pf_LDFLAGS += $(unserding_LIBS)
-annul_pf_LDADD =
-annul_pf_LDADD += -lm
-
-if HAVE_TWSAPI
-if HAVE_LIBEV
-noinst_PROGRAMS += annul-virtfx
-annul_virtfx_SOURCES = annul-virtfx.cpp
-annul_virtfx_SOURCES += gq.c gq.h
-annul_virtfx_CPPFLAGS = $(AM_CPPFLAGS)
-annul_virtfx_CPPFLAGS += $(uterus_CFLAGS)
-annul_virtfx_CPPFLAGS += $(twsapi_CFLAGS)
-annul_virtfx_CPPFLAGS += $(libev_CFLAGS)
-annul_virtfx_LDFLAGS = $(AM_LDFLAGS)
-annul_virtfx_LDFLAGS += $(uterus_LIBS)
-annul_virtfx_LDFLAGS += $(twsapi_LIBS) -lstdc++
-annul_virtfx_LDFLAGS += $(libev_LIBS)
-annul_virtfx_LDADD =
-annul_virtfx_LDADD += -lm
-endif  HAVE_LIBEV
-endif  HAVE_TWSAPI
-BUILT_SOURCES += annul-virtfx-clo.c annul-virtfx-clo.h
 
 
 noinst_PROGRAMS += ccy-graph

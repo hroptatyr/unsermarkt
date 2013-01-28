@@ -215,7 +215,7 @@ um_pack_brag(ud_sock_t s, const struct um_qmeta_s msg[static 1])
 	return ud_pack_msg(
 		s, (struct ud_msg_s){
 			.svc = UTE_QMETA,
-			.data = &msg,
+			.data = &wr,
 			.dlen = offsetof(struct __brag_wire_s, symuri) +
 				wr.syz + wr.urz,
 		});

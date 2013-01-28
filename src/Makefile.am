@@ -41,6 +41,8 @@ oq_CPPFLAGS += $(unserding_CFLAGS) $(uterus_CFLAGS)
 
 if HAVE_SQLITE
 noinst_PROGRAMS += uschi
+uschi_SOURCES = uschi.c uschi.h
+uschi_SOURCES += instr.h
 uschi_CPPFLAGS = $(AM_CPPFLAGS) -DSTANDALONE
 uschi_CPPFLAGS += $(sqlite_CFLAGS)
 uschi_CPPFLAGS += $(unserding_CFLAGS)

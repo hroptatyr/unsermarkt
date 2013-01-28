@@ -63,6 +63,13 @@
 #include "boobs.h"
 #include "nifty.h"
 
+struct __brag_wire_s {
+	uint16_t idx;
+	uint8_t syz;
+	uint8_t urz;
+	char symuri[256 - sizeof(uint32_t)];
+};
+
 
 /* helpers */
 static inline size_t
@@ -185,8 +192,42 @@ __pr_cdl(char *tgt, scom_t st)
 
 
 /* packing service */
-#if !defined UNSERMON_DSO
-#endif	/* UNSERMON_DSO */
+int
+um_pack_brag(ud_sock_t s, const struct um_qmeta_s msg[static 1])
+{
+	struct __brag_wire_s wr = {
+		.idx = htobe16((uint16_t)msg->idx),
+		.syz = (uint8_t)msg->symlen,
+		.urz = (uint8_t)msg->urilen,
+	};
+	memcpy(wr.symuri, msg->sym, wr.syz);
+	memcpy(wr.symuri + wr.syz, msg->uri, wr.urz);
+	return ud_pack_msg(
+		s, (struct ud_msg_s){
+			.svc = UTE_QMETA,
+			.data = &msg,
+			.dlen = offsetof(struct __brag_wire_s, symuri) +
+				wr.syz + wr.urz,
+		});
+}
+
+int
+um_chck_msg_brag(
+	struct um_qmeta_s *restrict tgt, const struct ud_msg_s msg[static 1])
+{
+	const struct __brag_wire_s *wr = msg->data;
+
+	if ((size_t)wr->syz + (size_t)wr->urz > sizeof(wr->symuri)) {
+		/* shouldn't be */
+		return -1;
+	}
+	tgt->idx = be16toh(wr->idx);
+	tgt->symlen = wr->syz;
+	tgt->sym = wr->symuri;
+	tgt->urilen = wr->urz;
+	tgt->uri = wr->symuri + tgt->symlen;
+	return 0;
+}
 
 
 /* monitor service */
@@ -196,27 +237,21 @@ mon_dec_7572(
 	char *restrict p, size_t z, ud_svc_t UNUSED(svc),
 	const struct ud_msg_s m[static 1])
 {
-	struct __brag_wire_s {
-		uint16_t idx;
-		uint8_t syz;
-		uint8_t urz;
-		char symuri[256 - sizeof(uint32_t)];
-	};
-	const struct __brag_wire_s *msg = m->data;
+	struct um_qmeta_s msg[1];
 	char *restrict q = p;
 
-	if ((size_t)msg->syz + (size_t)msg->urz > sizeof(msg->symuri)) {
+	if (um_chck_msg_brag(msg, m) < 0) {
 		/* shouldn't be */
 		return 0;
 	}
 
-	q += snprintf(q, z - (q - p), "%hu\t", htobe16(msg->idx));
-	memcpy(q, msg->symuri, msg->syz);
-	q += msg->syz;
+	q += snprintf(q, z - (q - p), "%u\t", msg->idx);
+	memcpy(q, msg->sym, msg->symlen);
+	q += msg->symlen;
 
 	*q++ = '\t';
-	memcpy(q, msg->symuri + msg->syz, msg->urz);
-	q += msg->urz;
+	memcpy(q, msg->uri, msg->urilen);
+	q += msg->urilen;
 	return q - p;
 }
 

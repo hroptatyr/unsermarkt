@@ -2,14 +2,14 @@
 
 AM_CPPFLAGS = -D_POSIX_C_SOURCE=200112L -D_XOPEN_SOURCE=600 -D_BSD_SOURCE
 AM_LDFLAGS =
+AM_MODFLAGS = -module -avoid-version
 
 headerdir = $(includedir)/unserding
-moddir = $(libdir)/unserding
 
 bin_PROGRAMS =
 noinst_PROGRAMS =
 lib_LTLIBRARIES =
-mod_LTLIBRARIES =
+unsermod_LTLIBRARIES =
 noinst_LTLIBRARIES =
 noinst_HEADERS =
 header_HEADERS =
@@ -22,48 +22,27 @@ noinst_HEADERS += boobs.h
 noinst_HEADERS += nifty.h
 noinst_HEADERS += ud-sock.h
 noinst_HEADERS += wrp-debug.h
-
-if HAVE_MXML
-if HAVE_SQLITE
-mod_LTLIBRARIES += dso-unsermarkt.la
-dso_unsermarkt_la_LDFLAGS = -module
-dso_unsermarkt_la_CPPFLAGS = $(AM_CPPFLAGS) -D_GNU_SOURCE
-dso_unsermarkt_la_SOURCES = dso-unsermarkt.c
-dso_unsermarkt_la_SOURCES += md5.c md5.h
-dso_unsermarkt_la_SOURCES += htws.c htws.h
-dso_unsermarkt_la_SOURCES += oq.c oq.h
-dso_unsermarkt_la_SOURCES += uschi.c uschi.h
-dso_unsermarkt_la_SOURCES += order.h
-dso_unsermarkt_la_SOURCES += instr.h
-dso_unsermarkt_la_SOURCES += match.h
-dso_unsermarkt_la_SOURCES += um-conn.h
-dso_unsermarkt_la_SOURCES += um-stamp.h
-dso_unsermarkt_la_SOURCES += um-types.h
-dso_unsermarkt_la_SOURCES += um-xml.h
-dso_unsermarkt_la_CPPFLAGS += $(unserding_CFLAGS)
-dso_unsermarkt_la_CPPFLAGS += $(uterus_CFLAGS)
-dso_unsermarkt_la_CPPFLAGS += $(mxml_CFLAGS)
-dso_unsermarkt_la_CPPFLAGS += $(sqlite_CFLAGS)
-dso_unsermarkt_la_LDFLAGS += $(mxml_LIBS)
-dso_unsermarkt_la_LDFLAGS += $(sqlite_LIBS)
-EXTRA_dso_unsermarkt_la_SOURCES =
-EXTRA_dso_unsermarkt_la_SOURCES += con6ity.c
-EXTRA_dso_unsermarkt_la_SOURCES += mmls.c
-endif  ## HAVE_SQLITE
-endif  ## HAVE_MXML
+noinst_HEADERS += um-types.h
 
 noinst_PROGRAMS += umoc
+umoc_SOURCES = umoc.c
+umoc_SOURCES += order.h
 umoc_LDFLAGS = $(unserding_LDFLAGS)
 umoc_CPPFLAGS = $(AM_CPPFLAGS) -D_GNU_SOURCE
 umoc_CPPFLAGS += $(unserding_CFLAGS)
 umoc_CPPFLAGS += $(uterus_CFLAGS)
 
 noinst_PROGRAMS += oq
+oq_SOURCES = oq.c oq.h
+oq_SOURCES += match.h
+EXTRA_oq_SOURCES = mmls.c
 oq_CPPFLAGS = $(AM_CPPFLAGS) -DSTANDALONE
 oq_CPPFLAGS += $(unserding_CFLAGS) $(uterus_CFLAGS)
 
 if HAVE_SQLITE
 noinst_PROGRAMS += uschi
+uschi_SOURCES = uschi.c uschi.h
+uschi_SOURCES += instr.h
 uschi_CPPFLAGS = $(AM_CPPFLAGS) -DSTANDALONE
 uschi_CPPFLAGS += $(sqlite_CFLAGS)
 uschi_CPPFLAGS += $(unserding_CFLAGS)
@@ -141,9 +120,10 @@ BUILT_SOURCES += um-quosnp-clo.c um-quosnp-clo.h
 bin_PROGRAMS += um-xmit
 um_xmit_SOURCES = um-xmit.c
 BUILT_SOURCES += um-xmit-clo.c um-xmit-clo.h
+um_xmit_SOURCES += svc-uterus.c svc-uterus.h
 um_xmit_CPPFLAGS = $(AM_CPPFLAGS)
 um_xmit_CPPFLAGS += $(uterus_CFLAGS)
-um_xmit_CPPFLAGS += $(unserding_CFLAGS)
+um_xmit_CPPFLAGS += $(unserding_CFLAGS) -DUD_NEW_API
 um_xmit_LDFLAGS = $(AM_LDFLAGS)
 um_xmit_LDFLAGS += $(uterus_LIBS)
 um_xmit_LDFLAGS += $(unserding_LIBS)
@@ -162,79 +142,18 @@ ox_matchall_LDFLAGS += $(libev_LIBS)
 endif  ## HAVE_LIBEV
 BUILT_SOURCES += ox-matchall-clo.c ox-matchall-clo.h
 
-if HAVE_TWSTOOLS
-noinst_LTLIBRARIES += tws-snarf.la
-tws_snarf_la_LDFLAGS = -module -rpath /none
-tws_snarf_la_SOURCES = tws-snarf.cpp
-tws_snarf_la_CPPFLAGS = $(AM_CPPFLAGS)
-tws_snarf_la_CPPFLAGS += $(twstools_CFLAGS)
-tws_snarf_la_CPPFLAGS += $(uterus_CFLAGS)
-tws_snarf_la_CPPFLAGS += $(unserding_CFLAGS)
-tws_snarf_la_LDFLAGS += $(unserding_LIBS)
-## grrr, automake passes --tag=CXX to libtool
-
-noinst_LTLIBRARIES += tws-order.la
-tws_order_la_LDFLAGS = -module -rpath /none
-tws_order_la_SOURCES = tws-order.cpp
-tws_order_la_SOURCES += iso4217.c iso4217.h
-tws_order_la_CPPFLAGS = $(AM_CPPFLAGS)
-tws_order_la_CPPFLAGS += $(twstools_CFLAGS)
-tws_order_la_CPPFLAGS += $(uterus_CFLAGS)
-tws_order_la_CPPFLAGS += $(unserding_CFLAGS)
-tws_order_la_LDFLAGS += $(unserding_LIBS)
-endif  ## HAVE_TWSTOOLS
-
 if HAVE_LIBEV
 bin_PROGRAMS += um-netdania
 um_netdania_SOURCES = um-netdania.c um-netdania.h um-netdania-clo.ggo
 um_netdania_CPPFLAGS = $(AM_CPPFLAGS)
 um_netdania_CPPFLAGS += $(uterus_CFLAGS)
-um_netdania_CPPFLAGS += $(unserding_CFLAGS)
+um_netdania_CPPFLAGS += $(unserding_CFLAGS) -DUD_NEW_API
 um_netdania_CPPFLAGS += $(libev_CFLAGS)
 um_netdania_LDFLAGS = $(AM_LDFLAGS)
 um_netdania_LDFLAGS += $(unserding_LIBS)
 um_netdania_LDFLAGS += $(libev_LIBS)
 endif  ## HAVE_LIBEV
 BUILT_SOURCES += um-netdania-clo.c um-netdania-clo.h
-
-noinst_PROGRAMS += tk-example
-tk_example_SOURCES = tk-example.c
-tk_example_CPPFLAGS = $(AM_CPPFLAGS)
-tk_example_CPPFLAGS += $(uterus_CFLAGS)
-tk_example_CPPFLAGS += $(unserding_CFLAGS)
-tk_example_LDFLAGS = $(AM_LDFLAGS)
-tk_example_LDFLAGS += $(unserding_LIBS)
-
-noinst_PROGRAMS += annul-pf
-annul_pf_SOURCES = annul-pf.c
-annul_pf_SOURCES += iso4217.c iso4217.h
-annul_pf_SOURCES += ccy-graph.h
-annul_pf_CPPFLAGS = $(AM_CPPFLAGS)
-annul_pf_CPPFLAGS += $(uterus_CFLAGS)
-annul_pf_CPPFLAGS += $(unserding_CFLAGS)
-annul_pf_LDFLAGS = $(AM_LDFLAGS)
-annul_pf_LDFLAGS += $(unserding_LIBS)
-annul_pf_LDADD =
-annul_pf_LDADD += -lm
-
-if HAVE_TWSAPI
-if HAVE_LIBEV
-noinst_PROGRAMS += annul-virtfx
-annul_virtfx_SOURCES = annul-virtfx.cpp
-annul_virtfx_SOURCES += gq.c gq.h
-annul_virtfx_CPPFLAGS = $(AM_CPPFLAGS)
-annul_virtfx_CPPFLAGS += $(uterus_CFLAGS)
-annul_virtfx_CPPFLAGS += $(twsapi_CFLAGS)
-annul_virtfx_CPPFLAGS += $(libev_CFLAGS)
-annul_virtfx_LDFLAGS = $(AM_LDFLAGS)
-annul_virtfx_LDFLAGS += $(uterus_LIBS)
-annul_virtfx_LDFLAGS += $(twsapi_LIBS) -lstdc++
-annul_virtfx_LDFLAGS += $(libev_LIBS)
-annul_virtfx_LDADD =
-annul_virtfx_LDADD += -lm
-endif  HAVE_LIBEV
-endif  HAVE_TWSAPI
-BUILT_SOURCES += annul-virtfx-clo.c annul-virtfx-clo.h
 
 
 noinst_PROGRAMS += ccy-graph
@@ -247,9 +166,10 @@ noinst_PROGRAMS += xross-quo
 xross_quo_SOURCES = xross-quo.c xross-quo-clo.ggo
 xross_quo_SOURCES += ccy-graph.h
 xross_quo_SOURCES += iso4217.c iso4217.h
+xross_quo_SOURCES += svc-uterus.c svc-uterus.h
 xross_quo_CPPFLAGS = $(AM_CPPFLAGS) -D_GNU_SOURCE
 xross_quo_CPPFLAGS += $(libev_CFLAGS)
-xross_quo_CPPFLAGS += $(unserding_CFLAGS)
+xross_quo_CPPFLAGS += $(unserding_CFLAGS) -DUD_NEW_API
 xross_quo_CPPFLAGS += $(uterus_CFLAGS)
 xross_quo_LDFLAGS = $(AM_LDFLAGS)
 xross_quo_LDFLAGS += $(uterus_LIBS)
@@ -257,6 +177,13 @@ xross_quo_LDFLAGS += $(unserding_LIBS)
 xross_quo_LDFLAGS += $(libev_LIBS)
 endif  HAVE_LIBEV
 BUILT_SOURCES += xross-quo-clo.c xross-quo-clo.h
+
+unsermod_LTLIBRARIES += svc-uterus.la
+svc_uterus_la_SOURCES = svc-uterus.c svc-uterus.h
+svc_uterus_la_CPPFLAGS = $(AM_CPPFLAGS) -DUNSERMON_DSO
+svc_uterus_la_CPPFLAGS += -DUD_NEW_API
+svc_uterus_la_CPPFLAGS += $(unserding_CFLAGS) -DUD_NEW_API
+svc_uterus_la_LDFLAGS = $(AM_LDFLAGS) $(XCCLDFLAGS) $(AM_MODFLAGS)
 
 
 ## our rule for gengetopt

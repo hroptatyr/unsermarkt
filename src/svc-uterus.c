@@ -202,12 +202,20 @@ um_pack_brag(ud_sock_t s, const struct um_qmeta_s msg[static 1])
 		.syz = (uint8_t)msg->symlen,
 		.urz = (uint8_t)msg->urilen,
 	};
-	memcpy(wr.symuri, msg->sym, wr.syz);
-	memcpy(wr.symuri + wr.syz, msg->uri, wr.urz);
+	if (LIKELY(msg->sym != NULL)) {
+		memcpy(wr.symuri, msg->sym, wr.syz);
+	} else {
+		wr.syz = 0U;
+	}
+	if (LIKELY(msg->uri != NULL)) {
+		memcpy(wr.symuri + wr.syz, msg->uri, wr.urz);
+	} else {
+		wr.urz = 0U;
+	}
 	return ud_pack_msg(
 		s, (struct ud_msg_s){
 			.svc = UTE_QMETA,
-			.data = &msg,
+			.data = &wr,
 			.dlen = offsetof(struct __brag_wire_s, symuri) +
 				wr.syz + wr.urz,
 		});
@@ -224,10 +232,16 @@ um_chck_msg_brag(
 		return -1;
 	}
 	tgt->idx = be16toh(wr->idx);
-	tgt->symlen = wr->syz;
-	tgt->sym = wr->symuri;
-	tgt->urilen = wr->urz;
-	tgt->uri = wr->symuri + tgt->symlen;
+	if (LIKELY((tgt->symlen = wr->syz))) {
+		tgt->sym = wr->symuri;
+	} else {
+		tgt->sym = NULL;
+	}
+	if (LIKELY((tgt->urilen = wr->urz))) {
+		tgt->uri = wr->symuri + tgt->symlen;
+	} else {
+		tgt->uri = NULL;
+	}
 	return 0;
 }
 
@@ -248,12 +262,16 @@ mon_dec_7572(
 	}
 
 	q += snprintf(q, z - (q - p), "%u\t", msg->idx);
-	memcpy(q, msg->sym, msg->symlen);
-	q += msg->symlen;
+	if (LIKELY(msg->sym != NULL)) {
+		memcpy(q, msg->sym, msg->symlen);
+		q += msg->symlen;
+	}
 
 	*q++ = '\t';
-	memcpy(q, msg->uri, msg->urilen);
-	q += msg->urilen;
+	if (LIKELY(msg->uri != NULL)) {
+		memcpy(q, msg->uri, msg->urilen);
+		q += msg->urilen;
+	}
 	return q - p;
 }
 

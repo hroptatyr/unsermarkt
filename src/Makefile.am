@@ -133,28 +133,6 @@ ox_matchall_LDFLAGS += $(libev_LIBS)
 endif  ## HAVE_LIBEV
 BUILT_SOURCES += ox-matchall-clo.c ox-matchall-clo.h
 
-if HAVE_TWSTOOLS
-noinst_LTLIBRARIES += tws-snarf.la
-tws_snarf_la_LDFLAGS = -module -rpath /none
-tws_snarf_la_SOURCES = tws-snarf.cpp
-tws_snarf_la_CPPFLAGS = $(AM_CPPFLAGS)
-tws_snarf_la_CPPFLAGS += $(twstools_CFLAGS)
-tws_snarf_la_CPPFLAGS += $(uterus_CFLAGS)
-tws_snarf_la_CPPFLAGS += $(unserding_CFLAGS)
-tws_snarf_la_LDFLAGS += $(unserding_LIBS)
-## grrr, automake passes --tag=CXX to libtool
-
-noinst_LTLIBRARIES += tws-order.la
-tws_order_la_LDFLAGS = -module -rpath /none
-tws_order_la_SOURCES = tws-order.cpp
-tws_order_la_SOURCES += iso4217.c iso4217.h
-tws_order_la_CPPFLAGS = $(AM_CPPFLAGS)
-tws_order_la_CPPFLAGS += $(twstools_CFLAGS)
-tws_order_la_CPPFLAGS += $(uterus_CFLAGS)
-tws_order_la_CPPFLAGS += $(unserding_CFLAGS)
-tws_order_la_LDFLAGS += $(unserding_LIBS)
-endif  ## HAVE_TWSTOOLS
-
 if HAVE_LIBEV
 bin_PROGRAMS += um-netdania
 um_netdania_SOURCES = um-netdania.c um-netdania.h um-netdania-clo.ggo

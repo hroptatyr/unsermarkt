@@ -22,8 +22,11 @@ noinst_HEADERS += boobs.h
 noinst_HEADERS += nifty.h
 noinst_HEADERS += ud-sock.h
 noinst_HEADERS += wrp-debug.h
+noinst_HEADERS += um-types.h
 
 noinst_PROGRAMS += umoc
+umoc_SOURCES = umoc.c
+umoc_SOURCES += order.h
 umoc_LDFLAGS = $(unserding_LDFLAGS)
 umoc_CPPFLAGS = $(AM_CPPFLAGS) -D_GNU_SOURCE
 umoc_CPPFLAGS += $(unserding_CFLAGS)

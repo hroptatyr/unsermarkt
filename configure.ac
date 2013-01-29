@@ -71,6 +71,9 @@ AC_CHECK_HEADERS([netinet/in.h])
 AC_CHECK_HEADERS([sys/un.h])
 AC_CHECK_HEADERS([errno.h])
 
+## memory
+AC_CHECK_HEADERS([sys/mman.h])
+
 ## date time
 SXE_CHECK_METRONOME
 

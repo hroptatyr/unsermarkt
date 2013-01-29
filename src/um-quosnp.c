@@ -87,7 +87,6 @@
 #endif	/* HAVE_LIBFIXC_FIX_H */
 
 #include <unserding/unserding.h>
-#include <unserding/protocore.h>
 
 #define DEFINE_GORY_STUFF
 #if defined HAVE_UTERUS_UTERUS_H
@@ -100,6 +99,7 @@
 # error uterus headers are mandatory
 #endif	/* HAVE_UTERUS_UTERUS_H || HAVE_UTERUS_H */
 
+#include "svc-uterus.h"
 #include "nifty.h"
 #include "ud-sock.h"
 #include "gq.h"
@@ -133,6 +133,8 @@ static FILE *logerr;
 typedef size_t cli_t;
 typedef intptr_t hx_t;
 
+typedef const struct sockaddr_in6 *my_sockaddr_t;
+
 typedef struct urifq_s *urifq_t;
 typedef struct urifi_s *urifi_t;
 
@@ -140,13 +142,13 @@ typedef struct ev_io_q_s *ev_io_q_t;
 typedef struct ev_io_i_s *ev_io_i_t;
 
 struct key_s {
-	ud_sockaddr_t sa;
+	my_sockaddr_t sa;
 	uint16_t id;
 };
 
 /* the client */
 struct cli_s {
-	union ud_sockaddr_u sa __attribute__((aligned(16)));
+	struct sockaddr_storage sa __attribute__((aligned(16)));
 	uint16_t id;
 	uint16_t tgtid;
 
@@ -417,11 +419,11 @@ resz_cli(size_t nu)
 }
 
 static int
-sa_eq_p(ud_const_sockaddr_t sa1, ud_const_sockaddr_t sa2)
+sa_eq_p(my_sockaddr_t sa1, my_sockaddr_t sa2)
 {
-#define s6a8(x)		(x)->sa6.sin6_addr.s6_addr8
-#define s6a16(x)	(x)->sa6.sin6_addr.s6_addr16
-#define s6a32(x)	(x)->sa6.sin6_addr.s6_addr32
+#define s6a8(x)		(x)->sin6_addr.s6_addr8
+#define s6a16(x)	(x)->sin6_addr.s6_addr16
+#define s6a32(x)	(x)->sin6_addr.s6_addr32
 #if SIZEOF_INT == 4
 # define s6a		s6a32
 #elif SIZEOF_INT == 2
@@ -429,8 +431,8 @@ sa_eq_p(ud_const_sockaddr_t sa1, ud_const_sockaddr_t sa2)
 #else
 # error sockaddr comparison will fail
 #endif	/* sizeof(long int) */
-	return sa1->sa6.sin6_family == sa2->sa6.sin6_family &&
-		sa1->sa6.sin6_port == sa2->sa6.sin6_port &&
+	return sa1->sin6_family == sa2->sin6_family &&
+		sa1->sin6_port == sa2->sin6_port &&
 #if SIZEOF_INT <= 4
 		s6a(sa1)[0] == s6a(sa2)[0] &&
 		s6a(sa1)[1] == s6a(sa2)[1] &&
@@ -450,7 +452,7 @@ static hx_t __attribute__((pure, const))
 compute_hx(struct key_s k)
 {
 	/* we need collision stats from a production run */
-	return k.sa->sa6.sin6_family ^ k.sa->sa6.sin6_port ^
+	return k.sa->sin6_family ^ k.sa->sin6_port ^
 		s6a32(k.sa)[0] ^
 		s6a32(k.sa)[1] ^
 		s6a32(k.sa)[2] ^
@@ -466,7 +468,7 @@ find_cli(struct key_s k)
 	for (size_t i = 0; i < ncli; i++) {
 		if (chx[i] == khx &&
 		    cli[i].id == k.id &&
-		    sa_eq_p(&cli[i].sa, k.sa)) {
+		    sa_eq_p((my_sockaddr_t)&cli[i].sa, k.sa)) {
 			return i + 1;
 		}
 	}
@@ -482,7 +484,7 @@ add_cli(struct key_s k)
 		resz_cli(alloc_cli + 4096);
 	}
 
-	cli[idx].sa = *k.sa;
+	cli[idx].sa = *(const struct sockaddr_storage*)k.sa;
 	cli[idx].id = k.id;
 	cli[idx].tgtid = 0;
 	cli[idx].last_seen = 0;
@@ -587,13 +589,13 @@ make_tcp(void)
 }
 
 static int
-sock_listener(int s, ud_sockaddr_t sa)
+sock_listener(int s, my_sockaddr_t sa)
 {
 	if (s < 0) {
 		return s;
 	}
 
-	if (bind(s, &sa->sa, sizeof(*sa)) < 0) {
+	if (bind(s, (const struct sockaddr*)sa, sizeof(*sa)) < 0) {
 		return -1;
 	}
 
@@ -933,119 +935,110 @@ massage_fetch_uri_rpl(const char *buf, size_t bsz, uint16_t idx)
 }
 
 static void
-snarf_meta(job_t j)
+snarf_meta(const struct ud_msg_s *msg, const struct ud_auxmsg_s *aux)
 {
-	char *pbuf = UDPC_PAYLOAD(JOB_PACKET(j).pbuf);
-	size_t plen = UDPC_PAYLLEN(JOB_PACKET(j).plen);
-	struct udpc_seria_s ser[1];
+	struct um_qmeta_s brg[1];
 	struct key_s k = {
-		.sa = &j->sa,
+		.sa = (const void*)aux->src,
 	};
-	uint8_t tag;
-	struct timeval tv[1];
+	int peruse_uri = 0;
+	uint16_t id;
+	cli_t c;
 
-	/* just to make sure that we're not late for dinner tonight */
-	gettimeofday(tv, NULL);
+	if (UNLIKELY(um_chck_msg_brag(brg, msg) < 0)) {
+		return;
+	} else if (UNLIKELY((k.id = (uint16_t)brg->idx) == 0U)) {
+		return;
+	} else if (UNLIKELY(brg->sym == NULL)) {
+		return;
+	}
 
-	udpc_seria_init(ser, pbuf, plen);
-	while (ser->msgoff < plen && (tag = udpc_seria_tag(ser))) {
-		cli_t c;
-		uint16_t id;
-		int peruse_uri = 0;
+	/* find the cli, if any */
+	if ((c = find_cli(k)) == 0) {
+		c = add_cli(k);
+	}
+	/* check the symbol */
+	if (UNLIKELY(brg->symlen > sizeof(CLI(c)->sym))) {
+		brg->symlen = sizeof(CLI(c)->sym);
+	}
+	/* fill in symbol */
+	memcpy(CLI(c)->sym, brg->sym, brg->symlen);
 
-		if (UNLIKELY(tag != UDPC_TYPE_UI16)) {
-			break;
-		}
-		/* otherwise find us the id */
-		k.id = udpc_seria_des_ui16(ser);
-		/* and the cli, if any */
-		if ((c = find_cli(k)) == 0) {
-			c = add_cli(k);
-		}
-		/* next up is the symbol */
-		tag = udpc_seria_tag(ser);
-		if (UNLIKELY(tag != UDPC_TYPE_STR || c == 0)) {
-			break;
-		}
-		/* fuck error checking */
-		udpc_seria_des_str_into(CLI(c)->sym, sizeof(CLI(c)->sym), ser);
+	/* check if we know about the symbol */
+	if ((id = ute_sym2idx(u, CLI(c)->sym)) == CLI(c)->tgtid) {
+		/* yep, known and it's the same id, brilliant */
+		;
+	} else if (CLI(c)->tgtid) {
+		/* known but the wrong id */
+		UMQS_DEBUG("reass %hu -> %hu\n", CLI(c)->tgtid, id);
+		CLI(c)->tgtid = id;
+		peruse_uri = 1;
+	} else /*if (CLI(c)->tgtid == 0)*/ {
+		/* unknown */
+		UMQS_DEBUG("ass'ing %s -> %hu\n", CLI(c)->sym, id);
+		CLI(c)->tgtid = id;
+		ute_bang_symidx(u, CLI(c)->sym, CLI(c)->tgtid);
+		peruse_uri = 1;
+	}
 
-		/* check if we know about the symbol */
-		if ((id = ute_sym2idx(u, CLI(c)->sym)) == CLI(c)->tgtid) {
-			/* yep, known and it's the same id, brilliant */
-			;
-		} else if (CLI(c)->tgtid) {
-			/* known but the wrong id */
-			UMQS_DEBUG("reass %hu -> %hu\n", CLI(c)->tgtid, id);
-			CLI(c)->tgtid = id;
-			peruse_uri = 1;
-		} else /*if (CLI(c)->tgtid == 0)*/ {
-			/* unknown */
-			UMQS_DEBUG("ass'ing %s -> %hu\n", CLI(c)->sym, id);
-			CLI(c)->tgtid = id;
-			ute_bang_symidx(u, CLI(c)->sym, CLI(c)->tgtid);
-			peruse_uri = 1;
-		}
-
-		/* leave a last_seen note */
+	/* leave a last_seen note */
+	{
+		struct timeval tv[1];
+		gettimeofday(tv, NULL);
 		CLI(c)->last_seen = tv->tv_sec;
+	}
 
-		/* next up is brag uri, possibly */
-		tag = udpc_seria_tag(ser);
-		if (LIKELY(tag == UDPC_TYPE_STR)) {
-			char uri[256];
-			size_t nuri;
+	/* next up is brag uri, possibly */
+	if (peruse_uri && brg->uri != NULL) {
+		urifi_t fi = make_uri();
 
-			nuri = udpc_seria_des_str_into(uri, sizeof(uri), ser);
-
-			if (peruse_uri) {
-				urifi_t fi = make_uri();
-
-				UMQS_DEBUG("checking out %s ...\n", uri);
-				memcpy(fi->uri, uri, nuri + 1);
-				fi->idx = id;
-				push_uri(fi);
-			}
-		}
+		memcpy(fi->uri, brg->uri, brg->urilen);
+		fi->uri[brg->urilen] = '\0';
+		fi->idx = id;
+		UMQS_DEBUG("checking out %s ...\n", fi->uri);
+		push_uri(fi);
 	}
 	return;
 }
 
 static void
-snarf_data(job_t j)
+snarf_data(const struct ud_msg_s *msg, const struct ud_auxmsg_s *aux)
 {
-	char *pbuf = UDPC_PAYLOAD(JOB_PACKET(j).pbuf);
-	size_t plen = UDPC_PAYLLEN(JOB_PACKET(j).plen);
-	struct key_s k = {
-		.sa = &j->sa,
-	};
-	struct timeval tv[1];
+	cli_t c;
 
-	if (UNLIKELY(plen == 0)) {
+	/* check how valid the message is */
+	switch (msg->dlen) {
+	case 1 * sizeof(struct sndwch_s):
+	case 2 * sizeof(struct sndwch_s):
+	case 4 * sizeof(struct sndwch_s):
+		break;
+	default:
+		/* out of range */
 		return;
 	}
 
-	/* lest we miss our flight */
-	gettimeofday(tv, NULL);
-
-	for (scom_thdr_t sp = (void*)pbuf, ep = (void*)(pbuf + plen);
-	     sp < ep;
-	     sp += scom_tick_size(sp) *
-		     (sizeof(struct sndwch_s) / sizeof(*sp))) {
-		cli_t c;
-
-		k.id = scom_thdr_tblidx(sp);
+	/* find the cli associated */
+	{
+		struct key_s k = {
+			.id = scom_thdr_tblidx(AS_SCOM(msg->data)),
+			.sa = (my_sockaddr_t)aux->src,
+		};
 		if ((c = find_cli(k)) == 0) {
 			c = add_cli(k);
 		}
 		if (CLI(c)->tgtid == 0) {
-			continue;
+			/* don't do shit without a name */
+			return;
 		}
+	}
 
-		/* update our state table */
-		bang_q(CLI(c)->tgtid, sp);
+	/* update our state table */
+	bang_q(CLI(c)->tgtid, msg->data);
 
-		/* leave a last_seen note */
+	/* leave a last_seen note */
+	{
+		struct timeval tv[1];
+		gettimeofday(tv, NULL);
 		CLI(c)->last_seen = tv->tv_sec;
 	}
 	return;
@@ -1096,7 +1089,7 @@ static size_t brag_uri_offset = 0;
 #define MASS_QUOT	(0xffff)
 
 static int
-make_brag_uri(ud_sockaddr_t sa, socklen_t UNUSED(sa_len))
+make_brag_uri(my_sockaddr_t sa, socklen_t UNUSED(sa_len))
 {
 	struct utsname uts[1];
 	char dnsdom[64];
@@ -1113,7 +1106,7 @@ make_brag_uri(ud_sockaddr_t sa, socklen_t UNUSED(sa_len))
 
 	len = snprintf(
 		curs, rest, "%s.%s:%hu/",
-		uts->nodename, dnsdom, ntohs(sa->sa6.sin6_port));
+		uts->nodename, dnsdom, ntohs(sa->sin6_port));
 
 	if (len > 0) {
 		brag_uri_offset = uri_host_offs + len - 1;
@@ -1677,42 +1670,28 @@ check_urifq(EV_P)
 static void
 mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
 {
-	ssize_t nrd;
-	/* a job */
-	struct job_s j[1];
-	socklen_t lsa = sizeof(j->sa);
+	struct ud_msg_s msg[1];
+	ud_sock_t s = w->data;
 
-	j->sock = w->fd;
-	nrd = recvfrom(w->fd, j->buf, sizeof(j->buf), 0, &j->sa.sa, &lsa);
+	while (ud_chck_msg(msg, s) >= 0) {
+		struct ud_auxmsg_s aux[1];
 
-	/* handle the reading */
-	if (UNLIKELY(nrd < 0)) {
-		goto out_revok;
-	} else if (nrd == 0) {
-		/* no need to bother */
-		goto out_revok;
-	} else if (!udpc_pkt_valid_p((ud_packet_t){nrd, j->buf})) {
-		goto out_revok;
+		if (ud_get_aux(aux, s) < 0) {
+			continue;
+		}
+
+		switch (msg->svc) {
+		case UTE_QMETA:
+			snarf_meta(msg, aux);
+			break;
+
+		case UTE_CMD:
+			snarf_data(msg, aux);
+			break;
+		default:
+			break;
+		}
 	}
-
-	/* preapre a job */
-	j->blen = nrd;
-
-	/* intercept special channels */
-	switch (udpc_pkt_cmd(JOB_PACKET(j))) {
-	case QMETA_RPL:
-		snarf_meta(j);
-		break;
-
-	case UTE:
-	case UTE_RPL:
-		snarf_data(j);
-		break;
-	default:
-		break;
-	}
-
-out_revok:
 	return;
 }
 
@@ -1851,14 +1830,14 @@ clo:
 static void
 dccp_cb(EV_P_ ev_io *w, int UNUSED(re))
 {
-	union ud_sockaddr_u sa;
-	socklen_t sasz = sizeof(sa);
+	struct sockaddr_storage sa[1];
+	socklen_t sz = sizeof(*sa);
 	ev_io_i_t qio;
 	int s;
 
 	UMQS_DEBUG("interesting activity on %d\n", w->fd);
 
-	if ((s = accept(w->fd, &sa.sa, &sasz)) < 0) {
+	if ((s = accept(w->fd, (struct sockaddr*)sa, &sz)) < 0) {
 		return;
 	}
 
@@ -2022,30 +2001,29 @@ main(int argc, char *argv[])
 	nbeef = argi->beef_given + 1;
 	beef = malloc(nbeef * sizeof(*beef));
 
-	/* attach a multicast listener
-	 * we add this quite late so that it's unlikely that a plethora of
-	 * events has already been injected into our precious queue
-	 * causing the libev main loop to crash. */
+	/* attach a multicast listener for control messages */
 	{
-		int s = ud_mcast_init(UD_NETWORK_SERVICE);
-		ev_io_init(beef, mon_beef_cb, s, EV_READ);
-		ev_io_start(EV_A_ beef);
+		ud_sock_t s;
+
+		if ((s = ud_socket((struct ud_sockopt_s){UD_SUB})) != NULL) {
+			ev_io_init(beef, mon_beef_cb, s->fd, EV_READ);
+			ev_io_start(EV_A_ beef);
+		}
+		beef->data = s;
 	}
 
 	/* make a channel for http/dccp requests */
 	{
-		union ud_sockaddr_u sa = {
-			.sa6 = {
-				.sin6_family = AF_INET6,
-				.sin6_addr = in6addr_any,
-				.sin6_port = 0,
-			},
+		struct sockaddr_in6 sa = {
+			.sin6_family = AF_INET6,
+			.sin6_addr = in6addr_any,
+			.sin6_port = 0,
 		};
 		socklen_t sa_len = sizeof(sa);
 		int s;
 
 		if (argi->websvc_port_given) {
-			sa.sa6.sin6_port = htons(argi->websvc_port_arg);
+			sa.sin6_port = htons(argi->websvc_port_arg);
 		}
 
 		if ((s = make_dccp()) < 0) {
@@ -2060,7 +2038,7 @@ main(int argc, char *argv[])
 			ev_io_init(dccp, dccp_cb, s, EV_READ);
 			ev_io_start(EV_A_ dccp);
 
-			getsockname(s, &sa.sa, &sa_len);
+			getsockname(s, (struct sockaddr*)&sa, &sa_len);
 		}
 
 
@@ -2078,7 +2056,7 @@ main(int argc, char *argv[])
 			ev_io_init(dccp + 1, dccp_cb, s, EV_READ);
 			ev_io_start(EV_A_ dccp + 1);
 
-			getsockname(s, &sa.sa, &sa_len);
+			getsockname(s, (struct sockaddr*)&sa, &sa_len);
 		}
 
 		if (s >= 0) {
@@ -2091,9 +2069,17 @@ main(int argc, char *argv[])
 
 	/* go through all beef channels */
 	for (unsigned int i = 0; i < argi->beef_given; i++) {
-		int s = ud_mcast_init(argi->beef_arg[i]);
-		ev_io_init(beef + i + 1, mon_beef_cb, s, EV_READ);
-		ev_io_start(EV_A_ beef + i + 1);
+		struct ud_sockopt_s opt = {
+			UD_SUB,
+			.port = (uint16_t)argi->beef_arg[i],
+		};
+		ud_sock_t s;
+
+		if (LIKELY((s = ud_socket(opt)) != NULL)) {
+			ev_io_init(beef + i + 1, mon_beef_cb, s->fd, EV_READ);
+			ev_io_start(EV_A_ beef + i + 1);
+		}
+		beef[i + 1].data = s;
 	}
 
 	/* init cli space */
@@ -2121,9 +2107,12 @@ main(int argc, char *argv[])
 past_loop:
 	/* detaching beef channels */
 	for (size_t i = 0; i < nbeef; i++) {
-		int s = beef[i].fd;
-		ev_io_stop(EV_A_ beef + i);
-		ud_mcast_fini(s);
+		ud_sock_t s;
+
+		if ((s = beef[i].data) != NULL) {
+			ev_io_stop(EV_A_ beef + i);
+			ud_close(s);
+		}
 	}
 	/* free beef resources */
 	free(beef);

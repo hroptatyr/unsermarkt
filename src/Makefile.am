@@ -180,13 +180,13 @@ endif  HAVE_LIBEV
 BUILT_SOURCES += xross-quo-clo.c xross-quo-clo.h
 
 unsermod_LTLIBRARIES += svc-uterus.la
-unserinc_HEADERS += svc-uterus.h
 svc_uterus_la_SOURCES = svc-uterus.c svc-uterus.h
 svc_uterus_la_CPPFLAGS = $(AM_CPPFLAGS) -DUNSERMON_DSO
 svc_uterus_la_CPPFLAGS += $(unserding_CFLAGS) -DUD_NEW_API
 svc_uterus_la_LDFLAGS = $(AM_LDFLAGS) $(XCCLDFLAGS) $(AM_MODFLAGS)
 
 unsermod_LTLIBRARIES += libsvc-uterus.la
+unserinc_HEADERS += svc-uterus.h
 libsvc_uterus_la_SOURCES = svc-uterus.c svc-uterus.h
 libsvc_uterus_la_CPPFLAGS = $(AM_CPPFLAGS)
 libsvc_uterus_la_CPPFLAGS += $(unserding_CFLAGS) -DUD_NEW_API

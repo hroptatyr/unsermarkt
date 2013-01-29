@@ -180,6 +180,7 @@ endif  HAVE_LIBEV
 BUILT_SOURCES += xross-quo-clo.c xross-quo-clo.h
 
 unsermod_LTLIBRARIES += svc-uterus.la
+unserinc_HEADERS += svc-uterus.h
 svc_uterus_la_SOURCES = svc-uterus.c svc-uterus.h
 svc_uterus_la_CPPFLAGS = $(AM_CPPFLAGS) -DUNSERMON_DSO
 svc_uterus_la_CPPFLAGS += -DUD_NEW_API

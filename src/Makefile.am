@@ -62,7 +62,6 @@ endif  ## HAVE_MXML
 if HAVE_LIBEV
 bin_PROGRAMS += um-quomon
 um_quomon_SOURCES = um-quomon.c um-quomon-clo.ggo
-um_quomon_SOURCES += svc-uterus.c svc-uterus.h
 um_quomon_CPPFLAGS = $(AM_CPPFLAGS) -D_GNU_SOURCE
 um_quomon_CPPFLAGS += $(libev_CFLAGS)
 um_quomon_CPPFLAGS += $(unserding_CFLAGS) -DUD_NEW_API
@@ -72,10 +71,10 @@ um_quomon_LDFLAGS += $(AM_LDFLAGS) -lncurses
 um_quomon_LDFLAGS += $(unserding_LIBS)
 um_quomon_LDFLAGS += $(libev_LIBS)
 um_quomon_LDFLAGS += -lreadline
+um_quomon_LDFLAGS += -static libsvc-uterus.la
 
 bin_PROGRAMS += um-quodmp
 um_quodmp_SOURCES = um-quodmp.c um-quodmp-clo.ggo
-um_quodmp_SOURCES += svc-uterus.c svc-uterus.h
 um_quodmp_CPPFLAGS = $(AM_CPPFLAGS) -D_GNU_SOURCE
 um_quodmp_CPPFLAGS += $(libev_CFLAGS)
 um_quodmp_CPPFLAGS += $(unserding_CFLAGS) -DUD_NEW_API
@@ -84,6 +83,7 @@ um_quodmp_LDFLAGS = $(AM_LDFLAGS)
 um_quodmp_LDFLAGS += $(uterus_LIBS)
 um_quodmp_LDFLAGS += $(unserding_LIBS)
 um_quodmp_LDFLAGS += $(libev_LIBS)
+um_quodmp_LDFLAGS += -static libsvc-uterus.la
 
 bin_PROGRAMS += um-apfmon
 um_apfmon_SOURCES = um-apfmon.c um-apfmon-clo.ggo
@@ -101,7 +101,6 @@ um_apfmon_LDFLAGS += -lreadline
 bin_PROGRAMS += um-quosnp
 um_quosnp_SOURCES = um-quosnp.c um-quosnp-clo.ggo
 um_quosnp_SOURCES += gq.c gq.h
-um_quosnp_SOURCES += svc-uterus.c svc-uterus.h
 um_quosnp_CPPFLAGS = $(AM_CPPFLAGS) -D_GNU_SOURCE
 um_quosnp_CPPFLAGS += $(libev_CFLAGS)
 um_quosnp_CPPFLAGS += $(unserding_CFLAGS) -DUD_NEW_API
@@ -112,6 +111,7 @@ um_quosnp_LDFLAGS += $(uterus_LIBS)
 um_quosnp_LDFLAGS += $(unserding_LIBS)
 um_quosnp_LDFLAGS += $(fixc_LIBS)
 um_quosnp_LDFLAGS += $(libev_LIBS)
+um_quosnp_LDFLAGS += -static libsvc-uterus.la
 endif  ## HAVE_LIBEV
 BUILT_SOURCES += um-quomon-clo.c um-quomon-clo.h
 BUILT_SOURCES += um-apfmon-clo.c um-apfmon-clo.h
@@ -121,13 +121,13 @@ BUILT_SOURCES += um-quosnp-clo.c um-quosnp-clo.h
 bin_PROGRAMS += um-xmit
 um_xmit_SOURCES = um-xmit.c
 BUILT_SOURCES += um-xmit-clo.c um-xmit-clo.h
-um_xmit_SOURCES += svc-uterus.c svc-uterus.h
 um_xmit_CPPFLAGS = $(AM_CPPFLAGS)
 um_xmit_CPPFLAGS += $(uterus_CFLAGS)
 um_xmit_CPPFLAGS += $(unserding_CFLAGS) -DUD_NEW_API
 um_xmit_LDFLAGS = $(AM_LDFLAGS)
 um_xmit_LDFLAGS += $(uterus_LIBS)
 um_xmit_LDFLAGS += $(unserding_LIBS)
+um_xmit_LDFLAGS += -static libsvc-uterus.la
 
 if HAVE_LIBEV
 noinst_PROGRAMS += ox-matchall
@@ -167,7 +167,6 @@ noinst_PROGRAMS += xross-quo
 xross_quo_SOURCES = xross-quo.c xross-quo-clo.ggo
 xross_quo_SOURCES += ccy-graph.h
 xross_quo_SOURCES += iso4217.c iso4217.h
-xross_quo_SOURCES += svc-uterus.c svc-uterus.h
 xross_quo_CPPFLAGS = $(AM_CPPFLAGS) -D_GNU_SOURCE
 xross_quo_CPPFLAGS += $(libev_CFLAGS)
 xross_quo_CPPFLAGS += $(unserding_CFLAGS) -DUD_NEW_API
@@ -176,16 +175,23 @@ xross_quo_LDFLAGS = $(AM_LDFLAGS)
 xross_quo_LDFLAGS += $(uterus_LIBS)
 xross_quo_LDFLAGS += $(unserding_LIBS)
 xross_quo_LDFLAGS += $(libev_LIBS)
+xross_quo_LDFLAGS += -static libsvc-uterus.la
 endif  HAVE_LIBEV
 BUILT_SOURCES += xross-quo-clo.c xross-quo-clo.h
 
 unsermod_LTLIBRARIES += svc-uterus.la
-unserinc_HEADERS += svc-uterus.h
 svc_uterus_la_SOURCES = svc-uterus.c svc-uterus.h
 svc_uterus_la_CPPFLAGS = $(AM_CPPFLAGS) -DUNSERMON_DSO
-svc_uterus_la_CPPFLAGS += -DUD_NEW_API
 svc_uterus_la_CPPFLAGS += $(unserding_CFLAGS) -DUD_NEW_API
 svc_uterus_la_LDFLAGS = $(AM_LDFLAGS) $(XCCLDFLAGS) $(AM_MODFLAGS)
+
+unsermod_LTLIBRARIES += libsvc-uterus.la
+unserinc_HEADERS += svc-uterus.h
+libsvc_uterus_la_SOURCES = svc-uterus.c svc-uterus.h
+libsvc_uterus_la_CPPFLAGS = $(AM_CPPFLAGS)
+libsvc_uterus_la_CPPFLAGS += $(unserding_CFLAGS) -DUD_NEW_API
+libsvc_uterus_la_LDFLAGS = $(AM_LDFLAGS)
+libsvc_uterus_la_LDFLAGS += $(unserding_LIBS)
 
 
 ## our rule for gengetopt

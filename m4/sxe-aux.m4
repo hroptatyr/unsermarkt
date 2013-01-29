@@ -694,4 +694,41 @@ AC_DEFUN([SXE_EXPAND_VAR], [dnl
 ])dnl SXE_EXPAND_VAR
 
 
+## wrapper around PKG_CHECK_MODULES that also checks a header
+AC_DEFUN([PKG_CHECK_MODULES_HEADERS], [
+dnl Usage: PKG_CHECK_MODULES_HEADERS([PKG], [VERSION], [HEADERS], [FOUND], [NOT_FOUND])
+
+	PKG_CHECK_MODULES([$1], [$2], [
+		## now for the header
+		hdr_fnd="no"
+		SXE_DUMP_LIBS
+		CPPFLAGS="${CPPFLAGS} ${]$1[_CFLAGS}"
+		AC_CHECK_HEADERS($3, [hdr_fnd="yes"])
+		SXE_RESTORE_LIBS
+
+		if test "${hdr_fnd}" = "yes"; then
+			:
+			$4
+		else
+			m4_default([$5], [AC_MSG_ERROR([dnl
+Package ]$1[ was found but its headers are missing.
+Make sure the devel package (along with its header files) is installed
+correctly, or fiddle with ]$1[_CFLAGS if its location is non-standard.
+])])
+		fi
+
+		unset hdr_fnd
+		], [$5])
+])dnl PKG_CHECK_MODULES_HEADERS
+
+AC_DEFUN([PKG_CHECK_VAR], [
+dnl Usage: PKG_CHECK_VAR([PKG], [VARIABLE], [MESSAGE])
+
+	AC_CACHE_CHECK([$3], [pkg_cv_$2], [
+		_PKG_CONFIG([$2], [variable=$2], [$1])
+	])
+	[]$2[]="${pkg_cv_[]$2[]}"
+	AC_SUBST([$2])
+])dnl PKG_CHECK_VAR
+
 dnl sxe-aux.m4 ends here

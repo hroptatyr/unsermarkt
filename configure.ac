@@ -64,6 +64,13 @@ AC_CHECK_HEADERS([fcntl.h])
 SXE_CHECK_ANON_STRUCTS_DECL
 SXE_CHECK_ANON_STRUCTS_INIT
 
+## network headers
+AC_CHECK_HEADERS([sys/socket.h])
+AC_CHECK_HEADERS([arpa/inet.h])
+AC_CHECK_HEADERS([netinet/in.h])
+AC_CHECK_HEADERS([sys/un.h])
+AC_CHECK_HEADERS([errno.h])
+
 ## date time
 SXE_CHECK_METRONOME
 

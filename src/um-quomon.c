@@ -66,7 +66,6 @@
 #include <readline/history.h>
 
 #include <unserding/unserding.h>
-#include <unserding/protocore.h>
 
 /* to get a take on them m30s and m62s */
 #define DEFINE_GORY_STUFF
@@ -87,6 +86,7 @@
 
 #include <ncurses.h>
 
+#include "svc-uterus.h"
 #include "nifty.h"
 
 #if defined __INTEL_COMPILER
@@ -102,9 +102,11 @@ typedef union lob_side_u *lob_side_t;
 typedef struct lob_s *lob_t;
 typedef struct lob_win_s *lob_win_t;
 
+typedef const struct sockaddr_in6 *my_sockaddr_t;
+
 /* the client */
 struct lob_cli_s {
-	union ud_sockaddr_u sa;
+	struct sockaddr_storage sa;
 	uint16_t id;
 
 	lobidx_t blob;
@@ -498,43 +500,51 @@ find_quote(lobidx_t li, m30_t ref)
 }
 
 static int
-sa_eq_p(ud_sockaddr_t sa1, ud_sockaddr_t sa2)
+sa_eq_p(my_sockaddr_t sa1, my_sockaddr_t sa2)
 {
-	const size_t s6sz = sizeof(sa1->sa6.sin6_addr);
-	return sa1->sa6.sin6_family == sa2->sa6.sin6_family &&
-		sa1->sa6.sin6_port == sa2->sa6.sin6_port &&
-		memcmp(&sa1->sa6.sin6_addr, &sa2->sa6.sin6_addr, s6sz) == 0;
+	const size_t s6sz = sizeof(sa1->sin6_addr);
+	return sa1->sin6_family == sa2->sin6_family &&
+		sa1->sin6_port == sa2->sin6_port &&
+		memcmp(&sa1->sin6_addr, &sa2->sin6_addr, s6sz) == 0;
 }
 
 static lobidx_t
-find_cli(ud_sockaddr_t sa, uint16_t id)
+find_cli(const struct sockaddr *sa, uint16_t id)
 {
+	if (UNLIKELY(sa->sa_family != AF_INET6)) {
+		return 0U;
+	}
 	for (size_t i = 0; i < ncli; i++) {
 		lob_cli_t c = cli + i;
-		ud_sockaddr_t cur_sa = &c->sa;
+		my_sockaddr_t cur_sa = (const void*)&c->sa;
 		uint16_t cur_id = c->id;
 
-		if (sa_eq_p(cur_sa, sa) && cur_id == id) {
+		if (sa_eq_p(cur_sa, (my_sockaddr_t)sa) && cur_id == id) {
 			return i + 1;
 		}
 	}
-	return 0;
+	return 0U;
 }
 
 static lobidx_t
-add_cli(ud_sockaddr_t sa, uint16_t id)
+add_cli(const struct sockaddr *sa, uint16_t id)
 {
-	size_t idx = ncli++;
+	size_t idx;
 #define CATCHALL_BIDLOB	(0)
 #define CATCHALL_ASKLOB	(1)
 
+	if (UNLIKELY(sa->sa_family != AF_INET6)) {
+		return 0U;
+	}
+
+	idx = ncli++;
 	if (ncli * sizeof(*cli) > alloc_cli) {
 		size_t nu = alloc_cli + 4096;
 		cli = mremap(cli, alloc_cli, nu, MREMAP_MAYMOVE);
 		alloc_cli = nu;
 	}
 
-	cli[idx].sa = *sa;
+	cli[idx].sa = *(const struct sockaddr_storage*)sa;
 	cli[idx].id = id;
 	cli[idx].blob = CATCHALL_BIDLOB;
 	cli[idx].alob = CATCHALL_ASKLOB;
@@ -547,12 +557,12 @@ add_cli(ud_sockaddr_t sa, uint16_t id)
 	/* obtain the address in human readable form */
 	{
 		char *epi = cli[idx].ss;
-		int fam = ud_sockaddr_fam(sa);
-		const struct sockaddr *addr = ud_sockaddr_addr(sa);
-		uint16_t port = ud_sockaddr_port(sa);
+		my_sockaddr_t mysa = (const void*)sa;
+		int fam = mysa->sin6_family;
+		uint16_t port = htons(mysa->sin6_port);
 
 		*epi++ = '[';
-		if (inet_ntop(fam, addr, epi, sizeof(cli->ss))) {
+		if (inet_ntop(fam, sa, epi, sizeof(cli->ss))) {
 			epi += strlen(epi);
 		}
 		*epi++ = ']';
@@ -563,190 +573,214 @@ add_cli(ud_sockaddr_t sa, uint16_t id)
 }
 
 static void
-snarf_syms(job_t j)
+snarf_syms(const struct ud_msg_s *msg, const struct ud_auxmsg_s *aux)
 {
-	char *pbuf = UDPC_PAYLOAD(JOB_PACKET(j).pbuf);
-	size_t plen = UDPC_PAYLLEN(JOB_PACKET(j).plen);
-	struct udpc_seria_s ser[1];
-	uint8_t tag;
+	struct um_qmeta_s brg[1];
+	uint16_t idx;
+	lobidx_t c;
 
-	udpc_seria_init(ser, pbuf, plen);
-	while (ser->msgoff < plen && (tag = udpc_seria_tag(ser))) {
-		lobidx_t c;
-		uint16_t id;
+	if (UNLIKELY(um_chck_msg_brag(brg, msg) < 0)) {
+		return;
+	} else if (UNLIKELY((idx = (uint16_t)brg->idx) == 0U)) {
+		return;
+	} else if (UNLIKELY(brg->sym == NULL)) {
+		return;
+	}
+	
+	/* find the cli, if any */
+	if ((c = find_cli(aux->src, idx)) == 0) {
+		c = add_cli(aux->src, idx);
+	}
+	/* check the symbol */
+	if (UNLIKELY(brg->symlen > sizeof(CLI(c)->sym))) {
+		brg->symlen = sizeof(CLI(c)->sym);
+	}
+	/* fill in symbol */
+	CLI(c)->ssz = brg->symlen;
+	memcpy(CLI(c)->sym, brg->sym, brg->symlen);
+	return;
+}
 
-		if (UNLIKELY(tag != UDPC_TYPE_UI16)) {
+/* variable through which we communicate with the updater below */
+static int changep = 0;
+
+static void
+snarf_tick(const struct ud_msg_s *msg, const struct ud_auxmsg_s *aux)
+{
+	struct sndwch_s ss[4];
+	const_sl1t_t sp = (void*)ss;
+	uint16_t idx;
+	uint16_t ttf;
+	lobidx_t c;
+
+	switch (msg->dlen) {
+	case sizeof(struct sl1t_s):
+	case sizeof(struct scdl_s):
+	case sizeof(ss):
+		memcpy(ss, msg->data, msg->dlen);
+		break;
+	default:
+		/* out of range */
+		return;
+	}
+
+	/* check for idx validity */
+	if (UNLIKELY((idx = scom_thdr_tblidx(AS_SCOM(sp))) == 0U)) {
+		return;
+	}
+
+	/* check whether we support the tick type */
+	switch ((ttf = scom_thdr_ttf(AS_SCOM(sp)))) {
+	case SL1T_TTF_BID:
+	case SL1T_TTF_ASK:
+		break;
+
+	case SL2T_TTF_BID:
+	case SL2T_TTF_ASK:
+		/* we really ought to support these */
+		return;
+
+	case SSNP_FLAVOUR:
+	case SBAP_FLAVOUR:
+		break;
+
+	case SL1T_TTF_TRA:
+	case SL1T_TTF_FIX:
+	case SL1T_TTF_STL:
+	case SL1T_TTF_AUC:
+#if defined SL1T_TTF_G32
+	case SL1T_TTF_G32:
+#endif	/* SL1T_TTF_G32 */
+		return;
+
+	case SL1T_TTF_VOL:
+	case SL1T_TTF_VPR:
+	case SL1T_TTF_OI:
+#if defined SL1T_TTF_G64
+	case SL1T_TTF_G64:
+#endif	/* SL1T_TTF_G64 */
+		return;
+
+		/* candles */
+	case SL1T_TTF_BID | SCOM_FLAG_LM:
+	case SL1T_TTF_ASK | SCOM_FLAG_LM:
+	case SL1T_TTF_TRA | SCOM_FLAG_LM:
+	case SL1T_TTF_FIX | SCOM_FLAG_LM:
+	case SL1T_TTF_STL | SCOM_FLAG_LM:
+	case SL1T_TTF_AUC | SCOM_FLAG_LM:
+		return;
+
+	case SCOM_TTF_UNK:
+	default:
+		return;
+	}
+
+	/* find the associated cli, or create one */
+	if ((c = find_cli(aux->src, idx)) == 0) {
+		c = add_cli(aux->src, idx);
+	}
+
+	/* update last seen */
+	CLI(c)->last_seen = NOW;
+
+	{
+		struct lob_entry_s v;
+
+		/* populate the value tables */
+		v.cli = c;
+		v.p = (m30_t)sp->v[0];
+		v.q = (m30_t)sp->v[1];
+
+		switch (ttf) {
+			lobidx_t e;
+			lobidx_t book;
+		case SL1T_TTF_BID:
+			/* get the book we're talking */
+			book = CLI(c)->blob;
+			/* delete the former bid first */
+			if (CLI(c)->b) {
+				lob_rem_at(book, CLI(c)->b);
+			}
+			/* find our spot in the lob */
+			e = find_quote(book, v.p);
+			/* and insert */
+			CLI(c)->b = lob_ins_at(book, e, v);
+			changep = 1;
+			break;
+		case SL1T_TTF_ASK:
+			/* get the book we're talking */
+			book = CLI(c)->alob;
+			/* delete the former ask first */
+			if (CLI(c)->a) {
+				lob_rem_at(book, CLI(c)->a);
+			}
+			/* find our spot in the lob */
+			e = find_quote(book, v.p);
+			/* and insert */
+			CLI(c)->a = lob_ins_at(book, e, v);
+			changep = 1;
+			break;
+
+		case SL2T_TTF_BID:
+		case SL2T_TTF_ASK:
+			/* support me, i'm hungry */
+			break;
+
+			/* snaps */
+		case SSNP_FLAVOUR:
+		case SBAP_FLAVOUR:
+			/* get the book we're talking */
+			book = CLI(c)->blob;
+			if (CLI(c)->b) {
+				lob_rem_at(book, CLI(c)->b);
+			}
+			e = find_quote(book, v.p);
+			CLI(c)->b = lob_ins_at(book, e, v);
+
+			/* get the other book */
+			book = CLI(c)->alob;
+			if (CLI(c)->a) {
+				lob_rem_at(book, CLI(c)->a);
+			}
+			v.p = v.q;
+			e = find_quote(book, v.q);
+			CLI(c)->a = lob_ins_at(book, e, v);
+			changep = 1;
+			break;
+
+		default:
+			/* haha as if */
 			break;
 		}
-		/* otherwise find us the id */
-		id = udpc_seria_des_ui16(ser);
-		/* and the cli, if any */
-		if ((c = find_cli(&j->sa, id)) == 0) {
-			c = add_cli(&j->sa, id);
-		}
-		/* next up is the symbol */
-		tag = udpc_seria_tag(ser);
-		if (UNLIKELY(tag != UDPC_TYPE_STR || c == 0)) {
-
-			break;
-		}
-		/* fuck error checking */
-		CLI(c)->ssz = udpc_seria_des_str_into(
-			CLI(c)->sym, sizeof(CLI(c)->sym), ser);
 	}
 	return;
 }
 
 
 /* the actual worker function */
-static int changep = 0;
-
 static void
 mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
 {
-	ssize_t nread;
-	/* a job */
-	struct job_s j[1];
-	socklen_t lsa = sizeof(j->sa);
+	struct ud_msg_s msg[1];
+	ud_sock_t s = w->data;
 
-	j->sock = w->fd;
-	nread = recvfrom(w->fd, j->buf, sizeof(j->buf), 0, &j->sa.sa, &lsa);
+	while (ud_chck_msg(msg, s) >= 0) {
+		struct ud_auxmsg_s aux[1];
 
-	/* handle the reading */
-	if (UNLIKELY(nread < 0)) {
-		goto out_revok;
-	} else if (nread == 0) {
-		/* no need to bother */
-		goto out_revok;
-	}
+		if (ud_get_aux(aux, s) < 0) {
+			continue;
+		}
 
-	j->blen = nread;
+		switch (msg->svc) {
+		case UTE_QMETA:
+			snarf_syms(msg, aux);
+			break;
 
-	/* intercept special channels */
-	switch (udpc_pkt_cmd(JOB_PACKET(j))) {
-	case 0x7573:
-		snarf_syms(j);
-		break;
-
-	case 0x7574:
-	case 0x7575: {
-		char *pbuf = UDPC_PAYLOAD(JOB_PACKET(j).pbuf);
-		size_t plen = UDPC_PAYLLEN(JOB_PACKET(j).plen);
-		lobidx_t c;
-
-		if (UNLIKELY(plen == 0)) {
+		case UTE_CMD:
+			snarf_tick(msg, aux);
 			break;
 		}
-
-		for (scom_t sp = (void*)pbuf, ep = (void*)(pbuf + plen);
-		     sp < ep;
-		     sp += scom_tick_size(sp) *
-			     (sizeof(struct sndwch_s) / sizeof(*sp))) {
-			uint16_t ttf = scom_thdr_ttf(sp);
-			uint16_t id = scom_thdr_tblidx(sp);
-			const_sl1t_t l1t;
-			struct lob_entry_s v;
-
-			if ((c = find_cli(&j->sa, id)) == 0) {
-				c = add_cli(&j->sa, id);
-			}
-
-			l1t = (const void*)sp;
-			/* populate the value tables */
-			v.cli = c;
-			v.p = (m30_t)l1t->v[0];
-			v.q = (m30_t)l1t->v[1];
-
-			/* update last seen */
-			CLI(c)->last_seen = NOW;
-
-			switch (ttf) {
-				lobidx_t e;
-				lobidx_t book;
-			case SL1T_TTF_BID:
-				/* get the book we're talking */
-				book = CLI(c)->blob;
-				/* delete the former bid first */
-				if (CLI(c)->b) {
-					lob_rem_at(book, CLI(c)->b);
-				}
-				/* find our spot in the lob */
-				e = find_quote(book, v.p);
-				/* and insert */
-				CLI(c)->b = lob_ins_at(book, e, v);
-				changep = 1;
-				break;
-			case SL1T_TTF_ASK:
-				/* get the book we're talking */
-				book = CLI(c)->alob;
-				/* delete the former ask first */
-				if (CLI(c)->a) {
-					lob_rem_at(book, CLI(c)->a);
-				}
-				/* find our spot in the lob */
-				e = find_quote(book, v.p);
-				/* and insert */
-				CLI(c)->a = lob_ins_at(book, e, v);
-				changep = 1;
-				break;
-			case SL1T_TTF_TRA:
-			case SL1T_TTF_FIX:
-			case SL1T_TTF_STL:
-			case SL1T_TTF_AUC:
-				break;
-			case SL1T_TTF_VOL:
-			case SL1T_TTF_VPR:
-			case SL1T_TTF_OI:
-				break;
-
-				/* snaps */
-			case SSNP_FLAVOUR:
-			case SBAP_FLAVOUR:
-				/* get the book we're talking */
-				book = CLI(c)->blob;
-				if (CLI(c)->b) {
-					lob_rem_at(book, CLI(c)->b);
-				}
-				e = find_quote(book, v.p);
-				CLI(c)->b = lob_ins_at(book, e, v);
-
-				/* get the other book */
-				book = CLI(c)->alob;
-				if (CLI(c)->a) {
-					lob_rem_at(book, CLI(c)->a);
-				}
-				v.p = v.q;
-				e = find_quote(book, v.q);
-				CLI(c)->a = lob_ins_at(book, e, v);
-				changep = 1;
-				break;
-
-				/* candles */
-			case SL1T_TTF_BID | SCOM_FLAG_LM:
-			case SL1T_TTF_ASK | SCOM_FLAG_LM:
-			case SL1T_TTF_TRA | SCOM_FLAG_LM:
-			case SL1T_TTF_FIX | SCOM_FLAG_LM:
-			case SL1T_TTF_STL | SCOM_FLAG_LM:
-			case SL1T_TTF_AUC | SCOM_FLAG_LM:
-				break;
-
-			case SCOM_TTF_UNK:
-			default:
-				break;
-			}
-		}
-		break;
 	}
-	case 0x5554:
-	case 0x5555:
-		/* don't want to deal with big-endian crap */
-		;
-		break;
-	default:
-		break;
-	}
-
-out_revok:
 	return;
 }
 
@@ -1423,16 +1457,28 @@ main(int argc, char *argv[])
 	 * events has already been injected into our precious queue
 	 * causing the libev main loop to crash. */
 	{
-		int s = ud_mcast_init(UD_NETWORK_SERVICE);
-		ev_io_init(beef, mon_beef_cb, s, EV_READ);
-		ev_io_start(EV_A_ beef);
+		ud_sock_t s;
+
+		if ((s = ud_socket((struct ud_sockopt_s){UD_SUB})) != NULL) {
+			ev_io_init(beef, mon_beef_cb, s->fd, EV_READ);
+			ev_io_start(EV_A_ beef);
+		}
+		beef->data = s;
 	}
 
 	/* go through all beef channels */
 	for (unsigned int i = 0; i < argi->beef_given; i++) {
-		int s = ud_mcast_init(argi->beef_arg[i]);
-		ev_io_init(beef + i + 1, mon_beef_cb, s, EV_READ);
-		ev_io_start(EV_A_ beef + i + 1);
+		struct ud_sockopt_s opt = {
+			UD_SUB,
+			.port = (uint16_t)argi->beef_arg[i],
+		};
+		ud_sock_t s;
+
+		if (LIKELY((s = ud_socket(opt)) != NULL)) {
+			ev_io_init(beef + i + 1, mon_beef_cb, s->fd, EV_READ);
+			ev_io_start(EV_A_ beef + i + 1);
+		}
+		beef[i + 1].data = s;
 	}
 
 	/* start the screen */
@@ -1466,9 +1512,12 @@ main(int argc, char *argv[])
 
 	/* detaching beef channels */
 	for (unsigned int i = 0; i < nbeef; i++) {
-		int s = beef[i].fd;
-		ev_io_stop(EV_A_ beef + i);
-		ud_mcast_fini(s);
+		ud_sock_t s;
+
+		if ((s = beef[i].data) != NULL) {
+			ev_io_stop(EV_A_ beef + i);
+			ud_close(s);
+		}
 	}
 
 	/* destroy the default evloop */

@@ -64,9 +64,10 @@ endif  ## HAVE_MXML
 if HAVE_LIBEV
 bin_PROGRAMS += um-quomon
 um_quomon_SOURCES = um-quomon.c um-quomon-clo.ggo
+um_quomon_SOURCES += svc-uterus.c svc-uterus.h
 um_quomon_CPPFLAGS = $(AM_CPPFLAGS) -D_GNU_SOURCE
 um_quomon_CPPFLAGS += $(libev_CFLAGS)
-um_quomon_CPPFLAGS += $(unserding_CFLAGS)
+um_quomon_CPPFLAGS += $(unserding_CFLAGS) -DUD_NEW_API
 um_quomon_CPPFLAGS += $(uterus_CFLAGS)
 um_quomon_LDFLAGS = $(AM_LDFLAGS)
 um_quomon_LDFLAGS += $(AM_LDFLAGS) -lncurses

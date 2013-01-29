@@ -153,6 +153,7 @@ um_netdania_CPPFLAGS += $(libev_CFLAGS)
 um_netdania_LDFLAGS = $(AM_LDFLAGS)
 um_netdania_LDFLAGS += $(unserding_LIBS)
 um_netdania_LDFLAGS += $(libev_LIBS)
+um_netdania_LDFLAGS += -static libsvc-uterus.la
 endif  ## HAVE_LIBEV
 BUILT_SOURCES += um-netdania-clo.c um-netdania-clo.h
 

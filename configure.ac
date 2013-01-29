@@ -70,6 +70,7 @@ AC_CHECK_HEADERS([arpa/inet.h])
 AC_CHECK_HEADERS([netinet/in.h])
 AC_CHECK_HEADERS([sys/un.h])
 AC_CHECK_HEADERS([errno.h])
+AC_CHECK_HEADERS([sys/utsname.h])
 
 ## memory
 AC_CHECK_HEADERS([sys/mman.h])

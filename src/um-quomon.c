@@ -1,6 +1,6 @@
 /*** um-quomon.c -- unsermarkt quote monitor
  *
- * Copyright (C) 2012 Sebastian Freundt
+ * Copyright (C) 2012-2013 Sebastian Freundt
  *
  * Author:  Sebastian Freundt <freundt@ga-group.nl>
  *
@@ -47,19 +47,16 @@
 
 #if defined HAVE_SYS_SOCKET_H
 # include <sys/socket.h>
-#endif
+#endif	/* HAVE_SYS_SOCKET_H */
 #if defined HAVE_NETINET_IN_H
 # include <netinet/in.h>
-#endif
+#endif	/* HAVE_NETINET_IN_H */
 #if defined HAVE_ARPA_INET_H
 # include <arpa/inet.h>
-#endif
-#if defined HAVE_SYS_UN_H
-# include <sys/un.h>
-#endif
+#endif	/* HAVE_ARPA_INET_H */
 #if defined HAVE_ERRNO_H
 # include <errno.h>
-#endif
+#endif	/* HAVE_ERRNO_H */
 #if defined HAVE_EV_H
 # include <ev.h>
 # undef EV_P

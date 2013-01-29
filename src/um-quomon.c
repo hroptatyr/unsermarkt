@@ -1519,6 +1519,8 @@ main(int argc, char *argv[])
 			ud_close(s);
 		}
 	}
+	/* free beef resources */
+	free(beef);
 
 	/* destroy the default evloop */
 	ev_default_destroy();

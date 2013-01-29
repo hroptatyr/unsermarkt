@@ -191,7 +191,7 @@ unserinc_HEADERS += svc-uterus.h
 libsvc_uterus_la_SOURCES = svc-uterus.c svc-uterus.h
 libsvc_uterus_la_CPPFLAGS = $(AM_CPPFLAGS)
 libsvc_uterus_la_CPPFLAGS += $(unserding_CFLAGS) -DUD_NEW_API
-libsvc_uterus_la_LDFLAGS = $(AM_LDFLAGS)
+libsvc_uterus_la_LDFLAGS = $(AM_LDFLAGS) $(XCCLDFLAGS)
 libsvc_uterus_la_LDFLAGS += $(unserding_LIBS)
 
 

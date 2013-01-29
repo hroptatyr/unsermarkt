@@ -77,6 +77,7 @@
 # error uterus headers are mandatory
 #endif	/* HAVE_UTERUS_UTERUS_H || HAVE_UTERUS_H */
 
+#include "svc-uterus.h"
 #include "boobs.h"
 #include "nifty.h"
 #include "um-netdania.h"
@@ -147,17 +148,7 @@ static char **gsyms;
 static size_t ngsyms = 0;
 static struct timeval last_brag[1] = {0, 0};
 
-/* ute services come in 2 flavours little endian "ut" and big endian "UT" */
-#define UTE_CMD_LE	0x7574
-#define UTE_CMD_BE	0x5554
-#if defined WORDS_BIGENDIAN
-# define UTE_CMD	UTE_CMD_BE
-#else  /* !WORDS_BIGENDIAN */
-# define UTE_CMD	UTE_CMD_LE
-#endif	/* WORDS_BIGENDIAN */
-
 #define BRAG_INTV	(10)
-#define UTE_QMETA	0x7572
 
 static int
 init_nd(void)
@@ -614,48 +605,19 @@ dump_job(nd_pkt_t j)
 	return j->bsz;
 }
 
-static inline int
-ud_pack_sl1t(ud_sock_t s, const_sl1t_t q)
-{
-	return ud_pack_msg(
-		s, (struct ud_msg_s){
-			.svc = UTE_CMD,
-			.data = q,
-			.dlen = sizeof(*q),
-		});
-}
-
-static int
-ud_pack_brag(ud_sock_t s, uint32_t idx, const char *sym, size_t syz)
-{
-	struct __brag_wire_s {
-		uint16_t idx;
-		uint8_t syz;
-		uint8_t urz;
-		char symuri[256 - sizeof(uint32_t)];
-	};
-	struct __brag_wire_s msg = {
-		.idx = htons((uint16_t)idx),
-		.syz = (uint8_t)syz,
-		.urz = (uint8_t)0,
-	};
-	memcpy(msg.symuri, sym, (uint8_t)syz);
-	return ud_pack_msg(
-		s, (struct ud_msg_s){
-			.svc = UTE_QMETA,
-			.data = &msg,
-			.dlen = offsetof(struct __brag_wire_s, symuri) +
-				(uint8_t)syz + (uint8_t)0,
-		});
-}
-
 static void
 brag(ud_sock_t s)
 {
 	for (size_t i = 0; i < ngsyms; i++) {
-		size_t gsymz = strlen(gsyms[i]);
+		struct um_qmeta_s brg = {
+			.idx = (uint32_t)(i + 1),
+			.sym = gsyms[i],
+			.symlen = strlen(gsyms[i]),
+			.uri = NULL,
+			.urilen = 0U,
+		};
 
-		ud_pack_brag(s, i + 1, gsyms[i], gsymz);
+		um_pack_brag(s, &brg);
 	}
 	ud_flush(s);
 	return;
@@ -783,7 +745,7 @@ send_job(ud_sock_t s, nd_pkt_t j)
 
 			for (size_t i = 0; i < countof(l1t); i++) {
 				if (scom_thdr_tblidx(AS_SCOM(l1t + i))) {
-					ud_pack_sl1t(s, l1t + i);
+					um_pack_sl1t(s, l1t + i);
 				}
 			}
 		} else {

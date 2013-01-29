@@ -2,7 +2,7 @@
 
 AM_CPPFLAGS = -D_POSIX_C_SOURCE=200112L -D_XOPEN_SOURCE=600 -D_BSD_SOURCE
 AM_LDFLAGS =
-AM_MODFLAGS = -module -avoid-version
+AM_MODFLAGS = -module -shared -avoid-version
 
 headerdir = $(includedir)/unserding
 
@@ -64,9 +64,10 @@ endif  ## HAVE_MXML
 if HAVE_LIBEV
 bin_PROGRAMS += um-quomon
 um_quomon_SOURCES = um-quomon.c um-quomon-clo.ggo
+um_quomon_SOURCES += svc-uterus.c svc-uterus.h
 um_quomon_CPPFLAGS = $(AM_CPPFLAGS) -D_GNU_SOURCE
 um_quomon_CPPFLAGS += $(libev_CFLAGS)
-um_quomon_CPPFLAGS += $(unserding_CFLAGS)
+um_quomon_CPPFLAGS += $(unserding_CFLAGS) -DUD_NEW_API
 um_quomon_CPPFLAGS += $(uterus_CFLAGS)
 um_quomon_LDFLAGS = $(AM_LDFLAGS)
 um_quomon_LDFLAGS += $(AM_LDFLAGS) -lncurses
@@ -76,9 +77,10 @@ um_quomon_LDFLAGS += -lreadline
 
 bin_PROGRAMS += um-quodmp
 um_quodmp_SOURCES = um-quodmp.c um-quodmp-clo.ggo
+um_quodmp_SOURCES += svc-uterus.c svc-uterus.h
 um_quodmp_CPPFLAGS = $(AM_CPPFLAGS) -D_GNU_SOURCE
 um_quodmp_CPPFLAGS += $(libev_CFLAGS)
-um_quodmp_CPPFLAGS += $(unserding_CFLAGS)
+um_quodmp_CPPFLAGS += $(unserding_CFLAGS) -DUD_NEW_API
 um_quodmp_CPPFLAGS += $(uterus_CFLAGS)
 um_quodmp_LDFLAGS = $(AM_LDFLAGS)
 um_quodmp_LDFLAGS += $(uterus_LIBS)
@@ -101,9 +103,10 @@ um_apfmon_LDFLAGS += -lreadline
 bin_PROGRAMS += um-quosnp
 um_quosnp_SOURCES = um-quosnp.c um-quosnp-clo.ggo
 um_quosnp_SOURCES += gq.c gq.h
+um_quosnp_SOURCES += svc-uterus.c svc-uterus.h
 um_quosnp_CPPFLAGS = $(AM_CPPFLAGS) -D_GNU_SOURCE
 um_quosnp_CPPFLAGS += $(libev_CFLAGS)
-um_quosnp_CPPFLAGS += $(unserding_CFLAGS)
+um_quosnp_CPPFLAGS += $(unserding_CFLAGS) -DUD_NEW_API
 um_quosnp_CPPFLAGS += $(uterus_CFLAGS)
 um_quosnp_CPPFLAGS += $(fixc_CFLAGS)
 um_quosnp_LDFLAGS = $(AM_LDFLAGS)

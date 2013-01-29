@@ -77,9 +77,10 @@ um_quomon_LDFLAGS += -lreadline
 
 bin_PROGRAMS += um-quodmp
 um_quodmp_SOURCES = um-quodmp.c um-quodmp-clo.ggo
+um_quodmp_SOURCES += svc-uterus.c svc-uterus.h
 um_quodmp_CPPFLAGS = $(AM_CPPFLAGS) -D_GNU_SOURCE
 um_quodmp_CPPFLAGS += $(libev_CFLAGS)
-um_quodmp_CPPFLAGS += $(unserding_CFLAGS)
+um_quodmp_CPPFLAGS += $(unserding_CFLAGS) -DUD_NEW_API
 um_quodmp_CPPFLAGS += $(uterus_CFLAGS)
 um_quodmp_LDFLAGS = $(AM_LDFLAGS)
 um_quodmp_LDFLAGS += $(uterus_LIBS)

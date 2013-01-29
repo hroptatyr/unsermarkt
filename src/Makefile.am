@@ -4,15 +4,13 @@ AM_CPPFLAGS = -D_POSIX_C_SOURCE=200112L -D_XOPEN_SOURCE=600 -D_BSD_SOURCE
 AM_LDFLAGS =
 AM_MODFLAGS = -module -shared -avoid-version
 
-headerdir = $(includedir)/unserding
-
 bin_PROGRAMS =
 noinst_PROGRAMS =
 lib_LTLIBRARIES =
 unsermod_LTLIBRARIES =
+unserinc_HEADERS =
 noinst_LTLIBRARIES =
 noinst_HEADERS =
-header_HEADERS =
 
 BUILT_SOURCES =
 CLEANFILES =
@@ -182,6 +180,7 @@ endif  HAVE_LIBEV
 BUILT_SOURCES += xross-quo-clo.c xross-quo-clo.h
 
 unsermod_LTLIBRARIES += svc-uterus.la
+unserinc_HEADERS += svc-uterus.h
 svc_uterus_la_SOURCES = svc-uterus.c svc-uterus.h
 svc_uterus_la_CPPFLAGS = $(AM_CPPFLAGS) -DUNSERMON_DSO
 svc_uterus_la_CPPFLAGS += -DUD_NEW_API

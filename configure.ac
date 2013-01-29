@@ -88,11 +88,10 @@ PKG_CHECK_MODULES([LUA], [lua >= 5.1.0], [:], [:])
 ## check for unserding
 PKG_CHECK_MODULES([unserding], [unserding >= 0.3.0], [
 	## check for unsermoddir variable
-	AC_MSG_CHECKING([whither unserding DSOs go])
-	_PKG_CONFIG([unsermoddir], [variable=unsermoddir], [unserding])
-	AC_MSG_RESULT([${pkg_cv_unsermoddir}])
-	unsermoddir="${pkg_cv_unsermoddir}"
-	AC_SUBST([unsermoddir])
+	PKG_CHECK_VAR([unserding], [unsermoddir], [whither unserding DSOs go])
+
+	## check for unserincdir variable
+	PKG_CHECK_VAR([unserding], [unserincdir], [whither unserding DSOs headers go])
 ])
 
 

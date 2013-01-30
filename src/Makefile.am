@@ -22,43 +22,6 @@ noinst_HEADERS += ud-sock.h
 noinst_HEADERS += wrp-debug.h
 noinst_HEADERS += um-types.h
 
-noinst_PROGRAMS += umoc
-umoc_SOURCES = umoc.c
-umoc_SOURCES += order.h
-umoc_LDFLAGS = $(unserding_LDFLAGS)
-umoc_CPPFLAGS = $(AM_CPPFLAGS) -D_GNU_SOURCE
-umoc_CPPFLAGS += $(unserding_CFLAGS)
-umoc_CPPFLAGS += $(uterus_CFLAGS)
-
-noinst_PROGRAMS += oq
-oq_SOURCES = oq.c oq.h
-oq_SOURCES += match.h
-EXTRA_oq_SOURCES = mmls.c
-oq_CPPFLAGS = $(AM_CPPFLAGS) -DSTANDALONE
-oq_CPPFLAGS += $(unserding_CFLAGS) $(uterus_CFLAGS)
-
-if HAVE_SQLITE
-noinst_PROGRAMS += uschi
-uschi_SOURCES = uschi.c uschi.h
-uschi_SOURCES += instr.h
-uschi_CPPFLAGS = $(AM_CPPFLAGS) -DSTANDALONE
-uschi_CPPFLAGS += $(sqlite_CFLAGS)
-uschi_CPPFLAGS += $(unserding_CFLAGS)
-uschi_CPPFLAGS += $(uterus_CFLAGS)
-uschi_LDFLAGS = $(AM_LDFLAGS)
-uschi_LDFLAGS += $(sqlite_LIBS)
-endif  ## HAVE_SQLITE
-
-if HAVE_MXML
-noinst_PROGRAMS += blood-mm
-blood_mm_LDFLAGS =
-blood_mm_CPPFLAGS = $(AM_CPPFLAGS)
-blood_mm_CPPFLAGS += $(unserding_CFLAGS)
-blood_mm_CPPFLAGS += $(uterus_CFLAGS)
-blood_mm_CPPFLAGS += $(mxml_CFLAGS)
-blood_mm_LDFLAGS += $(mxml_LIBS)
-endif  ## HAVE_MXML
-
 if HAVE_LIBEV
 bin_PROGRAMS += um-quomon
 um_quomon_SOURCES = um-quomon.c um-quomon-clo.ggo

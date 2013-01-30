@@ -372,7 +372,10 @@ fput_sub(uint16_t sub, char **p, const char *ep, FILE *out)
 	case ND_SUB_NAME:
 		fputs("name:", out);
 		fputc('"', out);
-		fwrite(str, sizeof(char), len, out);
+		if (fwrite(str, sizeof(char), len, out) < len) {
+			/* something's fucked */
+			return -1;
+		}
 		fputc('"', out);
 		str = NULL;
 		break;
@@ -385,9 +388,12 @@ fput_sub(uint16_t sub, char **p, const char *ep, FILE *out)
 		break;
 	case ND_SUB_MSTIME:
 		fputc('@', out);
-		fwrite(str, sizeof(char), len - 3, out);
-		fputc('.', out);
-		fwrite(str + len - 3, sizeof(char), 3, out);
+		if (fwrite(str, sizeof(char), len - 3, out) < len - 3 ||
+		    fputc('.', out) == EOF ||
+		    fwrite(str + len - 3, sizeof(char), 3, out) < 3) {
+			/* big buggery */
+			return -1;
+		}
 		str = NULL;
 		break;
 	case ND_SUB_ONBID:
@@ -519,7 +525,9 @@ fput_sub(uint16_t sub, char **p, const char *ep, FILE *out)
 		break;
 	}
 	if (str) {
-		fwrite(str, sizeof(char), len, out);
+		if (fwrite(str, sizeof(char), len, out) < len) {
+			return -1;
+		}
 	}
 	return 0;
 }
@@ -585,9 +593,8 @@ dump_job(nd_pkt_t j)
 			}
 
 			fputs("GENERIC\t", stdout);
-			fwrite(p, sizeof(char), len, stdout);
+			p += fwrite(p, sizeof(char), len, stdout);
 			fputc('\n', stdout);
-			p += len;
 			break;
 		}
 

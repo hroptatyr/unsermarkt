@@ -93,20 +93,6 @@ um_xmit_LDFLAGS += $(unserding_LIBS)
 um_xmit_LDFLAGS += -static libsvc-uterus.la
 
 if HAVE_LIBEV
-noinst_PROGRAMS += ox-matchall
-ox_matchall_SOURCES = ox-matchall.c
-ox_matchall_CPPFLAGS = $(AM_CPPFLAGS)
-ox_matchall_CPPFLAGS += $(uterus_CFLAGS)
-ox_matchall_CPPFLAGS += $(unserding_CFLAGS)
-ox_matchall_CPPFLAGS += $(libev_CFLAGS)
-ox_matchall_LDFLAGS = $(AM_LDFLAGS)
-ox_matchall_LDFLAGS += $(uterus_LIBS)
-ox_matchall_LDFLAGS += $(unserding_LIBS)
-ox_matchall_LDFLAGS += $(libev_LIBS)
-endif  ## HAVE_LIBEV
-BUILT_SOURCES += ox-matchall-clo.c ox-matchall-clo.h
-
-if HAVE_LIBEV
 bin_PROGRAMS += um-netdania
 um_netdania_SOURCES = um-netdania.c um-netdania.h um-netdania-clo.ggo
 um_netdania_CPPFLAGS = $(AM_CPPFLAGS)

@@ -1,6 +1,6 @@
 /*** um-netdania.c -- leech some netdania resources
  *
- * Copyright (C) 2012 Sebastian Freundt
+ * Copyright (C) 2012-2013 Sebastian Freundt
  *
  * Author:  Sebastian Freundt <freundt@ga-group.nl>
  *
@@ -34,7 +34,6 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  ***/
-
 #if defined HAVE_CONFIG_H
 # include "config.h"
 #endif	/* HAVE_CONFIG_H */
@@ -47,11 +46,21 @@
 #include <assert.h>
 #include <ctype.h>
 
-#include <sys/time.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <netdb.h>
+#if defined HAVE_SYS_TIME_H
+# include <sys/time.h>
+#endif	/* HAVE_SYS_TIME_H */
+#if defined HAVE_SYS_SOCKET_H
+# include <sys/socket.h>
+#endif	/* HAVE_SYS_SOCKET_H */
+#if defined HAVE_NETINET_IN_H
+# include <netinet/in.h>
+#endif	/* HAVE_NETINET_IN_H */
+#if defined HAVE_ARPA_INET_H
+# include <arpa/inet.h>
+#endif	/* HAVE_ARPA_INET_H */
+#if defined HAVE_NETDB_H
+# include <netdb.h>
+#endif	/* HAVE_NETDB_H */
 
 #if defined HAVE_EV_H
 # include <ev.h>

@@ -1083,8 +1083,6 @@ struct websvc_s {
 
 /* looks like dccp://host:port/secdef?idx=00000 */
 static char brag_uri[INET6_ADDRSTRLEN] = "dccp://";
-/* offset into brag_uris idx= field */
-static size_t brag_uri_offset = 0;
 
 #define MASS_QUOT	(0xffff)
 
@@ -1096,7 +1094,6 @@ make_brag_uri(my_sockaddr_t sa, socklen_t UNUSED(sa_len))
 	const size_t uri_host_offs = sizeof("dccp://");
 	char *curs = brag_uri + uri_host_offs - 1;
 	size_t rest = sizeof(brag_uri) - uri_host_offs;
-	int len;
 
 	if (uname(uts) < 0) {
 		return -1;
@@ -1104,13 +1101,9 @@ make_brag_uri(my_sockaddr_t sa, socklen_t UNUSED(sa_len))
 		return -1;
 	}
 
-	len = snprintf(
+	(void)snprintf(
 		curs, rest, "%s.%s:%hu/",
 		uts->nodename, dnsdom, ntohs(sa->sin6_port));
-
-	if (len > 0) {
-		brag_uri_offset = uri_host_offs + len - 1;
-	}
 
 	UMQS_DEBUG("adv_name: %s\n", brag_uri);
 	return 0;
@@ -2062,8 +2055,7 @@ main(int argc, char *argv[])
 		if (s >= 0) {
 			make_brag_uri(&sa, sa_len);
 
-			fwrite(brag_uri, 1, brag_uri_offset, stdout);
-			fputc('\n', stdout);
+			printf("%s\n", brag_uri);
 		}
 	}
 

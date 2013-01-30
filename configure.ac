@@ -68,6 +68,7 @@ SXE_CHECK_ANON_STRUCTS_INIT
 AC_CHECK_HEADERS([sys/socket.h])
 AC_CHECK_HEADERS([arpa/inet.h])
 AC_CHECK_HEADERS([netinet/in.h])
+AC_CHECK_HEADERS([netdb.h])
 AC_CHECK_HEADERS([sys/un.h])
 AC_CHECK_HEADERS([errno.h])
 AC_CHECK_HEADERS([sys/utsname.h])

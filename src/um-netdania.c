@@ -1,6 +1,6 @@
 /*** um-netdania.c -- leech some netdania resources
  *
- * Copyright (C) 2012 Sebastian Freundt
+ * Copyright (C) 2012-2013 Sebastian Freundt
  *
  * Author:  Sebastian Freundt <freundt@ga-group.nl>
  *
@@ -34,7 +34,6 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  ***/
-
 #if defined HAVE_CONFIG_H
 # include "config.h"
 #endif	/* HAVE_CONFIG_H */
@@ -47,11 +46,21 @@
 #include <assert.h>
 #include <ctype.h>
 
-#include <sys/time.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <netdb.h>
+#if defined HAVE_SYS_TIME_H
+# include <sys/time.h>
+#endif	/* HAVE_SYS_TIME_H */
+#if defined HAVE_SYS_SOCKET_H
+# include <sys/socket.h>
+#endif	/* HAVE_SYS_SOCKET_H */
+#if defined HAVE_NETINET_IN_H
+# include <netinet/in.h>
+#endif	/* HAVE_NETINET_IN_H */
+#if defined HAVE_ARPA_INET_H
+# include <arpa/inet.h>
+#endif	/* HAVE_ARPA_INET_H */
+#if defined HAVE_NETDB_H
+# include <netdb.h>
+#endif	/* HAVE_NETDB_H */
 
 #if defined HAVE_EV_H
 # include <ev.h>
@@ -363,7 +372,10 @@ fput_sub(uint16_t sub, char **p, const char *ep, FILE *out)
 	case ND_SUB_NAME:
 		fputs("name:", out);
 		fputc('"', out);
-		fwrite(str, sizeof(char), len, out);
+		if (fwrite(str, sizeof(char), len, out) < len) {
+			/* something's fucked */
+			return -1;
+		}
 		fputc('"', out);
 		str = NULL;
 		break;
@@ -376,9 +388,12 @@ fput_sub(uint16_t sub, char **p, const char *ep, FILE *out)
 		break;
 	case ND_SUB_MSTIME:
 		fputc('@', out);
-		fwrite(str, sizeof(char), len - 3, out);
-		fputc('.', out);
-		fwrite(str + len - 3, sizeof(char), 3, out);
+		if (fwrite(str, sizeof(char), len - 3, out) < len - 3 ||
+		    fputc('.', out) == EOF ||
+		    fwrite(str + len - 3, sizeof(char), 3, out) < 3) {
+			/* big buggery */
+			return -1;
+		}
 		str = NULL;
 		break;
 	case ND_SUB_ONBID:
@@ -510,7 +525,9 @@ fput_sub(uint16_t sub, char **p, const char *ep, FILE *out)
 		break;
 	}
 	if (str) {
-		fwrite(str, sizeof(char), len, out);
+		if (fwrite(str, sizeof(char), len, out) < len) {
+			return -1;
+		}
 	}
 	return 0;
 }
@@ -576,9 +593,8 @@ dump_job(nd_pkt_t j)
 			}
 
 			fputs("GENERIC\t", stdout);
-			fwrite(p, sizeof(char), len, stdout);
+			p += fwrite(p, sizeof(char), len, stdout);
 			fputc('\n', stdout);
-			p += len;
 			break;
 		}
 

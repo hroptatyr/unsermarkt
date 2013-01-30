@@ -22,43 +22,6 @@ noinst_HEADERS += ud-sock.h
 noinst_HEADERS += wrp-debug.h
 noinst_HEADERS += um-types.h
 
-noinst_PROGRAMS += umoc
-umoc_SOURCES = umoc.c
-umoc_SOURCES += order.h
-umoc_LDFLAGS = $(unserding_LDFLAGS)
-umoc_CPPFLAGS = $(AM_CPPFLAGS) -D_GNU_SOURCE
-umoc_CPPFLAGS += $(unserding_CFLAGS)
-umoc_CPPFLAGS += $(uterus_CFLAGS)
-
-noinst_PROGRAMS += oq
-oq_SOURCES = oq.c oq.h
-oq_SOURCES += match.h
-EXTRA_oq_SOURCES = mmls.c
-oq_CPPFLAGS = $(AM_CPPFLAGS) -DSTANDALONE
-oq_CPPFLAGS += $(unserding_CFLAGS) $(uterus_CFLAGS)
-
-if HAVE_SQLITE
-noinst_PROGRAMS += uschi
-uschi_SOURCES = uschi.c uschi.h
-uschi_SOURCES += instr.h
-uschi_CPPFLAGS = $(AM_CPPFLAGS) -DSTANDALONE
-uschi_CPPFLAGS += $(sqlite_CFLAGS)
-uschi_CPPFLAGS += $(unserding_CFLAGS)
-uschi_CPPFLAGS += $(uterus_CFLAGS)
-uschi_LDFLAGS = $(AM_LDFLAGS)
-uschi_LDFLAGS += $(sqlite_LIBS)
-endif  ## HAVE_SQLITE
-
-if HAVE_MXML
-noinst_PROGRAMS += blood-mm
-blood_mm_LDFLAGS =
-blood_mm_CPPFLAGS = $(AM_CPPFLAGS)
-blood_mm_CPPFLAGS += $(unserding_CFLAGS)
-blood_mm_CPPFLAGS += $(uterus_CFLAGS)
-blood_mm_CPPFLAGS += $(mxml_CFLAGS)
-blood_mm_LDFLAGS += $(mxml_LIBS)
-endif  ## HAVE_MXML
-
 if HAVE_LIBEV
 bin_PROGRAMS += um-quomon
 um_quomon_SOURCES = um-quomon.c um-quomon-clo.ggo
@@ -85,18 +48,18 @@ um_quodmp_LDFLAGS += $(unserding_LIBS)
 um_quodmp_LDFLAGS += $(libev_LIBS)
 um_quodmp_LDFLAGS += -static libsvc-uterus.la
 
-bin_PROGRAMS += um-apfmon
-um_apfmon_SOURCES = um-apfmon.c um-apfmon-clo.ggo
-um_apfmon_SOURCES += gq.c gq.h
-um_apfmon_CPPFLAGS = $(AM_CPPFLAGS) -D_GNU_SOURCE
-um_apfmon_CPPFLAGS += $(libev_CFLAGS)
-um_apfmon_CPPFLAGS += $(unserding_CFLAGS)
-um_apfmon_CPPFLAGS += $(uterus_CFLAGS)
-um_apfmon_LDFLAGS = $(AM_LDFLAGS)
-um_apfmon_LDFLAGS += $(AM_LDFLAGS) -lncurses
-um_apfmon_LDFLAGS += $(unserding_LIBS)
-um_apfmon_LDFLAGS += $(libev_LIBS)
-um_apfmon_LDFLAGS += -lreadline
+#bin_PROGRAMS += um-apfmon
+#um_apfmon_SOURCES = um-apfmon.c um-apfmon-clo.ggo
+#um_apfmon_SOURCES += gq.c gq.h
+#um_apfmon_CPPFLAGS = $(AM_CPPFLAGS) -D_GNU_SOURCE
+#um_apfmon_CPPFLAGS += $(libev_CFLAGS)
+#um_apfmon_CPPFLAGS += $(unserding_CFLAGS)
+#um_apfmon_CPPFLAGS += $(uterus_CFLAGS)
+#um_apfmon_LDFLAGS = $(AM_LDFLAGS)
+#um_apfmon_LDFLAGS += $(AM_LDFLAGS) -lncurses
+#um_apfmon_LDFLAGS += $(unserding_LIBS)
+#um_apfmon_LDFLAGS += $(libev_LIBS)
+#um_apfmon_LDFLAGS += -lreadline
 
 bin_PROGRAMS += um-quosnp
 um_quosnp_SOURCES = um-quosnp.c um-quosnp-clo.ggo
@@ -128,20 +91,6 @@ um_xmit_LDFLAGS = $(AM_LDFLAGS)
 um_xmit_LDFLAGS += $(uterus_LIBS)
 um_xmit_LDFLAGS += $(unserding_LIBS)
 um_xmit_LDFLAGS += -static libsvc-uterus.la
-
-if HAVE_LIBEV
-noinst_PROGRAMS += ox-matchall
-ox_matchall_SOURCES = ox-matchall.c
-ox_matchall_CPPFLAGS = $(AM_CPPFLAGS)
-ox_matchall_CPPFLAGS += $(uterus_CFLAGS)
-ox_matchall_CPPFLAGS += $(unserding_CFLAGS)
-ox_matchall_CPPFLAGS += $(libev_CFLAGS)
-ox_matchall_LDFLAGS = $(AM_LDFLAGS)
-ox_matchall_LDFLAGS += $(uterus_LIBS)
-ox_matchall_LDFLAGS += $(unserding_LIBS)
-ox_matchall_LDFLAGS += $(libev_LIBS)
-endif  ## HAVE_LIBEV
-BUILT_SOURCES += ox-matchall-clo.c ox-matchall-clo.h
 
 if HAVE_LIBEV
 bin_PROGRAMS += um-netdania

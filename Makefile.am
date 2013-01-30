@@ -2,13 +2,15 @@ LANG = C
 LC_ALL = C
 
 ACLOCAL_AMFLAGS = -I m4
+EXTRA_DIST =
 
 SUBDIRS = src
 
 pkgconfigdir = @libdir@/pkgconfig
 pkgconfig_DATA = unsermarkt.pc
 
-EXTRA_DIST = .version git-version-gen
+EXTRA_DIST += README
+EXTRA_DIST += .version git-version-gen
 
 # Version string management.  There are two files to be aware of:
 # .tarball-version - present only in a distribution tarball, and not in

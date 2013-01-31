@@ -22,7 +22,6 @@ noinst_HEADERS += ud-sock.h
 noinst_HEADERS += wrp-debug.h
 noinst_HEADERS += um-types.h
 
-if HAVE_LIBEV
 bin_PROGRAMS += um-quomon
 um_quomon_SOURCES = um-quomon.c um-quomon-clo.ggo
 um_quomon_CPPFLAGS = $(AM_CPPFLAGS) -D_GNU_SOURCE
@@ -35,6 +34,7 @@ um_quomon_LDFLAGS += $(unserding_LIBS)
 um_quomon_LDFLAGS += $(libev_LIBS)
 um_quomon_LDFLAGS += -lreadline
 um_quomon_LDFLAGS += -static libsvc-uterus.la
+BUILT_SOURCES += um-quomon-clo.c um-quomon-clo.h
 
 bin_PROGRAMS += um-quodmp
 um_quodmp_SOURCES = um-quodmp.c um-quodmp-clo.ggo
@@ -47,6 +47,7 @@ um_quodmp_LDFLAGS += $(uterus_LIBS)
 um_quodmp_LDFLAGS += $(unserding_LIBS)
 um_quodmp_LDFLAGS += $(libev_LIBS)
 um_quodmp_LDFLAGS += -static libsvc-uterus.la
+BUILT_SOURCES += um-quodmp-clo.c um-quodmp-clo.h
 
 #bin_PROGRAMS += um-apfmon
 #um_apfmon_SOURCES = um-apfmon.c um-apfmon-clo.ggo
@@ -60,6 +61,7 @@ um_quodmp_LDFLAGS += -static libsvc-uterus.la
 #um_apfmon_LDFLAGS += $(unserding_LIBS)
 #um_apfmon_LDFLAGS += $(libev_LIBS)
 #um_apfmon_LDFLAGS += -lreadline
+#BUILT_SOURCES += um-apfmon-clo.c um-apfmon-clo.h
 
 bin_PROGRAMS += um-quosnp
 um_quosnp_SOURCES = um-quosnp.c um-quosnp-clo.ggo
@@ -75,10 +77,6 @@ um_quosnp_LDFLAGS += $(unserding_LIBS)
 um_quosnp_LDFLAGS += $(fixc_LIBS)
 um_quosnp_LDFLAGS += $(libev_LIBS)
 um_quosnp_LDFLAGS += -static libsvc-uterus.la
-endif  ## HAVE_LIBEV
-BUILT_SOURCES += um-quomon-clo.c um-quomon-clo.h
-BUILT_SOURCES += um-apfmon-clo.c um-apfmon-clo.h
-BUILT_SOURCES += um-quodmp-clo.c um-quodmp-clo.h
 BUILT_SOURCES += um-quosnp-clo.c um-quosnp-clo.h
 
 bin_PROGRAMS += um-xmit

@@ -77,8 +77,8 @@ AC_CHECK_HEADERS([sys/mman.h])
 SXE_CHECK_METRONOME
 
 ## event loop
-SXE_CHECK_LIBEV
-AM_CONDITIONAL([HAVE_LIBEV], [test "${sxe_cv_feat_libev}" = "yes"])
+AC_CHECK_LIBEV
+AM_CONDITIONAL([HAVE_LIBEV], [test "${ax_cv_feat_libev}" = "yes"])
 
 ## check for lua
 PKG_CHECK_MODULES([LUA], [lua >= 5.1.0], [:], [:])

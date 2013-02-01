@@ -41,9 +41,6 @@ SXE_CHECK_CC([c11 c1x c99 gnu99])
 AC_C_BIGENDIAN
 SXE_CHECK_CFLAGS
 
-AC_PROG_CXX([icpc g++])
-CXXFLAGS="${CXXFLAGS} -Wall -Wextra"
-
 ## some sizes we need
 AC_CHECK_SIZEOF([long])
 AC_CHECK_SIZEOF([int])

@@ -24,6 +24,10 @@ script:
   - ../configure $OPTIONS
   - make clean all check distcheck
 
+matrix:
+  allow_failures:
+    - clang
+
 ## whitelist
 branches:
   only:

@@ -351,9 +351,15 @@ upd_pair(graph_t g, gpair_t p, const_sl1t_t cell)
 {
 	double pri, qty;
 
+#if !defined __clang__
 	/* often used, so just compute them here */
 	pri = ffff_m30_d(cell->pri);
 	qty = ffff_m30_d(cell->qty);
+#else  /* __clang__ */
+/* see bug 15134 */
+	pri = ffff_m30_d(ffff_m30_get_ui32(cell->pri));
+	qty = ffff_m30_d(ffff_m30_get_ui32(cell->qty));
+#endif	/* !__clang__ */
 
 	switch (sl1t_ttf(cell)) {
 	case SL1T_TTF_BID:
@@ -560,7 +566,7 @@ snarf_data(const struct ud_msg_s *msg, const struct ud_auxmsg_s *aux, graph_t g)
 
 
 /* the actual worker function */
-static graph_t g;
+static graph_t gg;
 
 static void
 mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
@@ -575,11 +581,11 @@ mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
 		(void)ud_get_aux(aux, s);
 		switch (msg->svc) {
 		case UTE_QMETA:
-			snarf_meta(msg, aux, g);
+			snarf_meta(msg, aux, gg);
 			break;
 
 		case UTE_CMD:
-			aff |= snarf_data(msg, aux, g);
+			aff |= snarf_data(msg, aux, gg);
 			break;
 		default:
 			break;
@@ -587,7 +593,7 @@ mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
 	}
 
 	if (aff && ute_out_ch != NULL) {
-		struct bbo_s bbo = find_bbo(g);
+		struct bbo_s bbo = find_bbo(gg);
 
 		dissem_bbo(bbo);
 	}
@@ -758,8 +764,8 @@ main(int argc, char *argv[])
 	beef = malloc(nbeef * sizeof(*beef));
 
 	/* generate the graph we're talking */
-	g = make_graph();
-	build_hops(g);
+	gg = make_graph();
+	build_hops(gg);
 
 	/* attach a multicast listener, default channel for control msgs */
 	{
@@ -818,7 +824,7 @@ past_loop:
 	free(beef);
 
 	/* free the graph */
-	free_graph(g);
+	free_graph(gg);
 
 	/* finish cli space */
 	fini_cli();

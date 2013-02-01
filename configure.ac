@@ -41,9 +41,6 @@ SXE_CHECK_CC([c11 c1x c99 gnu99])
 AC_C_BIGENDIAN
 SXE_CHECK_CFLAGS
 
-AC_PROG_CXX([icpc g++])
-CXXFLAGS="${CXXFLAGS} -Wall -Wextra"
-
 ## some sizes we need
 AC_CHECK_SIZEOF([long])
 AC_CHECK_SIZEOF([int])
@@ -80,8 +77,8 @@ AC_CHECK_HEADERS([sys/mman.h])
 SXE_CHECK_METRONOME
 
 ## event loop
-SXE_CHECK_LIBEV
-AM_CONDITIONAL([HAVE_LIBEV], [test "${sxe_cv_feat_libev}" = "yes"])
+AC_CHECK_LIBEV
+AM_CONDITIONAL([HAVE_LIBEV], [test "${ax_cv_feat_libev}" = "yes"])
 
 ## check for lua
 PKG_CHECK_MODULES([LUA], [lua >= 5.1.0], [:], [:])
@@ -93,6 +90,10 @@ PKG_CHECK_MODULES([unserding], [unserding >= 0.3.0], [
 
 	## check for unserincdir variable
 	PKG_CHECK_VAR_MSG([unserding], [unserincdir], [whither unserding DSOs headers go])
+
+	## construct our take on unser{mod,inc}dir
+	unserincdir="${includedir}/unserding"
+	unsermoddir="${libdir}/unserding"
 ])
 
 

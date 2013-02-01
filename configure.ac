@@ -93,6 +93,10 @@ PKG_CHECK_MODULES([unserding], [unserding >= 0.3.0], [
 
 	## check for unserincdir variable
 	PKG_CHECK_VAR_MSG([unserding], [unserincdir], [whither unserding DSOs headers go])
+
+	## construct our take on unser{mod,inc}dir
+	unserincdir="${includedir}/unserding"
+	unsermoddir="${libdir}/unserding"
 ])
 
 

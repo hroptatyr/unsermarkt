@@ -351,9 +351,15 @@ upd_pair(graph_t g, gpair_t p, const_sl1t_t cell)
 {
 	double pri, qty;
 
+#if !defined __clang__
 	/* often used, so just compute them here */
 	pri = ffff_m30_d(cell->pri);
 	qty = ffff_m30_d(cell->qty);
+#else  /* __clang__ */
+/* see bug 15134 */
+	pri = ffff_m30_d(ffff_m30_get_ui32(cell->pri));
+	qty = ffff_m30_d(ffff_m30_get_ui32(cell->qty));
+#endif	/* !__clang__ */
 
 	switch (sl1t_ttf(cell)) {
 	case SL1T_TTF_BID:

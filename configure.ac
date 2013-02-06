@@ -150,11 +150,11 @@ if test "${have_expat}" = "yes"; then
 fi
 AM_CONDITIONAL([HAVE_EXPAT], [test "${have_expat}" = "yes"])
 
-AM_MISSING_PROG([GPERF], [gperf])
-AM_CONDITIONAL([HAVE_GPERF], [test -n "${GPERF}"])
-if test -n "${GPERF}"; then
-	AC_DEFINE([HAVE_GPERF], [1], [define when gperf tool is present])
+AC_PATH_PROG([GPERF], [gperf])
+if test -z "${GPERF}"; then
+	GPERF="gperf"
 fi
+AC_ARG_VAR([GPERF], [full path to the gperf tool])
 
 ## check for sqlite3 libs
 PKG_CHECK_MODULES([sqlite], [sqlite3 >= 3.7],

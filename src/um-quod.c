@@ -131,6 +131,9 @@ typedef intptr_t hx_t;
 
 typedef const struct sockaddr_in6 *my_sockaddr_t;
 
+typedef struct urifq_s *urifq_t;
+typedef struct urifi_s *urifi_t;
+
 typedef struct ev_io_q_s *ev_io_q_t;
 typedef struct ev_io_i_s *ev_io_i_t;
 
@@ -148,6 +151,18 @@ struct cli_s {
 	volatile uint32_t last_seen;
 
 	char sym[64];
+};
+
+/* uri fetch queue */
+struct urifq_s {
+	struct gq_s q[1];
+	struct gq_ll_s fetchq[1];
+};
+
+struct urifi_s {
+	struct gq_item_s i;
+	char uri[256];
+	uint16_t idx;
 };
 
 /* ev io object queue */
@@ -466,6 +481,51 @@ conn(struct addrinfo *ais)
 }
 
 
+/* uri fetch queue */
+static struct urifq_s urifq = {0};
+
+static urifi_t
+make_uri(void)
+{
+	urifi_t res;
+
+	if (urifq.q->free->i1st == NULL) {
+		size_t nitems = urifq.q->nitems / sizeof(*res);
+		ptrdiff_t df;
+
+		assert(urifq.q->free->ilst == NULL);
+		UMQD_DEBUG("URIFQ RESIZE -> %zu\n", nitems + 16);
+		df = init_gq(urifq.q, sizeof(*res), nitems + 16);
+		gq_rbld_ll(urifq.fetchq, df);
+	}
+	/* get us a new client and populate the object */
+	res = (void*)gq_pop_head(urifq.q->free);
+	memset(res, 0, sizeof(*res));
+	return res;
+}
+
+static void
+free_uri(urifi_t uri)
+{
+	gq_push_tail(urifq.q->free, (gq_item_t)uri);
+	return;
+}
+
+static void
+push_uri(urifi_t uri)
+{
+	gq_push_tail(urifq.fetchq, (gq_item_t)uri);
+	return;
+}
+
+static urifi_t
+pop_uri(void)
+{
+	void *res = gq_pop_head(urifq.fetchq);
+	return res;
+}
+
+
 /* ev io object queue */
 static struct ev_io_q_s ioq = {0};
 
@@ -504,6 +564,281 @@ static size_t ign = 0;
 /* value cache */
 void *cache = NULL;
 static size_t cache_alsz = 0UL;
+#define CACHE(x)	(((cache_t)cache)[x])
+
+static const size_t pgsz = 65536UL;
+
+#if !defined HAVE_LIBFIXC_FIX_H
+static char *secdefs = NULL;
+static size_t secdefs_alsz = 0UL;
+
+static void
+clean_up_secdefs(void)
+{
+	UMQD_DEBUG("cleaning up secdefs\n");
+	munmap(secdefs, secdefs_alsz);
+	return;
+}
+#endif	/* HAVE_LIBFIXC_FIX_H */
+
+static void
+clean_up_cache(void)
+{
+	UMQD_DEBUG("cleaning up cache\n");
+	munmap(cache, cache_alsz);
+	return;
+}
+
+static void
+check_cache(unsigned int tgtid)
+{
+	static size_t ncache = 0;
+
+	if (UNLIKELY(tgtid > ncache)) {
+		/* resize */
+		size_t nx64k = (tgtid * sizeof(*cache) + pgsz) & ~(pgsz - 1);
+
+		if (UNLIKELY(cache == NULL)) {
+			cache = mmap(NULL, nx64k, PROT_MEM, MAP_MEM, -1, 0);
+			atexit(clean_up_cache);
+		} else {
+			size_t olsz = ncache * sizeof(*cache);
+			cache = mremap(cache, olsz, nx64k, MREMAP_MAYMOVE);
+		}
+
+		ncache = (cache_alsz = nx64k) / sizeof(*cache);
+	}
+	return;
+}
+
+static void
+bang_q(unsigned int tgtid, scom_t sp)
+{
+	if (UNLIKELY(!tgtid)) {
+		return;
+	}
+	/* make sure there's enough room */
+	check_cache(tgtid);
+
+	switch (scom_thdr_ttf(sp)) {
+	case SL1T_TTF_BID:
+		*CACHE(tgtid - 1).bid = *AS_CONST_SL1T(sp);
+		break;
+	case SL1T_TTF_ASK:
+		*CACHE(tgtid - 1).ask = *AS_CONST_SL1T(sp);
+		break;
+	default:
+		break;
+	}
+	return;
+}
+
+#if defined HAVE_LIBFIXC_FIX_H
+static void
+bang_aid(fixc_msg_t ins, uint16_t idx)
+{
+	static const struct fixc_fld_s f454 = {
+		.tag = (fixc_attr_t)FIXML_ATTR_NoSecurityAltID,
+		.typ = FIXC_TYP_INT,
+		.tpc = (fixc_comp_t)FIXML_COMP_SecAltIDGrp,
+		.cnt = 0,
+		.i32 = 1,
+	};
+	static char sidx[32];
+	size_t i454 = 0;
+	size_t sz;
+
+	for (size_t i = 1; i < ins->nflds; i++) {
+		if (ins->flds[i].tag == 454U) {
+			i454 = i;
+			break;
+		}
+	}
+	if (!i454) {
+		fixc_add_fld(ins, f454);
+	}
+	/* just bang one more */
+	sz = snprintf(sidx, sizeof(sidx), "%hu", idx);
+	fixc_add_tag(ins, (fixc_attr_t)FIXML_ATTR_SecurityAltID, sidx, sz);
+	/* we know the actual tpc */
+	ins->flds[ins->nflds - 1].tpc = FIXML_COMP_SecAltIDGrp;
+	ins->flds[ins->nflds - 1].cnt = 0U;
+
+	fixc_add_tag(
+		ins, (fixc_attr_t)FIXML_ATTR_SecurityAltIDSource, "100", 3U);
+	/* we know the actual tpc */
+	ins->flds[ins->nflds - 1].tpc = FIXML_COMP_SecAltIDGrp;
+	ins->flds[ins->nflds - 1].cnt = 1U;
+	return;
+}
+
+static void
+bang_sd(fixc_msg_t msg, uint16_t idx)
+{
+	fixc_msg_t ins;
+
+	/* also make sure we can bang our stuff into the cache array */
+	check_cache(idx);
+
+	/* free former resources */
+	if (CACHE(idx - 1).ins != NULL) {
+		free_fixc(CACHE(idx - 1).ins);
+	}
+	if (CACHE(idx - 1).msg != NULL) {
+		free_fixc(CACHE(idx - 1).msg);
+	}
+
+	/* get the instrument bit for later reuse */
+	ins = fixc_extr_ctxt_deep(msg, FIXML_COMP_Instrument, 0);
+
+	/* let our cache know */
+	CACHE(idx - 1).msg = msg;
+	CACHE(idx - 1).ins = ins;
+
+	/* make sure our AIDs (455/456) go on there as well */
+	bang_aid(ins, idx);
+	return;
+}
+#else  /* !HAVE_LIBFIXC_FIX_H */
+static void
+bang_sd(const char *sd, size_t sdsz, uint16_t idx)
+{
+	static char aid[] = "<AID AltId=\"\"       AltIdSrc=\"100\"/>";
+	static size_t secdefs_sz = 0UL;
+	size_t post_sz = secdefs_sz + sdsz;
+	const char *ins;
+	size_t insz;
+
+	if (post_sz + sizeof(aid) > secdefs_alsz) {
+		size_t nx64k = (post_sz + sizeof(aid) + pgsz) & ~(pgsz - 1);
+
+		if (UNLIKELY(secdefs == NULL)) {
+			secdefs = mmap(NULL, nx64k, PROT_MEM, MAP_MEM, -1, 0);
+			atexit(clean_up_secdefs);
+		} else {
+			secdefs = mremap(
+				secdefs, secdefs_alsz, nx64k, MREMAP_MAYMOVE);
+		}
+
+		secdefs_alsz = nx64k;
+	}
+
+	/* also make sure we can bang our stuff into the cache array */
+	check_cache(idx);
+
+	memcpy(secdefs + secdefs_sz, sd, sdsz);
+	secdefs[secdefs_sz + sdsz] = '\0';
+	/* reassign sd */
+	sd = secdefs + secdefs_sz;
+
+	/* also try and snarf the Instrmt bit */
+	if ((ins = strstr(sd, "<Instrmt"))) {
+		static char fixml_instrmt_post[] = "</Instrmt>";
+		size_t aidz = sizeof(aid) - 1;
+		char *eoins;
+		int post = 0;
+
+		if ((eoins = strstr(ins, fixml_instrmt_post))) {
+			;
+		} else if ((eoins = strstr(ins, "/>"))) {
+			*eoins = '>';
+			eoins += 1;
+			aidz += sizeof(fixml_instrmt_post) - 1;
+			post = 1;
+		} else {
+			/* fubar'd */
+			return;
+		}
+
+		memmove(eoins + aidz, eoins, sd + sdsz - eoins + 1/*for \nul*/);
+
+		/* glue in our AID */
+		memcpy(eoins, aid, aidz);
+		{
+			int len = snprintf(eoins + 12, 5, "%hu", idx);
+			eoins[12 + len] = '"';
+		}
+
+		/* update the total secdef size */
+		sdsz += aidz;
+
+		if (post) {
+			/* expand our Instrmt element */
+			size_t postz = sizeof(fixml_instrmt_post) - 1;
+
+			aidz -= postz;
+			memcpy(eoins + aidz, fixml_instrmt_post, postz);
+		}
+
+		aidz += sizeof(fixml_instrmt_post) - 1;
+		insz = eoins + aidz - ins;
+	}
+
+	/* let our cache know */
+	CACHE(idx - 1).sd = sd;
+	CACHE(idx - 1).sdsz = sdsz;
+	CACHE(idx - 1).instrmt = ins;
+	CACHE(idx - 1).instrmtsz = insz;
+
+	/* advance the pointer, +1 for \nul */
+	secdefs_sz += sdsz + 1;
+	return;
+}
+#endif	/* !HAVE_LIBFIXC_FIX_H */
+
+static ssize_t
+massage_fetch_uri_rpl(const char *buf, size_t bsz, uint16_t idx)
+{
+/* if successful returns 0, -1 if an error occurred and
+ * a positive value if the whole contents couldn't fit in BUF. */
+	static char hdr_cont_len[] = "Content-Length:";
+	static char delim[] = "\r\n\r\n";
+	const char *p;
+	ssize_t sz;
+
+	if ((p = strcasestr(buf, hdr_cont_len)) == NULL) {
+		return -1;
+	} else if ((sz = strtol(p += sizeof(hdr_cont_len) - 1, NULL, 10)) < 0) {
+		/* too weird */
+		return -1;
+	} else if ((p = strstr(p, delim)) == NULL) {
+		/* can't find the content in this packet */
+		return sz;
+	} else if ((size_t)((p += 4) - buf + sz) > bsz) {
+		/* pity, the packet is too large to fit */
+		return sz;
+	}
+
+#if defined HAVE_LIBFIXC_FIX_H
+	/* P should now point to the content of size SZ */
+	{
+		fixc_msg_t msg;
+
+		if (LIKELY((msg = make_fixc_from_fixml(p, sz)) != NULL)) {
+			bang_sd(msg, idx);
+		}
+	}
+#else  /* !HAVE_LIBFIXC_FIX_H */
+	/* SZ is the size, p points to the content
+	 * AND the whole shebang is in this packet,
+	 * time for fireworks innit? */
+	/* check for <SecDef> */
+	{
+		const char *sd;
+		const char *eosd;
+
+		if ((sd = strstr(p, "<SecDef")) == NULL ||
+		    (eosd = strstr(sd, "</SecDef>")) == NULL) {
+			return 0;
+		}
+		/* make eosd point to behind </SecDef> */
+		eosd += 9;
+		/* recompute SZ */
+		bang_sd(sd, eosd - sd, idx);
+	}
+#endif	/* HAVE_LIBFIXC_FIX_H */
+	return 0;
+}
 
 static void
 snarf_meta(const struct ud_msg_s *msg, const struct ud_auxmsg_s *aux)
@@ -512,6 +847,7 @@ snarf_meta(const struct ud_msg_s *msg, const struct ud_auxmsg_s *aux)
 	struct key_s k = {
 		.sa = (const void*)aux->src,
 	};
+	int peruse_uri = 0;
 	uint16_t id;
 	cli_t c;
 
@@ -542,11 +878,13 @@ snarf_meta(const struct ud_msg_s *msg, const struct ud_auxmsg_s *aux)
 		/* known but the wrong id */
 		UMQD_DEBUG("reass %hu -> %hu\n", CLI(c)->tgtid, id);
 		CLI(c)->tgtid = id;
+		peruse_uri = 1;
 	} else /*if (CLI(c)->tgtid == 0)*/ {
 		/* unknown */
 		UMQD_DEBUG("ass'ing %s -> %hu\n", CLI(c)->sym, id);
 		CLI(c)->tgtid = id;
 		ute_bang_symidx(uctx, CLI(c)->sym, CLI(c)->tgtid);
+		peruse_uri = 1;
 	}
 
 	/* leave a last_seen note */
@@ -554,6 +892,17 @@ snarf_meta(const struct ud_msg_s *msg, const struct ud_auxmsg_s *aux)
 		struct timeval tv[1];
 		gettimeofday(tv, NULL);
 		CLI(c)->last_seen = tv->tv_sec;
+	}
+
+	/* next up is brag uri, possibly */
+	if (peruse_uri && brg->uri != NULL) {
+		urifi_t fi = make_uri();
+
+		memcpy(fi->uri, brg->uri, brg->urilen);
+		fi->uri[brg->urilen] = '\0';
+		fi->idx = id;
+		UMQD_DEBUG("checking out %s ...\n", fi->uri);
+		push_uri(fi);
 	}
 	return;
 }
@@ -591,6 +940,9 @@ snarf_data(const struct ud_msg_s *msg, const struct ud_auxmsg_s *aux)
 			return;
 		}
 	}
+
+	/* update our state table */
+	bang_q(CLI(c)->tgtid, msg->data);
 
 	/* fiddle with the tblidx */
 	scom_thdr_set_tblidx(AS_SCOM_THDR(ss), CLI(c)->tgtid);
@@ -725,6 +1077,104 @@ make_brag_uri(my_sockaddr_t sa, socklen_t UNUSED(sa_len))
 	return 0;
 }
 
+static int
+snarf_uri(char *restrict uri)
+{
+	struct addrinfo *ais = NULL;
+	const char *host;
+	char *path;
+	char *p;
+	uint16_t port;
+	int s;
+
+	/* snarf host and path from uri */
+	if ((host = strstr(uri, "://")) == NULL) {
+		fprintf(logerr, "cannot snarf host part off %s\n", uri);
+		return -1;
+	} else if ((p = strchr(host += 3, '/')) == NULL) {
+		fprintf(logerr, "no path in URI %s\n", uri);
+		return -1;
+	}
+	/* fiddle with the string a bit */
+	*p = '\0';
+	path = p + 1;
+
+	/* try and find a port number */
+	if ((p = strchr(host, ':'))) {
+		*p = '\0';
+		port = strtoul(p + 1, NULL, 10);
+	} else {
+		port = 80U;
+	}
+
+	/* connection guts */
+	if (rslv(&ais, host, port) < 0) {
+		fprintf(logerr, "cannot resolve %s %hu\n", host, port);
+		return -1;
+	} else if ((s = conn(ais)) < 0) {
+		fprintf(logerr, "cannot connect to %s %hu\n", host, port);
+		return -1;
+	}
+	/* yay */
+	UMQD_DEBUG("d/l'ing /%s off %s %hu\n", path, host, port);
+	{
+		static char req[256] = "GET /";
+		size_t plen = strlen(path);
+
+		memcpy(req + 5, path, plen);
+		memcpy(req + 5 + plen, "\r\n\r\n", 5);
+		send(s, req, plen + 10, 0);
+	}
+	return s;
+}
+
+static void
+fetch_data_cb(EV_P_ ev_io *w, int UNUSED(re))
+{
+	static char rpl[4096];
+	ev_io_i_t qio;
+	ssize_t nrd;
+
+	if (UNLIKELY((qio = w->data) == NULL)) {
+		goto clo;
+	} else if ((nrd = read(w->fd, rpl, sizeof(rpl))) < 0) {
+		goto clo;
+	} else if ((size_t)nrd < sizeof(rpl)) {
+		rpl[nrd] = '\0';
+	} else {
+		/* uh oh, mega request, wtf? */
+		rpl[sizeof(rpl) - 1] = '\0';
+	}
+
+	/* quick parsing */
+	massage_fetch_uri_rpl(rpl, nrd, qio->idx);
+
+clo:
+	ev_qio_shut(EV_A_ w);
+	return;
+}
+
+static void
+check_urifq(EV_P)
+{
+	for (urifi_t fi; (fi = pop_uri()); free_uri(fi)) {
+		ev_io_i_t qio;
+		int s;
+
+		if ((s = snarf_uri(fi->uri)) < 0) {
+			continue;
+		}
+
+		/* retrieve the result through our queue */
+		qio = make_io();
+		ev_io_init(qio->w, fetch_data_cb, s, EV_READ);
+		qio->idx = fi->idx;
+		qio->w->data = qio;
+		ev_io_start(EV_A_ qio->w);
+	}
+	return;
+}
+
 
 #define UTE_LE		(0x7574)
 #define UTE_BE		(0x5554)
@@ -816,6 +1266,13 @@ dccp_cb(EV_P_ ev_io *w, int UNUSED(re))
 	return;
 }
 
+static void
+prep_cb(EV_P_ ev_prepare *UNUSED(w), int UNUSED(revents))
+{
+	/* check the uri fetch queue */
+	check_urifq(EV_A);
+	return;
+}
 
 static void
 sigint_cb(EV_P_ ev_signal *UNUSED(w), int UNUSED(revents))
@@ -921,6 +1378,7 @@ main(int argc, char *argv[])
 	ev_signal sigterm_watcher[1];
 	ev_signal sigpipe_watcher[1];
 	ev_periodic midnight[1];
+	ev_prepare prp[1];
 	ev_timer prune[1];
 	ev_io dccp[2];
 	int res = 0;
@@ -1077,6 +1535,10 @@ main(int argc, char *argv[])
 		res = 1;
 		goto past_loop;
 	}
+
+	/* pre and post poll hooks */
+	ev_prepare_init(prp, prep_cb);
+	ev_prepare_start(EV_A_ prp);
 
 	/* now wait for events to arrive */
 	ev_loop(EV_A_ 0);

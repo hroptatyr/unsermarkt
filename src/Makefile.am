@@ -36,7 +36,7 @@ um_quomon_LDFLAGS += -lreadline
 um_quomon_LDFLAGS += -static libsvc-uterus.la
 BUILT_SOURCES += um-quomon-clo.c um-quomon-clo.h
 
-bin_PROGRAMS += um-quodmp
+noinst_PROGRAMS += um-quodmp
 um_quodmp_SOURCES = um-quodmp.c um-quodmp-clo.ggo
 um_quodmp_CPPFLAGS = $(AM_CPPFLAGS) -D_GNU_SOURCE
 um_quodmp_CPPFLAGS += $(libev_CFLAGS)
@@ -63,7 +63,7 @@ BUILT_SOURCES += um-quodmp-clo.c um-quodmp-clo.h
 #um_apfmon_LDFLAGS += -lreadline
 #BUILT_SOURCES += um-apfmon-clo.c um-apfmon-clo.h
 
-bin_PROGRAMS += um-quosnp
+noinst_PROGRAMS += um-quosnp
 um_quosnp_SOURCES = um-quosnp.c um-quosnp-clo.ggo
 um_quosnp_SOURCES += gq.c gq.h
 um_quosnp_CPPFLAGS = $(AM_CPPFLAGS) -D_GNU_SOURCE
@@ -78,6 +78,24 @@ um_quosnp_LDFLAGS += $(fixc_LIBS)
 um_quosnp_LDFLAGS += $(libev_LIBS)
 um_quosnp_LDFLAGS += -static libsvc-uterus.la
 BUILT_SOURCES += um-quosnp-clo.c um-quosnp-clo.h
+
+bin_PROGRAMS += um-quod
+um_quod_SOURCES = um-quod.c um-quod.h
+um_quod_SOURCES += um-quod-clo.ggo
+um_quod_SOURCES += gq.c gq.h
+um_quod_SOURCES += web.c web.h
+um_quod_CPPFLAGS = $(AM_CPPFLAGS) -D_GNU_SOURCE
+um_quod_CPPFLAGS += $(libev_CFLAGS)
+um_quod_CPPFLAGS += $(unserding_CFLAGS) -DUD_NEW_API
+um_quod_CPPFLAGS += $(uterus_CFLAGS)
+um_quod_CPPFLAGS += $(fixc_CFLAGS)
+um_quod_LDFLAGS = $(AM_LDFLAGS)
+um_quod_LDFLAGS += $(uterus_LIBS)
+um_quod_LDFLAGS += $(unserding_LIBS)
+um_quod_LDFLAGS += $(fixc_LIBS)
+um_quod_LDFLAGS += $(libev_LIBS)
+um_quod_LDFLAGS += -static libsvc-uterus.la
+BUILT_SOURCES += um-quod-clo.c um-quod-clo.h
 
 bin_PROGRAMS += um-xmit
 um_xmit_SOURCES = um-xmit.c

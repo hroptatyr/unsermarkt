@@ -464,8 +464,8 @@ __quotreq1(fixc_msg_t msg, uint16_t idx, struct timeval now)
 
 			fixc_add_tag(msg, (fixc_attr_t)fld.tag, d.s, d.z);
 			/* bang .cnt and .tpc */
-			ins->flds[mi].tpc = fld.tpc;
-			ins->flds[mi].cnt = fld.cnt;
+			msg->flds[mi].tpc = fld.tpc;
+			msg->flds[mi].cnt = fld.cnt;
 		}
 	} else {
 		/* have to mimick the instr somehow */

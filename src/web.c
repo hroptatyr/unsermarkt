@@ -293,7 +293,7 @@ __secdef1(fixc_msg_t msg, uint16_t idx)
 static size_t
 websvc_secdef(char *restrict tgt, size_t tsz, struct websvc_s sd)
 {
-	size_t idx = 0;
+	size_t nrndr = 0;
 	size_t nsy = ute_nsyms(uctx);
 	fixc_msg_t msg;
 
@@ -318,10 +318,10 @@ websvc_secdef(char *restrict tgt, size_t tsz, struct websvc_s sd)
 	}
 
 	/* render the whole shebang */
-	idx = fixc_render_fixml(tgt, tsz, msg);
+	nrndr = fixc_render_fixml(tgt, tsz, msg);
 	/* start a fix msg for that */
 	free_fixc(msg);
-	return idx;
+	return nrndr;
 }
 
 #else  /* !HAVE_LIBFIXC_FIX_H */

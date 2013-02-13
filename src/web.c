@@ -356,7 +356,7 @@ static size_t
 websvc_secdef(char *restrict tgt, size_t tsz, struct websvc_s sd)
 {
 	size_t idx = 0;
-	size_t nsy = ute_nsyms(u);
+	size_t nsy = ute_nsyms(uctx);
 
 	WEB_DEBUG("printing secdef idx %hu\n", sd.secdef.idx);
 
@@ -542,7 +542,7 @@ __quotreq1(char *restrict tgt, size_t tsz, uint16_t idx, struct timeval now)
 	static char vtm[32];
 	static char txn[32];
 	static struct timeval now_cch;
-	const char *sym = ute_idx2sym(u, idx);
+	const char *sym = ute_idx2sym(uctx, idx);
 	const_sl1t_t b = cache[idx - 1].bid;
 	const_sl1t_t a = cache[idx - 1].ask;
 	const char *instrmt = cache[idx - 1].instrmt;
@@ -610,7 +610,7 @@ static size_t
 websvc_quotreq(char *restrict tgt, size_t tsz, struct websvc_s sd)
 {
 	size_t idx = 0;
-	size_t nsy = ute_nsyms(u);
+	size_t nsy = ute_nsyms(uctx);
 	struct timeval now[1];
 
 	WEB_DEBUG("printing quotreq idx %hu\n", sd.quotreq.idx);

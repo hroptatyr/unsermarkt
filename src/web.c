@@ -687,7 +687,7 @@ paste_clen(char *restrict buf, size_t bsz, size_t len)
 	buf[2] = ' ';
 	buf[3] = ' ';
 
-	if (len > bsz) {
+	if (UNLIKELY(len > bsz)) {
 		len = 0;
 	}
 

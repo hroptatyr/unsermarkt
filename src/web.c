@@ -741,7 +741,7 @@ Content-Length: "
 	}
 
 	/* prepare the header */
-	paste_clen(__rsp + sizeof(HDR) - 1, sizeof(buf), cont_len);
+	paste_clen(__rsp + sizeof(HDR) - 1, sizeof(__rsp), cont_len);
 	*tgt = __rsp;
 	return sizeof(BUF_INIT) - 1 + cont_len;
 }

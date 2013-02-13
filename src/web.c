@@ -307,7 +307,7 @@ websvc_secdef(char *restrict tgt, size_t tsz, struct websvc_s sd)
 	/* start a fix msg for that */
 	msg = make_fixc_msg((fixc_msgt_t)FIXC_MSGT_UNK);
 
-	if (sd.secdef.idx < nsy) {
+	if (sd.secdef.idx <= nsy) {
 		__secdef1(msg, sd.secdef.idx);
 	} else if (sd.quotreq.idx == MASS_QUOT) {
 		/* loop over instruments */
@@ -368,7 +368,7 @@ websvc_secdef(char *restrict tgt, size_t tsz, struct websvc_s sd)
 	memcpy(tgt + idx, fixml_pre, sizeof(fixml_pre));
 	idx += sizeof(fixml_pre) - 1;
 
-	if (sd.secdef.idx < nsy) {
+	if (sd.secdef.idx <= nsy) {
 		idx += __secdef1(tgt + idx, tsz - idx, sd.secdef.idx);
 	} else if (sd.quotreq.idx == MASS_QUOT) {
 		memcpy(tgt + idx, fixml_batch_pre, sizeof(fixml_batch_pre));

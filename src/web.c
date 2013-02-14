@@ -40,6 +40,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
+#include <stdio.h>
 #include <sys/time.h>
 #include <time.h>
 #if defined HAVE_LIBFIXC_FIX_H
@@ -63,7 +64,6 @@
 #include "nifty.h"
 
 #if defined DEBUG_FLAG
-#include <stdio.h>
 # define WEB_DEBUG(args...)	fprintf(logerr, args)
 #else  /* !DEBUG_FLAG */
 # define WEB_DEBUG(args...)

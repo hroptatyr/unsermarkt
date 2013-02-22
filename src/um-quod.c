@@ -841,6 +841,20 @@ massage_fetch_uri_rpl(const char *buf, size_t bsz, uint16_t idx)
 }
 
 static void
+bang_sym(cli_t c, const struct um_qmeta_s qm[static 1])
+{
+	size_t slen;
+
+	if (UNLIKELY((slen = qm->symlen) > sizeof(CLI(c)->sym))) {
+		slen = sizeof(CLI(c)->sym) - 1;
+	}
+	/* fill in symbol */
+	memcpy(CLI(c)->sym, qm->sym, slen);
+	CLI(c)->sym[slen] = '\0';
+	return;
+}
+
+static void
 snarf_meta(const struct ud_msg_s *msg, const struct ud_auxmsg_s *aux)
 {
 	struct um_qmeta_s brg[1];
@@ -864,11 +878,7 @@ snarf_meta(const struct ud_msg_s *msg, const struct ud_auxmsg_s *aux)
 		c = add_cli(k);
 	}
 	/* check the symbol */
-	if (UNLIKELY(brg->symlen > sizeof(CLI(c)->sym))) {
-		brg->symlen = sizeof(CLI(c)->sym);
-	}
-	/* fill in symbol */
-	memcpy(CLI(c)->sym, brg->sym, brg->symlen);
+	bang_sym(c, brg);
 
 	/* check if we know about the symbol */
 	if ((id = ute_sym2idx(uctx, CLI(c)->sym)) == CLI(c)->tgtid) {

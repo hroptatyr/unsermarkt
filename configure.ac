@@ -176,9 +176,6 @@ if test "${have_fixc}" = "yes"; then
 fi
 AM_CONDITIONAL([HAVE_FIXC], [test "${have_fixc}" = "yes"])
 
-## just shortly before we're going libtool, check for the ldflags
-SXE_CHECK_LDFLAGS
-
 AC_CONFIG_FILES([Makefile])
 AC_CONFIG_FILES([src/Makefile])
 AC_CONFIG_FILES([unsermarkt.pc])

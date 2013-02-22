@@ -51,9 +51,6 @@ AC_CHECK_HEADERS([endian.h sys/endian.h byteorder.h byteswap.h])
 ## parser goodness
 SXE_CHECK_PARSER_LEXER
 
-## libtool goddess^Wgoodness
-SXE_CHECK_LIBTOOL
-
 AC_CHECK_HEADERS([stdbool.h])
 AC_CHECK_HEADERS([fcntl.h])
 
@@ -175,6 +172,9 @@ if test "${have_fixc}" = "yes"; then
 	fi
 fi
 AM_CONDITIONAL([HAVE_FIXC], [test "${have_fixc}" = "yes"])
+
+## check for libtool
+SXE_CHECK_LIBTOOL
 
 AC_CONFIG_FILES([Makefile])
 AC_CONFIG_FILES([src/Makefile])

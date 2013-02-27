@@ -71,6 +71,10 @@ AC_CHECK_HEADERS([sys/utsname.h])
 ## memory
 AC_CHECK_HEADERS([sys/mman.h])
 
+## time
+AC_CHECK_HEADERS([time.h])
+AC_CHECK_HEADERS([sys/time.h])
+
 ## date time
 SXE_CHECK_METRONOME
 

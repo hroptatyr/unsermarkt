@@ -1,6 +1,6 @@
-/*** um-apfmon.c -- unsermarkt quote monitor
+/*** um-apfmon.c -- unsermarkt portfolio monitor
  *
- * Copyright (C) 2012 Sebastian Freundt
+ * Copyright (C) 2012-2013 Sebastian Freundt
  *
  * Author:  Sebastian Freundt <freundt@ga-group.nl>
  *

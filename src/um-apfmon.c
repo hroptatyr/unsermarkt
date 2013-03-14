@@ -1,6 +1,6 @@
-/*** um-apfmon.c -- unsermarkt quote monitor
+/*** um-apfmon.c -- unsermarkt portfolio monitor
  *
- * Copyright (C) 2012 Sebastian Freundt
+ * Copyright (C) 2012-2013 Sebastian Freundt
  *
  * Author:  Sebastian Freundt <freundt@ga-group.nl>
  *
@@ -70,7 +70,6 @@
 #include <readline/history.h>
 
 #include <unserding/unserding.h>
-#include <unserding/protocore.h>
 
 /* for our memory management */
 #include <sys/mman.h>
@@ -111,8 +110,10 @@ typedef size_t widx_t;
 typedef struct pfi_s *pfi_t;
 typedef struct win_s *win_t;
 
+typedef const struct sockaddr_in6 *my_sockaddr_t;
+
 struct key_s {
-	ud_sockaddr_t sa;
+	const struct sockaddr *sa;
 };
 
 /* one portfolio item */
@@ -130,7 +131,7 @@ struct pfi_s {
 
 /* the client */
 struct cli_s {
-	union ud_sockaddr_u ALGN(sa, 16);
+	struct sockaddr_storage sa;
 
 	/* helpers for the renderer */
 	char ss[INET6_ADDRSTRLEN + 2 + 6];
@@ -216,47 +217,56 @@ check_poss(cli_t c)
 
 
 static int
-sa_eq_p(ud_sockaddr_t sa1, ud_sockaddr_t sa2)
+sa_eq_p(my_sockaddr_t sa1, my_sockaddr_t sa2)
 {
-	const size_t s6sz = sizeof(sa1->sa6.sin6_addr);
-	return sa1->sa6.sin6_family == sa2->sa6.sin6_family &&
-		sa1->sa6.sin6_port == sa2->sa6.sin6_port &&
-		memcmp(&sa1->sa6.sin6_addr, &sa2->sa6.sin6_addr, s6sz) == 0;
+	const size_t s6sz = sizeof(sa1->sin6_addr);
+	return sa1->sin6_family == sa2->sin6_family &&
+		sa1->sin6_port == sa2->sin6_port &&
+		memcmp(&sa1->sin6_addr, &sa2->sin6_addr, s6sz) == 0;
 }
 
 static cli_t
 find_cli(struct key_s k)
 {
-	for (size_t i = 1; i <= ncli; i++) {
-		ud_sockaddr_t cur_sa = &CLI(i)->sa;
+	if (UNLIKELY(k.sa->sa_family != AF_INET6)) {
+		return 0U;
+	}
+	for (size_t i = 0; i < ncli; i++) {
+		struct cli_s *c = cli + i;
+		my_sockaddr_t cur_sa = (const void*)&c->sa;
 
-		if (sa_eq_p(cur_sa, k.sa)) {
-			return i;
+		if (sa_eq_p(cur_sa, (my_sockaddr_t)k.sa)) {
+			return i + 1;
 		}
 	}
-	return 0;
+	return 0U;
 }
 
 static cli_t
 add_cli(struct key_s k)
 {
-	cli_t idx = ncli++;
+	cli_t idx;
 
+	if (UNLIKELY(k.sa->sa_family != AF_INET6)) {
+		return 0U;
+	}
+
+	idx = ncli++;
 	if (ncli * sizeof(*cli) > alloc_cli) {
 		resz_cli(alloc_cli + 4096);
 	}
 
-	cli[idx].sa = *k.sa;
+	cli[idx].sa = *(const struct sockaddr_storage*)k.sa;
 
 	/* obtain the address in human readable form */
 	{
 		char *epi = cli[idx].ss;
-		int fam = ud_sockaddr_fam(k.sa);
-		const struct sockaddr *addr = ud_sockaddr_addr(k.sa);
-		uint16_t port = ud_sockaddr_port(k.sa);
+		my_sockaddr_t mysa = (const void*)k.sa;
+		int fam = mysa->sin6_family;
+		uint16_t port = htons(mysa->sin6_port);
 
 		*epi++ = '[';
-		if (inet_ntop(fam, addr, epi, sizeof(cli->ss))) {
+		if (inet_ntop(fam, k.sa, epi, sizeof(cli->ss))) {
 			epi += strlen(epi);
 		}
 		*epi++ = ']';
@@ -324,10 +334,10 @@ add_pos(cli_t c, const char *sym, size_t ssz)
 
 /* fix guts */
 static size_t
-find_fix_fld(char **p, char *msg, const char *key)
+find_fix_fld(const char **p, const char *msg, const char *key)
 {
 #define SOH	"\001"
-	char *cand = msg - 1;
+	const char *cand = msg - 1;
 	char *eocand;
 
 	while ((cand = strstr(cand + 1, key)) && cand != msg && cand[-1] != *SOH);
@@ -343,11 +353,11 @@ find_fix_fld(char **p, char *msg, const char *key)
 	return eocand - cand;
 }
 
-static char*
-find_fix_eofld(char *msg, const char *key)
+static const char*
+find_fix_eofld(const char *msg, const char *key)
 {
 #define SOH	"\001"
-	char *cand;
+	const char *cand;
 	size_t clen;
 
 	if (UNLIKELY((clen = find_fix_fld(&cand, msg, key)) == 0)) {
@@ -359,25 +369,22 @@ find_fix_eofld(char *msg, const char *key)
 }
 
 static double
-find_fix_dbl(char *msg, const char *fld, size_t nfld)
+find_fix_dbl(const char *msg, const char *fld, size_t nfld)
 {
 	size_t tmp;
 	double res = 0.0;
-	char *p;
+	const char *p;
 
 	if ((tmp = find_fix_fld(&p, msg, fld))) {
-		char bkup = p[tmp];
 		const char *cursor = p + nfld;
 
-		p[tmp] = '\0';
 		res = strtod(cursor, NULL);
-		p[tmp] = bkup;
 	}
 	return res;
 }
 
 static int
-pr_pos_rpt(job_t j)
+pr_pos_rpt(const struct ud_msg_s *msg, const struct ud_auxmsg_s *aux)
 {
 /* process them posrpts */
 	static const char fix_pos_rpt[] = "35=AP";
@@ -385,34 +392,33 @@ pr_pos_rpt(job_t j)
 	static const char fix_inssym[] = "55=";
 	static const char fix_lqty[] = "704=";
 	static const char fix_sqty[] = "705=";
-	char *pbuf = UDPC_PAYLOAD(JOB_PACKET(j).pbuf);
-	size_t plen = UDPC_PAYLLEN(JOB_PACKET(j).plen);
-	struct key_s k = {
-		.sa = &j->sa,
-	};
 	cli_t c;
 	int res = 0;
 
-	if (UNLIKELY(plen == 0)) {
+	UMAM_DEBUG("FUCK ME DEAD: a message %p %zu\n", msg->data, msg->dlen);
+	/* find the cli or add it if not there already */
+	if (UNLIKELY(msg->dlen == 0)) {
 		return 0;
-	} else if ((c = find_cli(k))) {
+	} else if ((c = find_cli((struct key_s){aux->src}))) {
 		;
-	} else if ((c = add_cli(k))) {
+	} else if ((c = add_cli((struct key_s){aux->src}))) {
 		;
 	} else {
 		/* fuck */
+		UMAM_DEBUG("FUCK FUCK UFCK\n");
 		return -1;
 	}
 
-	for (char *p = pbuf, *ep = pbuf + plen;
+	for (const char *p = msg->data, *const ep = p + msg->dlen;
 	     p && p < ep && (p = find_fix_eofld(p, fix_pos_rpt));
 	     p = find_fix_eofld(p, fix_chksum)) {
 		struct pfi_s *pos = NULL;
 		size_t tmp;
-		char *sym;
+		const char *sym;
 
 		if ((tmp = find_fix_fld(&sym, p, fix_inssym)) == 0) {
 			/* great, we NEED that symbol */
+			UMAM_DEBUG("no symbol\n");
 			continue;
 		}
 		/* ffw sym */
@@ -444,43 +450,35 @@ pr_pos_rpt(job_t j)
 
 
 /* the actual worker function */
-#define POS_RPT		(0x757a)
-#define POS_RPT_RPL	(UDPC_PKT_RPL(POS_RPT))
+#define POS_RPT		(0x757aU)
+#define POS_RPT_RPL	(0x757bU)
 static int changep = 0;
 
 static void
 mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
 {
-	ssize_t nread;
-	/* a job */
-	struct job_s j[1];
-	socklen_t lsa = sizeof(j->sa);
+	struct ud_msg_s msg[1];
+	ud_sock_t s = w->data;
 
-	j->sock = w->fd;
-	nread = recvfrom(w->fd, j->buf, sizeof(j->buf), 0, &j->sa.sa, &lsa);
+	while (ud_chck_msg(msg, s) >= 0) {
+		struct ud_auxmsg_s aux[1];
 
-	/* handle the reading */
-	if (UNLIKELY(nread < 0)) {
-		goto out_revok;
-	} else if (nread == 0) {
-		/* no need to bother */
-		goto out_revok;
+		UMAM_DEBUG("got messy of length %zu\n", msg->dlen);
+
+		if (ud_get_aux(aux, s) < 0) {
+			continue;
+		}
+
+		switch (msg->svc) {
+		case POS_RPT:
+		case POS_RPT_RPL:
+			/* parse the message here */
+			changep = pr_pos_rpt(msg, aux);
+			break;
+		default:
+			break;
+		}
 	}
-
-	j->blen = nread;
-
-	/* intercept special channels */
-	switch (udpc_pkt_cmd(JOB_PACKET(j))) {
-	case POS_RPT:
-	case POS_RPT_RPL:
-		/* parse the message here */
-		changep = pr_pos_rpt(j) > 0;
-		break;
-	default:
-		break;
-	}
-
-out_revok:
 	return;
 }
 
@@ -1017,16 +1015,28 @@ main(int argc, char *argv[])
 	 * events has already been injected into our precious queue
 	 * causing the libev main loop to crash. */
 	{
-		int s = ud_mcast_init(UD_NETWORK_SERVICE);
-		ev_io_init(beef, mon_beef_cb, s, EV_READ);
-		ev_io_start(EV_A_ beef);
+		ud_sock_t s;
+
+		if ((s = ud_socket((struct ud_sockopt_s){UD_SUB})) != NULL) {
+			ev_io_init(beef, mon_beef_cb, s->fd, EV_READ);
+			ev_io_start(EV_A_ beef);
+		}
+		beef->data = s;
 	}
 
 	/* go through all beef channels */
 	for (unsigned int i = 0; i < argi->beef_given; i++) {
-		int s = ud_mcast_init(argi->beef_arg[i]);
-		ev_io_init(beef + i + 1, mon_beef_cb, s, EV_READ);
-		ev_io_start(EV_A_ beef + i + 1);
+		struct ud_sockopt_s opt = {
+			UD_SUB,
+			.port = (uint16_t)argi->beef_arg[i],
+		};
+		ud_sock_t s;
+
+		if (LIKELY((s = ud_socket(opt)) != NULL)) {
+			ev_io_init(beef + i + 1, mon_beef_cb, s->fd, EV_READ);
+			ev_io_start(EV_A_ beef + i + 1);
+		}
+		beef[i + 1].data = s;
 	}
 
 	/* start the screen */
@@ -1060,10 +1070,15 @@ main(int argc, char *argv[])
 
 	/* detaching beef channels */
 	for (unsigned int i = 0; i < nbeef; i++) {
-		int s = beef[i].fd;
-		ev_io_stop(EV_A_ beef + i);
-		ud_mcast_fini(s);
+		ud_sock_t s;
+
+		if ((s = beef[i].data) != NULL) {
+			ev_io_stop(EV_A_ beef + i);
+			ud_close(s);
+		}
 	}
+	/* free beef resources */
+	free(beef);
 
 	/* destroy the default evloop */
 	ev_default_destroy();

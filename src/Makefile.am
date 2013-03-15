@@ -63,22 +63,6 @@ um_apfmon_LDFLAGS += $(libev_LIBS)
 um_apfmon_LDFLAGS += -lreadline
 BUILT_SOURCES += um-apfmon-clo.c um-apfmon-clo.h
 
-noinst_PROGRAMS += um-quosnp
-um_quosnp_SOURCES = um-quosnp.c um-quosnp-clo.ggo
-um_quosnp_SOURCES += gq.c gq.h
-um_quosnp_CPPFLAGS = $(AM_CPPFLAGS) -D_GNU_SOURCE
-um_quosnp_CPPFLAGS += $(libev_CFLAGS)
-um_quosnp_CPPFLAGS += $(unserding_CFLAGS) -DUD_NEW_API
-um_quosnp_CPPFLAGS += $(uterus_CFLAGS)
-um_quosnp_CPPFLAGS += $(fixc_CFLAGS)
-um_quosnp_LDFLAGS = $(AM_LDFLAGS)
-um_quosnp_LDFLAGS += $(uterus_LIBS)
-um_quosnp_LDFLAGS += $(unserding_LIBS)
-um_quosnp_LDFLAGS += $(fixc_LIBS)
-um_quosnp_LDFLAGS += $(libev_LIBS)
-um_quosnp_LDFLAGS += -static libsvc-uterus.la
-BUILT_SOURCES += um-quosnp-clo.c um-quosnp-clo.h
-
 bin_PROGRAMS += um-quod
 um_quod_SOURCES = um-quod.c um-quod.h
 um_quod_SOURCES += um-quod-clo.ggo

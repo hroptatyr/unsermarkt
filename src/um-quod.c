@@ -490,13 +490,11 @@ make_uri(void)
 	urifi_t res;
 
 	if (urifq.q->free->i1st == NULL) {
-		size_t nitems = urifq.q->nitems / sizeof(*res);
-		ptrdiff_t df;
-
 		assert(urifq.q->free->ilst == NULL);
-		UMQD_DEBUG("URIFQ RESIZE -> %zu\n", nitems + 16);
-		df = init_gq(urifq.q, sizeof(*res), nitems + 16);
-		gq_rbld_ll(urifq.fetchq, df);
+		UMQD_DEBUG("URIFQ RESIZE +%u\n", 16U);
+		init_gq(urifq.q, 16, sizeof(*res));
+		UMQD_DEBUG("URIFQ RESIZE ->%zu\n",
+			   urifq.q->nitems / sizeof(*res));
 	}
 	/* get us a new client and populate the object */
 	res = (void*)gq_pop_head(urifq.q->free);
@@ -535,11 +533,10 @@ make_io(void)
 	ev_io_i_t res;
 
 	if (ioq.q->free->i1st == NULL) {
-		size_t nitems = ioq.q->nitems / sizeof(*res);
-
 		assert(ioq.q->free->ilst == NULL);
-		UMQD_DEBUG("IOQ RESIZE -> %zu\n", nitems + 16);
-		init_gq(ioq.q, sizeof(*res), nitems + 16);
+		UMQD_DEBUG("IOQ RESIZE +%u\n", 16U);
+		init_gq(ioq.q, 16U, sizeof(*res));
+		UMQD_DEBUG("IOQ RESIZE ->%zu\n", ioq.q->nitems / sizeof(*res));
 	}
 	/* get us a new client and populate the object */
 	res = (void*)gq_pop_head(ioq.q->free);

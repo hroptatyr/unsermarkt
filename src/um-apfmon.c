@@ -193,28 +193,6 @@ resz_cli(size_t nu)
 	return;
 }
 
-static void
-check_poss(cli_t c)
-{
-	gq_t UNUSED(q) = CLI(c)->pool;
-	gq_ll_t UNUSED(ll) = CLI(c)->poss;
-
-#if defined DEBUG_FLAG
-	/* count all items */
-	size_t ni = 0;
-
-	for (gq_item_t ip = q->free->i1st; ip; ip = ip->next, ni++);
-	for (gq_item_t ip = ll->i1st; ip; ip = ip->next, ni++);
-	assert(ni == q->nitems / sizeof(struct pfi_s));
-
-	ni = 0;
-	for (gq_item_t ip = q->free->ilst; ip; ip = ip->prev, ni++);
-	for (gq_item_t ip = ll->ilst; ip; ip = ip->prev, ni++);
-	assert(ni == q->nitems / sizeof(struct pfi_s));
-#endif	/* DEBUG_FLAG */
-	return;
-}
-
 
 static int
 sa_eq_p(my_sockaddr_t sa1, my_sockaddr_t sa2)
@@ -285,14 +263,10 @@ pop_pfi(cli_t c)
 	gq_t q = CLI(c)->pool;
 
 	if (q->free->i1st == NULL) {
-		size_t nitems = q->nitems / sizeof(*res);
-		ptrdiff_t df;
-
 		assert(q->free->ilst == NULL);
-		UMAM_DEBUG("q resize %zu -> %zu\n", nitems, nitems + 64);
-		df = init_gq(q, sizeof(*res), nitems + 64);
-		gq_rbld_ll(CLI(c)->poss, df);
-		check_poss(c);
+		UMAM_DEBUG("q resize +%u\n", 64U);
+		init_gq(q, 64U, sizeof(*res));
+		UMAM_DEBUG("q resize ->%zu\n", q->nitems / sizeof(*res));
 	}
 	/* get us a new portfolio item */
 	res = (void*)gq_pop_head(q->free);

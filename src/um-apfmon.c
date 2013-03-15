@@ -395,7 +395,6 @@ pr_pos_rpt(const struct ud_msg_s *msg, const struct ud_auxmsg_s *aux)
 	cli_t c;
 	int res = 0;
 
-	UMAM_DEBUG("FUCK ME DEAD: a message %p %zu\n", msg->data, msg->dlen);
 	/* find the cli or add it if not there already */
 	if (UNLIKELY(msg->dlen == 0)) {
 		return 0;
@@ -405,7 +404,6 @@ pr_pos_rpt(const struct ud_msg_s *msg, const struct ud_auxmsg_s *aux)
 		;
 	} else {
 		/* fuck */
-		UMAM_DEBUG("FUCK FUCK UFCK\n");
 		return -1;
 	}
 
@@ -462,8 +460,6 @@ mon_beef_cb(EV_P_ ev_io *w, int UNUSED(revents))
 
 	while (ud_chck_msg(msg, s) >= 0) {
 		struct ud_auxmsg_s aux[1];
-
-		UMAM_DEBUG("got messy of length %zu\n", msg->dlen);
 
 		if (ud_get_aux(aux, s) < 0) {
 			continue;

@@ -37,6 +37,35 @@
 #if !defined INCLUDED_web_h_
 #define INCLUDED_web_h_
 
-extern size_t web(const char **restrict tgt, const char *buf, size_t bsz);
+/* web services */
+typedef enum {
+	WEBSVC_F_UNK,
+	WEBSVC_F_SECDEF,
+	WEBSVC_F_QUOTREQ,
+	WEBSVC_F_REQFORPOSS,
+} websvc_f_t;
+
+struct websvc_s {
+	websvc_f_t ty;
+
+	union {
+		struct {
+			uint16_t idx;
+		} secdef;
+
+		struct {
+			uint16_t idx;
+		} quotreq;
+
+		struct {
+			const char *ac;
+			size_t acz;
+		} reqforposs;
+	};
+};
+
+
+extern struct websvc_s websvc(const char *buf, size_t bsz);
+extern size_t web(const char **restrict tgt, struct websvc_s);
 
 #endif	/* INCLUDED_web_h_ */

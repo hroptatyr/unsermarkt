@@ -1215,6 +1215,7 @@ static void
 dccp_data_cb(EV_P_ ev_io *w, int UNUSED(re))
 {
 	static char buf[65536];
+	struct websvc_s ws;
 	const char *rsp;
 	size_t rsz;
 	ssize_t nrd;
@@ -1228,7 +1229,8 @@ dccp_data_cb(EV_P_ ev_io *w, int UNUSED(re))
 		buf[sizeof(buf) - 1] = '\0';
 	}
 
-	if ((rsz = web(&rsp, buf, (size_t)nrd)) > 0) {
+	if ((ws = websvc(buf, (size_t)nrd)).ty != WEBSVC_F_UNK &&
+	    (rsz = web(&rsp, ws)) > 0) {
 		size_t nwr = 0;
 
 		for (ssize_t tmp;

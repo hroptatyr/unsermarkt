@@ -69,6 +69,7 @@ um_quod_SOURCES += um-quod-clo.ggo
 um_quod_SOURCES += gq.c gq.h
 um_quod_SOURCES += web.c web.h
 um_quod_CPPFLAGS = $(AM_CPPFLAGS) -D_GNU_SOURCE
+um_quod_CPPFLAGS += -DWEB_ASP_QUOTREQ
 um_quod_CPPFLAGS += $(libev_CFLAGS)
 um_quod_CPPFLAGS += $(unserding_CFLAGS) -DUD_NEW_API
 um_quod_CPPFLAGS += $(uterus_CFLAGS)

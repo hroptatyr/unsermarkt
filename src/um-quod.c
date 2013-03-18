@@ -98,6 +98,7 @@
 #include "ud-sock.h"
 #include "gq.h"
 #include "web.h"
+#include "quod-cache.h"
 
 #if defined __INTEL_COMPILER
 # pragma warning (disable:981)
@@ -178,20 +179,6 @@ struct ev_io_i_s {
 	char *rpl;
 	size_t rsz;
 };
-
-typedef struct {
-	struct sl1t_s bid[1];
-	struct sl1t_s ask[1];
-#if defined HAVE_LIBFIXC_FIX_H
-	fixc_msg_t msg;
-	fixc_msg_t ins;
-#else  /* !HAVE_LIBFIXC_FIX_H */
-	const char *sd;
-	size_t sdsz;
-	const char *instrmt;
-	size_t instrmtsz;
-#endif	/* HAVE_LIBFIXC_FIX_H */
-} *cache_t;
 
 /* children need access to beef resources */
 static ev_io *beef = NULL;
@@ -559,9 +546,9 @@ static size_t u_nt = 0;
 static size_t ign = 0;
 
 /* value cache */
-void *cache = NULL;
+cache_t quod_cache = NULL;
 static size_t cache_alsz = 0UL;
-#define CACHE(x)	(((cache_t)cache)[x])
+#define CACHE(x)	(quod_cache[x])
 
 static const size_t pgsz = 65536UL;
 
@@ -582,7 +569,7 @@ static void
 clean_up_cache(void)
 {
 	UMQD_DEBUG("cleaning up cache\n");
-	munmap(cache, cache_alsz);
+	munmap(quod_cache, cache_alsz);
 	return;
 }
 
@@ -593,17 +580,18 @@ check_cache(unsigned int tgtid)
 
 	if (UNLIKELY(tgtid > ncache)) {
 		/* resize */
-		size_t nx64k = (tgtid * sizeof(*cache) + pgsz) & ~(pgsz - 1);
+		size_t nx64k = (tgtid * sizeof(CACHE(0)) + pgsz) & ~(pgsz - 1);
 
-		if (UNLIKELY(cache == NULL)) {
-			cache = mmap(NULL, nx64k, PROT_MEM, MAP_MEM, -1, 0);
+		if (UNLIKELY(quod_cache == NULL)) {
+			quod_cache = mmap(NULL, nx64k, PROT_MEM, MAP_MEM, -1, 0);
 			atexit(clean_up_cache);
 		} else {
-			size_t olsz = ncache * sizeof(*cache);
-			cache = mremap(cache, olsz, nx64k, MREMAP_MAYMOVE);
+			size_t olsz = ncache * sizeof(CACHE(0));
+			quod_cache =
+				mremap(quod_cache, olsz, nx64k, MREMAP_MAYMOVE);
 		}
 
-		ncache = (cache_alsz = nx64k) / sizeof(*cache);
+		ncache = (cache_alsz = nx64k) / sizeof(CACHE(0));
 	}
 	return;
 }

@@ -1,4 +1,4 @@
-/*** web.h -- quote snapper web services
+/*** quod-cache.h -- caching quotes
  *
  * Copyright (C) 2012-2013 Sebastian Freundt
  *
@@ -34,10 +34,24 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  ***/
-#if !defined INCLUDED_um_quod_h_
-#define INCLUDED_um_quod_h_
+#if !defined INCLUDED_quod_cache_h_
+#define INCLUDED_quod_cache_h_
 
-extern void *logerr;
-extern void *uctx;
+/* cache structure */
+typedef struct {
+	struct sl1t_s bid[1];
+	struct sl1t_s ask[1];
+#if defined HAVE_LIBFIXC_FIX_H
+	fixc_msg_t msg;
+	fixc_msg_t ins;
+#else  /* !HAVE_LIBFIXC_FIX_H */
+	const char *sd;
+	size_t sdsz;
+	const char *instrmt;
+	size_t instrmtsz;
+#endif	/* HAVE_LIBFIXC_FIX_H */
+} *cache_t;
 
-#endif	/* INCLUDED_um_quod_h_ */
+extern cache_t quod_cache;
+
+#endif	/* INCLUDED_quod_cache_h_ */

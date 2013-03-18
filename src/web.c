@@ -61,6 +61,7 @@
 #endif	/* HAVE_UTERUS_UTERUS_H || HAVE_UTERUS_H */
 #include "um-quod.h"
 #include "web.h"
+#include "quod-cache.h"
 #include "nifty.h"
 
 #if defined DEBUG_FLAG
@@ -74,6 +75,7 @@ typedef enum {
 	WEBSVC_F_UNK,
 	WEBSVC_F_SECDEF,
 	WEBSVC_F_QUOTREQ,
+	WEBSVC_F_POSRPT,
 } websvc_f_t;
 
 struct websvc_s {
@@ -87,24 +89,10 @@ struct websvc_s {
 		struct {
 			uint16_t idx;
 		} quotreq;
+
+
 	};
 };
-
-/* cache structure */
-typedef struct {
-	struct sl1t_s bid[1];
-	struct sl1t_s ask[1];
-#if defined HAVE_LIBFIXC_FIX_H
-	fixc_msg_t msg;
-	fixc_msg_t ins;
-#else  /* !HAVE_LIBFIXC_FIX_H */
-	const char *sd;
-	size_t sdsz;
-	const char *instrmt;
-	size_t instrmtsz;
-#endif	/* HAVE_LIBFIXC_FIX_H */
-} *cache_t;
-#define cache	((cache_t)cache)
 
 
 /* helpers */
@@ -267,7 +255,7 @@ __secdef1(fixc_msg_t msg, uint16_t idx)
 		.typ = FIXC_TYP_MSGTYP,
 		.mtyp = (fixc_msgt_t)FIXML_MSG_SecurityDefinition,
 	};
-	fixc_msg_t cchmsg = cache[idx - 1].msg;
+	fixc_msg_t cchmsg = quod_cache[idx - 1].msg;
 
 	if (UNLIKELY(cchmsg == NULL)) {
 		return;
@@ -405,8 +393,8 @@ __quotreq1(fixc_msg_t msg, uint16_t idx, struct timeval now)
 		.mtyp = (fixc_msgt_t)FIXML_MSG_Quote,
 	};
 	static struct timeval now_cch;
-	const_sl1t_t b = cache[idx - 1].bid;
-	const_sl1t_t a = cache[idx - 1].ask;
+	const_sl1t_t b = quod_cache[idx - 1].bid;
+	const_sl1t_t a = quod_cache[idx - 1].ask;
 	size_t z;
 
 	/* find the more recent quote out of bid and ask */
@@ -453,9 +441,9 @@ __quotreq1(fixc_msg_t msg, uint16_t idx, struct timeval now)
 	fixc_add_tag(msg, (fixc_attr_t)62/*ValidUntilTm*/, vtm, vtz);
 
 	/* see if there's an instrm block */
-	if (cache[idx - 1].ins) {
+	if (quod_cache[idx - 1].ins) {
 		/* fixc_add_msg(msg, cache[idx - 1].ins); */
-		fixc_msg_t ins = cache[idx - 1].ins;
+		fixc_msg_t ins = quod_cache[idx - 1].ins;
 
 		for (size_t i = 0; i < ins->nflds; i++) {
 			struct fixc_fld_s fld = ins->flds[i];

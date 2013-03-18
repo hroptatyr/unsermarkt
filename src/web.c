@@ -66,7 +66,7 @@
 #endif	/* WEB_ASP_QUOTREQ */
 #if defined WEB_ASP_REQFORPOSS
 # include "um-apfd.h"
-# include "apfd-cache.h"
+# include "gq.h"
 #endif	/* WEB_ASP_REQFORPOSS */
 #include "web.h"
 #include "nifty.h"
@@ -91,6 +91,31 @@ __find_idx(const char *str)
 	}
 #define MASS_QUOT	(0xffff)
 	return MASS_QUOT;
+}
+
+static size_t
+__find_ac(const char **tgt, const char *str)
+{
+	char *p;
+
+	if ((p = strstr(str, "ac="))) {
+		*tgt = p + 3;
+		if ((p = strchr(*tgt, '&')) != NULL) {
+			;
+		} else if ((p = strchr(*tgt, ' ')) != NULL) {
+			;
+		} else if ((p = strchr(*tgt, '\n')) != NULL) {
+			if (p[-1] == '\r') {
+				p--;
+			}
+		} else {
+			goto bugger;
+		}
+		*p = '\0';
+		return p - *tgt;
+	}
+bugger:
+	return 0UL;
 }
 
 /* date and time funs, could use libdut from dateutils */
@@ -180,7 +205,7 @@ ffff_gmtime(struct tm *tm, const time_t t)
 	return;
 }
 
-static size_t
+static __attribute__((unused)) size_t
 ffff_strfdtu(char *restrict buf, size_t bsz, time_t sec, unsigned int usec)
 {
 	struct tm tm[1];
@@ -622,37 +647,104 @@ websvc_quotreq(char *restrict tgt, size_t tsz, struct websvc_s sd)
 #endif	/* WEB_ASP_QUOTREQ */
 
 
-static websvc_f_t
-websvc_from_request(struct websvc_s *tgt, const char *req, size_t UNUSED(len))
+/* reqforposs service */
+#if defined WEB_ASP_REQFORPOSS
+# if defined HAVE_LIBFIXC_FIX_H
+static void
+__posrpt1(fixc_msg_t msg, const struct pfi_s *pos, const char *ac, size_t acz)
 {
-	static const char get_slash[] = "GET /";
-	websvc_f_t res = WEBSVC_F_UNK;
-	const char *p;
+	static char p[32];
+	static const struct fixc_fld_s msgtyp = {
+		.tag = 35,
+		.typ = FIXC_TYP_MSGTYP,
+		.mtyp = (fixc_msgt_t)FIXML_MSG_PositionReport,
+	};
+	size_t z;
 
-	if ((p = strstr(req, get_slash))) {
-		p += sizeof(get_slash) - 1;
+	/* the message type */
+	fixc_add_fld(msg, msgtyp);
 
-#define TAG_MATCHES_P(p, x)				\
-		(strncmp(p, x, sizeof(x) - 1) == 0)
+	/* nopartyid */
+	fixc_add_tag(msg, (fixc_attr_t)453/*NoPartyID*/, "1", 1);
+	fixc_add_tag(msg, (fixc_attr_t)448/*PtyID*/, ac, acz);
+	fixc_add_tag(msg, (fixc_attr_t)447/*PtyIDSrc*/, "D", 1);
+	fixc_add_tag(msg, (fixc_attr_t)452/*PtyIDRole*/, "27", 2);
 
-#define SECDEF_TAG	"secdef"
-		if (TAG_MATCHES_P(p, SECDEF_TAG)) {
-			WEB_DEBUG("secdef query\n");
-			res = WEBSVC_F_SECDEF;
-			tgt->secdef.idx =
-				__find_idx(p + sizeof(SECDEF_TAG) - 1);
+	/* see if there's an instrm block */
+	if (pos->ins != NULL) {
+		fixc_msg_t ins = pos->ins;
 
-#define QUOTREQ_TAG	"quotreq"
-		} else if (TAG_MATCHES_P(p, QUOTREQ_TAG)) {
-			WEB_DEBUG("quotreq query\n");
-			res = WEBSVC_F_QUOTREQ;
-			tgt->quotreq.idx =
-				__find_idx(p + sizeof(QUOTREQ_TAG) - 1);
+		for (size_t i = 0; i < ins->nflds; i++) {
+			struct fixc_fld_s fld = ins->flds[i];
+			struct fixc_tag_data_s d = fixc_get_tag_data(ins, i);
+			size_t mi = msg->nflds;
+
+			fixc_add_tag(msg, (fixc_attr_t)fld.tag, d.s, d.z);
+			/* bang .cnt and .tpc */
+			msg->flds[mi].tpc = fld.tpc;
+			msg->flds[mi].cnt = fld.cnt;
 		}
+	} else {
+		z = strlen(pos->sym);
+		fixc_add_tag(msg, (fixc_attr_t)55/*Sym*/, pos->sym, z);
 	}
-	return tgt->ty = res;
+
+	/* quantities */
+	fixc_add_tag(msg, (fixc_attr_t)702/*NoPositions*/, "2", 1);
+	fixc_add_tag(msg, (fixc_attr_t)703/*PosType*/, "ALC", 3);
+
+	z = snprintf(p, sizeof(p), "%.6f", pos->lqty);
+	fixc_add_tag(msg, (fixc_attr_t)704/*LongQty*/, p, z);
+	z = snprintf(p, sizeof(p), "%.6f", pos->sqty);
+	fixc_add_tag(msg, (fixc_attr_t)705/*ShortQty*/, p, z);
+	return;
 }
 
+static size_t
+websvc_reqforposs(char *restrict tgt, size_t tsz, struct websvc_s sd)
+{
+	size_t idx = 0;
+	struct timeval now[1];
+	fixc_msg_t msg;
+	gq_ll_t poss;
+
+	WEB_DEBUG("printing reqforposs ac %s\n", sd.reqforposs.ac);
+
+	if ((poss = sd.reqforposs.poss) == NULL) {
+		return 0;
+	}
+
+	/* get current time */
+	gettimeofday(now, NULL);
+
+	/* start a fix msg for that */
+	msg = make_fixc_msg((fixc_msgt_t)FIXC_MSGT_BATCH);
+
+	/* loop over positions */
+	for (gq_item_t i = poss->i1st; i; i = i->next) {
+		const struct pfi_s *pos = (const void*)i;
+		__posrpt1(msg, pos, sd.reqforposs.ac, sd.reqforposs.acz);
+	}
+
+	/* render the whole shebang */
+	idx = fixc_render_fixml(tgt, tsz, msg);
+	/* start a fix msg for that */
+	free_fixc(msg);
+	return idx;
+}
+
+# else  /* !HAVE_LIBFIXC_FIX_H */
+static size_t
+websvc_reqforposs(
+	char *restrict UNUSED(tgt), size_t UNUSED(tsz),
+	struct websvc_s UNUSED(sd))
+{
+	return 0UL;
+}
+# endif	/* HAVE_LIBFIXC_FIX_H */
+#endif	/* WEB_ASP_REQFORPOSS */
+
+
 static void
 paste_clen(char *restrict buf, size_t bsz, size_t len)
 {

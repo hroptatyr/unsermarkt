@@ -135,19 +135,6 @@ typedef struct urifi_s *urifi_t;
 typedef struct ev_io_q_s *ev_io_q_t;
 typedef struct ev_io_i_s *ev_io_i_t;
 
-/* one portfolio item */
-struct pfi_s {
-	struct gq_item_s ALGN(i, 16);
-
-	/* symbol, not as long as usual */
-	char sym[32];
-	double lqty;
-	double sqty;
-
-	int mark;
-	unsigned int last_seen;
-};
-
 /* the client */
 struct cli_s {
 	struct sockaddr_storage sa __attribute__((aligned(16)));
@@ -156,9 +143,8 @@ struct cli_s {
 	char ss[INET6_ADDRSTRLEN + 2 + 6];
 	size_t sssz;
 
-	/* portfolio name */
-	char pf[32];
-	size_t pfsz;
+	/* pf name */
+	char acct[64];
 
 	/* all them positions */
 	struct gq_s pool[1];
@@ -714,6 +700,7 @@ static void
 dccp_data_cb(EV_P_ ev_io *w, int UNUSED(re))
 {
 	static char buf[65536];
+	struct websvc_s ws;
 	const char *rsp;
 	size_t rsz;
 	ssize_t nrd;
@@ -727,15 +714,30 @@ dccp_data_cb(EV_P_ ev_io *w, int UNUSED(re))
 		buf[sizeof(buf) - 1] = '\0';
 	}
 
-#if 0
-	if ((rsz = web(&rsp, buf, (size_t)nrd)) > 0) {
-		size_t nwr = 0;
-
-		for (ssize_t tmp;
-		     (tmp = send(w->fd, rsp + nwr, rsz - nwr, 0)) > 0 &&
-			     (nwr += tmp) < rsz;);
+	if ((ws = websvc(buf, (size_t)nrd)).ty != WEBSVC_F_REQFORPOSS) {
+		/* wouldn't know how to handle shit */
+		goto clo;
 	}
-#endif
+	/* otherwise ws.ac points to the portfolio in question */
+	for (size_t i = 0; i < ncli; i++) {
+		struct cli_s *c = cli + i;
+
+		if (strncmp(c->acct, ws.reqforposs.ac, ws.reqforposs.acz)) {
+			/* yay */
+			ws.reqforposs.poss = c->poss;
+
+			if ((rsz = web(&rsp, ws)) > 0) {
+				size_t nwr = 0;
+
+				for (ssize_t tmp;
+				     (tmp = send(
+					      w->fd,
+					      rsp + nwr, rsz - nwr, 0)) > 0 &&
+					     (nwr += tmp) < rsz;);
+				break;
+			}
+		}
+	}
 clo:
 	ev_qio_shut(EV_A_ w);
 	return;

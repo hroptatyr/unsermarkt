@@ -37,7 +37,24 @@
 #if !defined INCLUDED_um_apfd_h_
 #define INCLUDED_um_apfd_h_
 
+#include "gq.h"
+
 extern void *logerr;
-extern void *cache;
+
+/* one portfolio item */
+struct pfi_s {
+	struct gq_item_s i;
+
+	/* symbol, not as long as usual */
+	char sym[32];
+#if defined HAVE_LIBFIXC_FIX_H
+	fixc_msg_t ins;
+#endif	/* HAVE_LIBFIXC_FIX_H */
+	double lqty;
+	double sqty;
+
+	int mark;
+	unsigned int last_seen;
+};
 
 #endif	/* INCLUDED_um_apfd_h_ */

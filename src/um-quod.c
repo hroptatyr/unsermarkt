@@ -546,7 +546,7 @@ static size_t u_nt = 0;
 static size_t ign = 0;
 
 /* value cache */
-cache_t quod_cache = NULL;
+quod_cache_t quod_cache = NULL;
 static size_t cache_alsz = 0UL;
 #define CACHE(x)	(quod_cache[x])
 

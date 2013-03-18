@@ -50,8 +50,8 @@ typedef struct {
 	const char *instrmt;
 	size_t instrmtsz;
 #endif	/* HAVE_LIBFIXC_FIX_H */
-} *cache_t;
+} *quod_cache_t;
 
-extern cache_t quod_cache;
+extern quod_cache_t quod_cache;
 
 #endif	/* INCLUDED_quod_cache_h_ */

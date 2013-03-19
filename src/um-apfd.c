@@ -371,120 +371,6 @@ prune_clis(void)
 }
 
 
-/* account handling */
-struct gq_s ac_pool[1];
-struct gq_ll_s accts[1];
-
-static pfa_t
-pop_pfa(cli_t UNUSED(c))
-{
-	pfa_t res;
-	gq_t q = ac_pool;
-
-	if (q->free->i1st == NULL) {
-		assert(q->free->ilst == NULL);
-		UMAD_DEBUG("ac pool resize +%u\n", 16U);
-		init_gq(q, 16U, sizeof(*res));
-		UMAD_DEBUG("ac pool resize ->%zu\n", q->nitems / sizeof(*res));
-	}
-	/* get us a new portfolio item */
-	res = (void*)gq_pop_head(q->free);
-	memset(res, 0, sizeof(*res));
-	return res;
-}
-
-static pfa_t
-find_ac(cli_t UNUSED(c), const char *ac, size_t az)
-{
-	gq_ll_t q = accts;
-	pfa_t res;
-
-	if (UNLIKELY(az > sizeof(res->acct))) {
-		az = sizeof(res->acct) - 1;
-	}
-
-	for (gq_item_t i = q->i1st; i; i = i->next) {
-		res = (void*)i;
-
-		if (memcmp(res->acct, ac, az) == 0) {
-			return res;
-		}
-	}
-	return NULL;
-}
-
-static pfa_t
-add_ac(cli_t c, const char *ac, size_t az)
-{
-	pfa_t res;
-
-	if (UNLIKELY((res = pop_pfa(c)) == NULL)) {
-		return NULL;
-	}
-	if (az > sizeof(res->acct)) {
-		az = sizeof(res->acct) - 1;
-	}
-	/* all's fine, copy the acct and the sym */
-	memcpy(res->acct, ac, az);
-	res->acct[az] = '\0';
-	/* and shove it onto our acct list */
-	gq_push_tail(accts, (gq_item_t)res);
-	return res;
-}
-
-
-/* position handling */
-struct gq_s pos_pool[1];
-
-static pfi_t
-pop_pfi(void)
-{
-	pfi_t res;
-	gq_t q = pos_pool;
-
-	if (q->free->i1st == NULL) {
-		assert(q->free->ilst == NULL);
-		UMAD_DEBUG("pos pool resize +%u\n", 64U);
-		init_gq(q, 64U, sizeof(*res));
-		UMAD_DEBUG("pos pool resize ->%zu\n", q->nitems / sizeof(*res));
-	}
-	/* get us a new portfolio item */
-	res = (void*)gq_pop_head(q->free);
-	memset(res, 0, sizeof(*res));
-	return res;
-}
-
-static pfi_t
-find_pos(const struct pfa_s ac[static 1], const char *sym, size_t sz)
-{
-	for (gq_item_t i = ac->poss->i1st; i; i = i->next) {
-		pfi_t pos = (void*)i;
-
-		if (memcmp(pos->sym, sym, sz) == 0) {
-			return pos;
-		}
-	}
-	return NULL;
-}
-
-static pfi_t
-add_pos(struct pfa_s ac[static 1], const char *sym, size_t sz)
-{
-	pfi_t res;
-
-	if (UNLIKELY((res = pop_pfi()) == NULL)) {
-		return NULL;
-	}
-
-	/* all's fine, copy the acct and the sym */
-	memcpy(res->sym, sym, sz);
-	res->sym[sz] = '\0';
-	/* and shove it onto our poss list */
-	gq_push_tail(ac->poss, (gq_item_t)res);
-	return res;
-}
-
-
 /* networking */
 static int
 make_dccp(void)
@@ -903,7 +789,6 @@ dccp_data_cb(EV_P_ ev_io *w, int UNUSED(re))
 {
 	static char buf[65536];
 	struct websvc_s ws;
-	const struct pfa_s *ac;
 	const char *rsp;
 	size_t rsz;
 	ssize_t nrd;
@@ -917,24 +802,13 @@ dccp_data_cb(EV_P_ ev_io *w, int UNUSED(re))
 		buf[sizeof(buf) - 1] = '\0';
 	}
 
-	if ((ws = websvc(buf, (size_t)nrd)).ty != WEBSVC_F_REQFORPOSS) {
-		/* wouldn't know how to handle shit */
-		goto clo;
-	}
-	/* otherwise ws.rfp.ac points to the portfolio in question */
-	if ((ac = find_ac(0, ws.reqforposs.ac, ws.reqforposs.acz)) == NULL) {
-		;
-	} else {
-		/* yay */
-		ws.reqforposs.poss = ac->poss;
+	if ((ws = websvc(buf, (size_t)nrd)).ty != WEBSVC_F_REQFORPOSS &&
+	    (rsz = web(&rsp, ws)) > 0) {
+		size_t nwr = 0;
 
-		if ((rsz = web(&rsp, ws)) > 0) {
-			size_t nwr = 0;
-
-			for (ssize_t tmp;
-			     (tmp = send(w->fd,rsp + nwr, rsz - nwr, 0)) > 0 &&
-				     (nwr += tmp) < rsz;);
-		}
+		for (ssize_t tmp;
+		     (tmp = send(w->fd,rsp + nwr, rsz - nwr, 0)) > 0 &&
+			     (nwr += tmp) < rsz;);
 	}
 clo:
 	ev_qio_shut(EV_A_ w);

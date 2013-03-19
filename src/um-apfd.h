@@ -37,34 +37,7 @@
 #if !defined INCLUDED_um_apfd_h_
 #define INCLUDED_um_apfd_h_
 
-#include "gq.h"
-
 extern void *logerr;
 extern void *uctx;
-
-typedef struct pfa_s *pfa_t;
-typedef struct pfi_s *pfi_t;
-
-/* one account item */
-struct pfa_s {
-	struct gq_item_s i;
-
-	/* account name */
-	char acct[64];
-	/* positions */
-	struct gq_ll_s poss[1];
-};
-
-/* one portfolio item */
-struct pfi_s {
-	struct gq_item_s i;
-
-	/* symbol, not as long as usual */
-	char sym[64];
-	double lqty;
-	double sqty;
-
-	unsigned int last_seen;
-};
 
 #endif	/* INCLUDED_um_apfd_h_ */

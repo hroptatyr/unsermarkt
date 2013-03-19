@@ -57,6 +57,7 @@
 #endif	/* WORDS_BIGENDIAN */
 /* command to dispatch meta info */
 #define UTE_QMETA	0x7572
+#define UTE_ALLOC	(UTE_CMD + 0x02)
 
 /**
  * Message we pass around on UTE_QMETA channel. */
@@ -71,7 +72,7 @@ struct um_qmeta_s {
 extern int um_pack_brag(ud_sock_t s, const struct um_qmeta_s msg[static 1]);
 
 extern int
-um_chck_msg_brag(
+um_chck_brag(
 	struct um_qmeta_s *restrict tgt, const struct ud_msg_s msg[static 1]);
 
 
@@ -95,6 +96,41 @@ um_pack_sl1t(ud_sock_t s, const_sl1t_t q)
 			.data = q,
 			.dlen = sizeof(*q),
 		});
+}
+
+static inline int
+um_chck_sl1t(struct sl1t_s *restrict tgt, const struct ud_msg_s msg[static 1])
+{
+	if (msg->dlen != sizeof(*tgt)) {
+		/* nope, wrong size */
+		return -1;
+	}
+	/* otherwise just copy the data */
+	*tgt = *(const struct sl1t_s*)msg->data;
+	return 0;
+}
+
+static inline int
+um_pack_alloc(ud_sock_t s, const_sl1t_t q)
+{
+	return ud_pack_msg(
+		s, (struct ud_msg_s){
+			.svc = UTE_ALLOC,
+			.data = q,
+			.dlen = sizeof(*q),
+		});
+}
+
+static inline int
+um_chck_alloc(struct sl1t_s *restrict tgt, const struct ud_msg_s msg[static 1])
+{
+	if (msg->dlen != sizeof(*tgt)) {
+		/* nope, wrong size */
+		return -1;
+	}
+	/* otherwise just copy the data */
+	*tgt = *(const struct sl1t_s*)msg->data;
+	return 0;
 }
 
 #endif	/* INCLUDED_svc_uterus_h_ */

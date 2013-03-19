@@ -579,7 +579,7 @@ snarf_syms(const struct ud_msg_s *msg, const struct ud_auxmsg_s *aux)
 	uint16_t idx;
 	lobidx_t c;
 
-	if (UNLIKELY(um_chck_msg_brag(brg, msg) < 0)) {
+	if (UNLIKELY(um_chck_brag(brg, msg) < 0)) {
 		return;
 	} else if (UNLIKELY((idx = (uint16_t)brg->idx) == 0U)) {
 		return;

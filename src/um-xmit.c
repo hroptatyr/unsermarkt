@@ -186,7 +186,7 @@ party(const struct xmit_s *ctx, useconds_t tm)
 			if (msg->svc != UTE_QMETA) {
 				/* fuck right off */
 				continue;
-			} else if (um_chck_msg_brag(brg, msg) < 0) {
+			} else if (um_chck_brag(brg, msg) < 0) {
 				/* don't know, something's not right */
 				continue;
 			} else if (brg->symlen || brg->urilen) {

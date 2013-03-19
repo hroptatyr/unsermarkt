@@ -226,6 +226,7 @@ fini_cli(void)
 	return;
 }
 
+#if !defined HAVE_LIBFIXC_FIX_H
 static void
 resz_cli(size_t nu)
 {
@@ -311,6 +312,7 @@ add_cli(struct key_s k)
 	/* queue needs no init'ing, we use lazy adding */
 	return idx + 1;
 }
+#endif	/* !HAVE_LIBFIXC_FIX_H */
 
 static void
 prune_cli(cli_t c)

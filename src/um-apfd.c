@@ -93,6 +93,7 @@
 
 #if defined __INTEL_COMPILER
 # pragma warning (disable:981)
+# pragma warning (disable:2405)
 #endif	/* __INTEL_COMPILER */
 
 #define PURE		__attribute__((pure))
@@ -121,7 +122,6 @@ void *logerr;
 #endif	/* DEBUG_FLAG */
 
 typedef size_t cli_t;
-typedef struct pfi_s *pfi_t;
 
 typedef const struct sockaddr_in6 *my_sockaddr_t;
 
@@ -142,13 +142,6 @@ struct cli_s {
 	/* helpers for the renderer */
 	char ss[INET6_ADDRSTRLEN + 2 + 6];
 	size_t sssz;
-
-	/* pf name */
-	char acct[64];
-
-	/* all them positions */
-	struct gq_s pool[1];
-	struct gq_ll_s poss[1];
 
 	volatile uint32_t last_seen;
 };
@@ -295,12 +288,9 @@ add_cli(struct key_s k)
 	return idx + 1;
 }
 
-static __attribute__((noinline)) void
+static void
 prune_cli(cli_t c)
 {
-	/* finalise their position lists */
-	fini_gq(CLI(c)->pool);
-
 	/* wipe it all */
 	memset(CLI(c), 0, sizeof(struct cli_s));
 	return;
@@ -312,7 +302,7 @@ cli_pruned_p(cli_t c)
 	return CLI(c)->sa.ss_family;
 }
 
-static __attribute__((noinline)) void
+static void
 prune_clis(void)
 {
 	struct timeval tv[1];
@@ -357,18 +347,82 @@ prune_clis(void)
 }
 
 
-/* position handling */
-static pfi_t
-pop_pfi(cli_t c)
+/* account handling */
+struct gq_s ac_pool[1];
+struct gq_ll_s accts[1];
+
+static pfa_t
+pop_pfa(cli_t UNUSED(c))
 {
-	pfi_t res;
-	gq_t q = CLI(c)->pool;
+	pfa_t res;
+	gq_t q = ac_pool;
 
 	if (q->free->i1st == NULL) {
 		assert(q->free->ilst == NULL);
-		UMAD_DEBUG("q resize +%u\n", 64U);
+		UMAD_DEBUG("ac pool resize +%u\n", 16U);
+		init_gq(q, 16U, sizeof(*res));
+		UMAD_DEBUG("ac pool resize ->%zu\n", q->nitems / sizeof(*res));
+	}
+	/* get us a new portfolio item */
+	res = (void*)gq_pop_head(q->free);
+	memset(res, 0, sizeof(*res));
+	return res;
+}
+
+static pfa_t
+find_ac(cli_t UNUSED(c), const char *ac, size_t az)
+{
+	gq_ll_t q = accts;
+	pfa_t res;
+
+	if (UNLIKELY(az > sizeof(res->acct))) {
+		az = sizeof(res->acct) - 1;
+	}
+
+	for (gq_item_t i = q->i1st; i; i = i->next) {
+		res = (void*)i;
+
+		if (memcmp(res->acct, ac, az) == 0) {
+			return res;
+		}
+	}
+	return NULL;
+}
+
+static pfa_t
+add_ac(cli_t c, const char *ac, size_t az)
+{
+	pfa_t res;
+
+	if (UNLIKELY((res = pop_pfa(c)) == NULL)) {
+		return NULL;
+	}
+	if (az > sizeof(res->acct)) {
+		az = sizeof(res->acct) - 1;
+	}
+	/* all's fine, copy the acct and the sym */
+	memcpy(res->acct, ac, az);
+	res->acct[az] = '\0';
+	/* and shove it onto our acct list */
+	gq_push_tail(accts, (gq_item_t)res);
+	return res;
+}
+
+
+/* position handling */
+struct gq_s pos_pool[1];
+
+static pfi_t
+pop_pfi(void)
+{
+	pfi_t res;
+	gq_t q = pos_pool;
+
+	if (q->free->i1st == NULL) {
+		assert(q->free->ilst == NULL);
+		UMAD_DEBUG("pos pool resize +%u\n", 64U);
 		init_gq(q, 64U, sizeof(*res));
-		UMAD_DEBUG("q resize ->%zu\n", q->nitems / sizeof(*res));
+		UMAD_DEBUG("pos pool resize ->%zu\n", q->nitems / sizeof(*res));
 	}
 	/* get us a new portfolio item */
 	res = (void*)gq_pop_head(q->free);
@@ -377,14 +431,12 @@ pop_pfi(cli_t c)
 }
 
 static pfi_t
-find_pos(cli_t c, const char *sym, size_t ssz)
+find_pos(const struct pfa_s ac[static 1], const char *sym, size_t sz)
 {
-	gq_ll_t q = CLI(c)->poss;
-
-	for (gq_item_t i = q->i1st; i; i = i->next) {
+	for (gq_item_t i = ac->poss->i1st; i; i = i->next) {
 		pfi_t pos = (void*)i;
 
-		if (memcmp(pos->sym, sym, ssz) == 0) {
+		if (memcmp(pos->sym, sym, sz) == 0) {
 			return pos;
 		}
 	}
@@ -392,18 +444,19 @@ find_pos(cli_t c, const char *sym, size_t ssz)
 }
 
 static pfi_t
-add_pos(cli_t c, const char *sym, size_t ssz)
+add_pos(struct pfa_s ac[static 1], const char *sym, size_t sz)
 {
-	pfi_t res = pop_pfi(c);
+	pfi_t res;
 
-	if (UNLIKELY((res = pop_pfi(c)) == NULL)) {
+	if (UNLIKELY((res = pop_pfi()) == NULL)) {
 		return NULL;
 	}
-	/* all's fine, copy the sym */
-	memcpy(res->sym, sym, ssz);
-	res->sym[ssz] = '\0';
+
+	/* all's fine, copy the acct and the sym */
+	memcpy(res->sym, sym, sz);
+	res->sym[sz] = '\0';
 	/* and shove it onto our poss list */
-	gq_push_tail(CLI(c)->poss, (gq_item_t)res);
+	gq_push_tail(ac->poss, (gq_item_t)res);
 	return res;
 }
 
@@ -496,7 +549,8 @@ find_fix_fld(const char **p, const char *msg, const char *key)
 	const char *cand = msg - 1;
 	char *eocand;
 
-	while ((cand = strstr(cand + 1, key)) && cand != msg && cand[-1] != *SOH);
+	while ((cand = strstr(cand + 1, key)) &&
+	       cand != msg && cand[-1] != *SOH);
 	/* cand should be either NULL or point to the key */
 	if (UNLIKELY(cand == NULL)) {
 		return 0;
@@ -546,6 +600,7 @@ snarf_pos_rpt(const struct ud_msg_s *msg, const struct ud_auxmsg_s *aux)
 	static const char fix_pos_rpt[] = "35=AP";
 	static const char fix_chksum[] = "10=";
 	static const char fix_inssym[] = "55=";
+	static const char fix_acct[] = "1=";
 	static const char fix_lqty[] = "704=";
 	static const char fix_sqty[] = "705=";
 	time_t now;
@@ -569,31 +624,43 @@ snarf_pos_rpt(const struct ud_msg_s *msg, const struct ud_auxmsg_s *aux)
 	for (const char *p = msg->data, *const ep = p + msg->dlen;
 	     p && p < ep && (p = find_fix_eofld(p, fix_pos_rpt));
 	     p = find_fix_eofld(p, fix_chksum)) {
+		struct pfa_s *apf = NULL;
 		struct pfi_s *pos = NULL;
-		size_t tmp;
+		const char *ac;
+		size_t az;
 		const char *sym;
+		size_t sz;
 
-		if ((tmp = find_fix_fld(&sym, p, fix_inssym)) == 0) {
+		if ((az = find_fix_fld(&ac, p, fix_acct)) == 0) {
+			UMAD_DEBUG("no acct\n");
+			continue;
+		} else if ((sz = find_fix_fld(&sym, p, fix_inssym)) == 0) {
 			/* great, we NEED that symbol */
 			UMAD_DEBUG("no symbol\n");
 			continue;
 		}
+		/* ffw a/c */
+		ac += sizeof(fix_acct) - 1;
+		az -= sizeof(fix_acct) - 1;
 		/* ffw sym */
 		sym += sizeof(fix_inssym) - 1;
-		tmp -= sizeof(fix_inssym) - 1;
+		sz -= sizeof(fix_inssym) - 1;
 		/* we don't want no steenkin buffer overfloes */
-		if (UNLIKELY(tmp >= sizeof(pos->sym))) {
-			tmp = sizeof(pos->sym) - 1;
+		if (UNLIKELY(az >= sizeof(apf->acct))) {
+			az = sizeof(apf->acct) - 1;
 		}
-		if ((pos = find_pos(c, sym, tmp))) {
-			/* nothing to do */
-			;
-		} else if ((pos = add_pos(c, sym, tmp))) {
-			/* i cant believe how lucky i am */
-			;
-		} else {
-			/* big fuck up */
-			continue;
+		if (UNLIKELY(sz >= sizeof(pos->sym))) {
+			sz = sizeof(pos->sym) - 1;
+		}
+		if ((apf = find_ac(c, ac, az)) != NULL) {
+			if ((pos = find_pos(apf, sym, sz)) == NULL) {
+				goto add_pos;
+			}
+		} else if ((apf = add_ac(c, ac, az)) != NULL) {
+		add_pos:
+			if (UNLIKELY((pos = add_pos(apf, sym, sz)) == NULL)) {
+				continue;
+			}
 		}
 
 		/* find the long quantity */
@@ -701,6 +768,7 @@ dccp_data_cb(EV_P_ ev_io *w, int UNUSED(re))
 {
 	static char buf[65536];
 	struct websvc_s ws;
+	const struct pfa_s *ac;
 	const char *rsp;
 	size_t rsz;
 	ssize_t nrd;
@@ -718,24 +786,19 @@ dccp_data_cb(EV_P_ ev_io *w, int UNUSED(re))
 		/* wouldn't know how to handle shit */
 		goto clo;
 	}
-	/* otherwise ws.ac points to the portfolio in question */
-	for (size_t i = 0; i < ncli; i++) {
-		struct cli_s *c = cli + i;
+	/* otherwise ws.rfp.ac points to the portfolio in question */
+	if ((ac = find_ac(0, ws.reqforposs.ac, ws.reqforposs.acz)) == NULL) {
+		;
+	} else {
+		/* yay */
+		ws.reqforposs.poss = ac->poss;
 
-		if (strncmp(c->acct, ws.reqforposs.ac, ws.reqforposs.acz)) {
-			/* yay */
-			ws.reqforposs.poss = c->poss;
+		if ((rsz = web(&rsp, ws)) > 0) {
+			size_t nwr = 0;
 
-			if ((rsz = web(&rsp, ws)) > 0) {
-				size_t nwr = 0;
-
-				for (ssize_t tmp;
-				     (tmp = send(
-					      w->fd,
-					      rsp + nwr, rsz - nwr, 0)) > 0 &&
-					     (nwr += tmp) < rsz;);
-				break;
-			}
+			for (ssize_t tmp;
+			     (tmp = send(w->fd,rsp + nwr, rsz - nwr, 0)) > 0 &&
+				     (nwr += tmp) < rsz;);
 		}
 	}
 clo:

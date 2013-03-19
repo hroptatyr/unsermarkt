@@ -41,19 +41,28 @@
 
 extern void *logerr;
 
+typedef struct pfa_s *pfa_t;
+typedef struct pfi_s *pfi_t;
+
+/* one account item */
+struct pfa_s {
+	struct gq_item_s i;
+
+	/* account name */
+	char acct[64];
+	/* positions */
+	struct gq_ll_s poss[1];
+};
+
 /* one portfolio item */
 struct pfi_s {
 	struct gq_item_s i;
 
 	/* symbol, not as long as usual */
-	char sym[32];
-#if defined HAVE_LIBFIXC_FIX_H
-	fixc_msg_t ins;
-#endif	/* HAVE_LIBFIXC_FIX_H */
+	char sym[64];
 	double lqty;
 	double sqty;
 
-	int mark;
 	unsigned int last_seen;
 };
 

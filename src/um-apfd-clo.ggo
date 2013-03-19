@@ -8,6 +8,15 @@ option "daemonise" d
 	"Detach from tty and runs as daemon"
 	optional
 
+section "Output options"
+option "output" o
+	"Write result to specified output file"
+	string typestr="FILE" optional
+
+option "into" -
+	"Write result into ute file FILE"
+	string typestr="FILE" optional
+
 section "Network options"
 option "beef" -
 	"Multicast payload channels, can be used multiple times"

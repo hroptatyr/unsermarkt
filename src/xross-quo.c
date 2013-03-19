@@ -481,7 +481,7 @@ snarf_meta(const struct ud_msg_s *msg, const struct ud_auxmsg_s *aux, graph_t g)
 	cli_t c;
 	gpair_t p;
 
-	if (um_chck_msg_brag(brg, msg) < 0) {
+	if (um_chck_brag(brg, msg) < 0) {
 		return;
 	} else if ((k.sa = (my_sockaddr_t)aux->src) == NULL) {
 		return;

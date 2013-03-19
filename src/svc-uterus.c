@@ -255,7 +255,7 @@ mon_dec_7572(
 	struct um_qmeta_s msg[1];
 	char *restrict q = p;
 
-	if (um_chck_msg_brag(msg, m) < 0) {
+	if (um_chck_brag(msg, m) < 0) {
 		/* shouldn't be */
 		return 0;
 	}

@@ -161,7 +161,6 @@ __pr_snap(char *tgt, scom_t st)
 }
 
 static size_t
-__attribute__((noinline))
 __pr_cdl(char *tgt, scom_t st)
 {
 	const_scdl_t cdl = (const void*)st;
@@ -222,7 +221,7 @@ um_pack_brag(ud_sock_t s, const struct um_qmeta_s msg[static 1])
 }
 
 int
-um_chck_msg_brag(
+um_chck_brag(
 	struct um_qmeta_s *restrict tgt, const struct ud_msg_s msg[static 1])
 {
 	const struct __brag_wire_s *wr = msg->data;
@@ -256,7 +255,7 @@ mon_dec_7572(
 	struct um_qmeta_s msg[1];
 	char *restrict q = p;
 
-	if (um_chck_msg_brag(msg, m) < 0) {
+	if (um_chck_brag(msg, m) < 0) {
 		/* shouldn't be */
 		return 0;
 	}
@@ -367,6 +366,8 @@ ud_mondec_init(void)
 	ud_mondec_reg(0x7573, mon_dec_7572);
 	ud_mondec_reg(0x7574, mon_dec_7574);
 	ud_mondec_reg(0x7575, mon_dec_7574);
+	ud_mondec_reg(0x7576, mon_dec_7574);
+	ud_mondec_reg(0x7577, mon_dec_7574);
 	return 0;
 }
 #endif	/* UNSERMON_DSO */

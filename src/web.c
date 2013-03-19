@@ -670,24 +670,9 @@ __posrpt1(fixc_msg_t msg, const struct pfi_s *pos, const char *ac, size_t acz)
 	fixc_add_tag(msg, (fixc_attr_t)447/*PtyIDSrc*/, "D", 1);
 	fixc_add_tag(msg, (fixc_attr_t)452/*PtyIDRole*/, "27", 2);
 
-	/* see if there's an instrm block */
-	if (pos->ins != NULL) {
-		fixc_msg_t ins = pos->ins;
-
-		for (size_t i = 0; i < ins->nflds; i++) {
-			struct fixc_fld_s fld = ins->flds[i];
-			struct fixc_tag_data_s d = fixc_get_tag_data(ins, i);
-			size_t mi = msg->nflds;
-
-			fixc_add_tag(msg, (fixc_attr_t)fld.tag, d.s, d.z);
-			/* bang .cnt and .tpc */
-			msg->flds[mi].tpc = fld.tpc;
-			msg->flds[mi].cnt = fld.cnt;
-		}
-	} else {
-		z = strlen(pos->sym);
-		fixc_add_tag(msg, (fixc_attr_t)55/*Sym*/, pos->sym, z);
-	}
+	/* there's no instrm block, so just pass on the symbol */
+	z = strlen(pos->sym);
+	fixc_add_tag(msg, (fixc_attr_t)55/*Sym*/, pos->sym, z);
 
 	/* quantities */
 	fixc_add_tag(msg, (fixc_attr_t)702/*NoPositions*/, "2", 1);
@@ -706,7 +691,7 @@ websvc_reqforposs(char *restrict tgt, size_t tsz, struct websvc_s sd)
 	size_t idx = 0;
 	struct timeval now[1];
 	fixc_msg_t msg;
-	gq_ll_t poss;
+	const struct gq_ll_s *poss;
 
 	WEB_DEBUG("printing reqforposs ac %s\n", sd.reqforposs.ac);
 

@@ -99,6 +99,18 @@ um_pack_sl1t(ud_sock_t s, const_sl1t_t q)
 }
 
 static inline int
+um_chck_sl1t(struct sl1t_s *restrict tgt, const struct ud_msg_s msg[static 1])
+{
+	if (msg->dlen != sizeof(*tgt)) {
+		/* nope, wrong size */
+		return -1;
+	}
+	/* otherwise just copy the data */
+	*tgt = *(const struct sl1t_s*)msg->data;
+	return 0;
+}
+
+static inline int
 um_pack_alloc(ud_sock_t s, const_sl1t_t q)
 {
 	return ud_pack_msg(
@@ -107,6 +119,18 @@ um_pack_alloc(ud_sock_t s, const_sl1t_t q)
 			.data = q,
 			.dlen = sizeof(*q),
 		});
+}
+
+static inline int
+um_chck_alloc(struct sl1t_s *restrict tgt, const struct ud_msg_s msg[static 1])
+{
+	if (msg->dlen != sizeof(*tgt)) {
+		/* nope, wrong size */
+		return -1;
+	}
+	/* otherwise just copy the data */
+	*tgt = *(const struct sl1t_s*)msg->data;
+	return 0;
 }
 
 #endif	/* INCLUDED_svc_uterus_h_ */

@@ -318,7 +318,7 @@ add_cli(struct key_s k)
 	return idx + 1;
 }
 
-static __attribute__((noinline)) void
+static void
 prune_cli(cli_t c)
 {
 	/* wipe it all */
@@ -332,7 +332,7 @@ cli_pruned_p(cli_t c)
 	return CLI(c)->id == 0 && CLI(c)->tgtid == 0;
 }
 
-static __attribute__((noinline)) void
+static void
 prune_clis(void)
 {
 	struct timeval tv[1];

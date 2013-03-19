@@ -1,4 +1,4 @@
-/*** web.h -- quote snapper web services
+/*** apfd-cache.h -- caching allocations
  *
  * Copyright (C) 2012-2013 Sebastian Freundt
  *
@@ -34,38 +34,18 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  ***/
-#if !defined INCLUDED_web_h_
-#define INCLUDED_web_h_
+#if !defined INCLUDED_apfd_cache_h_
+#define INCLUDED_apfd_cache_h_
 
-/* web services */
-typedef enum {
-	WEBSVC_F_UNK,
-	WEBSVC_F_SECDEF,
-	WEBSVC_F_QUOTREQ,
-	WEBSVC_F_REQFORPOSS,
-} websvc_f_t;
+/* cache structure */
+typedef struct {
+	struct sl1t_s lng[1];
+	struct sl1t_s shrt[1];
+#if defined HAVE_LIBFIXC_FIX_H
+	fixc_msg_t ins;
+#endif	/* HAVE_LIBFIXC_FIX_H */
+} *apfd_cache_t;
 
-struct websvc_s {
-	websvc_f_t ty;
+extern apfd_cache_t apfd_cache;
 
-	union {
-		struct {
-			uint16_t idx;
-		} secdef;
-
-		struct {
-			uint16_t idx;
-		} quotreq;
-
-		struct {
-			const char *ac;
-			size_t acz;
-		} reqforposs;
-	};
-};
-
-
-extern struct websvc_s websvc(const char *buf, size_t bsz);
-extern size_t web(const char **restrict tgt, struct websvc_s);
-
-#endif	/* INCLUDED_web_h_ */
+#endif	/* INCLUDED_apfd_cache_h_ */

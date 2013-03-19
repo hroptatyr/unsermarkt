@@ -60,8 +60,6 @@ struct websvc_s {
 		struct {
 			const char *ac;
 			size_t acz;
-			/* filled in by apfd */
-			const void *poss;
 		} reqforposs;
 	};
 };

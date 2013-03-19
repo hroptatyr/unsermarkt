@@ -40,6 +40,7 @@
 #include "gq.h"
 
 extern void *logerr;
+extern void *uctx;
 
 typedef struct pfa_s *pfa_t;
 typedef struct pfi_s *pfi_t;

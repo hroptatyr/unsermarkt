@@ -366,6 +366,8 @@ ud_mondec_init(void)
 	ud_mondec_reg(0x7573, mon_dec_7572);
 	ud_mondec_reg(0x7574, mon_dec_7574);
 	ud_mondec_reg(0x7575, mon_dec_7574);
+	ud_mondec_reg(0x7576, mon_dec_7574);
+	ud_mondec_reg(0x7577, mon_dec_7574);
 	return 0;
 }
 #endif	/* UNSERMON_DSO */

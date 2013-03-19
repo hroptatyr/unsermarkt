@@ -72,7 +72,7 @@ struct um_qmeta_s {
 extern int um_pack_brag(ud_sock_t s, const struct um_qmeta_s msg[static 1]);
 
 extern int
-um_chck_msg_brag(
+um_chck_brag(
 	struct um_qmeta_s *restrict tgt, const struct ud_msg_s msg[static 1]);
 
 

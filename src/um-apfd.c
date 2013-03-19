@@ -452,6 +452,7 @@ free_io(ev_io_i_t io)
 
 
 /* fix guts */
+#if !defined HAVE_LIBFIXC_FIX_H
 static size_t
 find_fix_fld(const char **p, const char *msg, const char *key)
 {
@@ -487,6 +488,7 @@ find_fix_eofld(const char *msg, const char *key)
 	}
 	return cand + clen;
 }
+#endif	/* !HAVE_LIBFIXC_FIX_H */
 
 
 /* allocation cache */
@@ -532,6 +534,114 @@ check_cache(unsigned int tgtid)
 	return;
 }
 
+#if defined HAVE_LIBFIXC_FIX_H
+static int
+snarf_pos_rpt(const struct ud_msg_s *msg, const struct ud_auxmsg_s *UNUSED(aux))
+{
+/* process them posrpts */
+	static char sbuf[64U + 64U];
+	fixc_msg_t f;
+	struct timeval tv[1];
+	const char *ac = NULL;
+	size_t az = 0UL;
+	const char *sym = NULL;
+	size_t sz = 0UL;
+	struct sl1t_s l = {0};
+	struct sl1t_s s = {0};
+	apfd_cache_t pos;
+	uint16_t id;
+	int res = 0;
+
+	/* what's the wallclock time */
+	gettimeofday(tv, NULL);
+
+	if (UNLIKELY((f = make_fixc_from_fix(msg->data, msg->dlen)) == NULL)) {
+		return 0;
+	} else if (UNLIKELY(f->f35.typ != FIXC_TYP_MSGTYP ||
+			f->f35.mtyp != FIXML_MSG_PositionReport)) {
+		/* what about batch? */
+		goto out;
+	}
+
+	for (size_t i = 0; i < f->nflds; i++) {
+		const struct fixc_fld_s *fld = f->flds + i;
+		const char *val = f->pr + fld->off;
+
+		switch (f->flds[i].tag) {
+		case 1:
+			/* account name */
+			ac = val;
+			az = strlen(val);
+			break;
+		case 55:
+			/* symbol name */
+			sym = val;
+			sz = strlen(val);
+			break;
+		case 704:
+			/* @long */
+			l.w[0] = ffff_m62_get_s(&val).u;
+			sl1t_set_stmp_sec(&l, tv->tv_sec);
+			sl1t_set_stmp_msec(&l, tv->tv_usec / 1000);
+			sl1t_set_ttf(&l, SL1T_TTF_G64);
+			sl1t_set_tblidx(&l, id);
+			break;
+		case 705:
+			/* @short */
+			s.w[0] = ffff_m62_get_s(&val).u;
+			sl1t_set_stmp_sec(&s, tv->tv_sec);
+			sl1t_set_stmp_msec(&s, tv->tv_usec / 1000);
+			sl1t_set_ttf(&s, SL1T_TTF_G64);
+			sl1t_set_tblidx(&s, id);
+			break;
+		default:
+			break;
+		}
+	}
+
+	/* we don't want no steenkin buffer overfloes */
+	if (UNLIKELY(az >= sizeof(sbuf) / 2 - 1)) {
+		az = sizeof(sbuf) / 2 - 1 - 1;
+	}
+	if (UNLIKELY(sz >= sizeof(sbuf) / 2 - 1)) {
+		sz = sizeof(sbuf) / 2 - 1;
+	}
+	/* roll a symbol */
+	memcpy(sbuf, ac, az);
+	sbuf[az] = '/';
+	memcpy(sbuf + az + 1, sym, sz);
+	sbuf[az + 1 + sz] = '\0';
+
+	/* try and have ute assign us an id */
+	if ((id = ute_sym2idx(uctx, sbuf)) == 0) {
+		/* big bugger */
+		goto out;
+	}
+
+	UMAD_DEBUG("banging  %s -> %hu\n", sbuf, id);
+	/* make sure the cache is wide enough */
+	check_cache(id);
+
+	/* find the cache cell */
+	pos = &CACHE(id);
+
+	if (LIKELY(l.hdr->sec != 0U)) {
+		*pos->lng = l;
+		ute_add_tick(uctx, AS_SCOM(&l));
+		res++;
+	}
+
+	if (LIKELY(s.hdr->sec != 0U)) {
+		*pos->shrt = s;
+		ute_add_tick(uctx, AS_SCOM(&s));
+		res++;
+	}
+
+out:
+	free_fixc(f);
+	return res;
+}
+#else  /* !HAVE_LIBFIXC_FIX_H */
 static int
 snarf_pos_rpt(const struct ud_msg_s *msg, const struct ud_auxmsg_s *aux)
 {
@@ -560,8 +670,9 @@ snarf_pos_rpt(const struct ud_msg_s *msg, const struct ud_auxmsg_s *aux)
 
 	/* what's the wallclock time */
 	gettimeofday(tv, NULL);
-	for (const char *p = msg->data, *const ep = p + msg->dlen;
-	     p && p < ep && (p = find_fix_eofld(p, fix_pos_rpt));
+
+	for (const char *p = msg->data, *q, *const ep = p + msg->dlen;
+	     p && p < ep && (q = find_fix_eofld(p, fix_pos_rpt));
 	     p = find_fix_eofld(p, fix_chksum)) {
 		static char sbuf[64U + 64U];
 		const char *ac;
@@ -637,6 +748,7 @@ snarf_pos_rpt(const struct ud_msg_s *msg, const struct ud_auxmsg_s *aux)
 	CLI(c)->last_seen = tv->tv_sec;
 	return res;
 }
+#endif	/* HAVE_LIBFIXC_FIX_H */
 
 static void
 rotate_outfile(EV_P)

@@ -1,4 +1,4 @@
-/*** quod-cache.h -- caching quotes
+/*** um-apfd.h -- portfolio snapper web services
  *
  * Copyright (C) 2012-2013 Sebastian Freundt
  *
@@ -34,24 +34,36 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  ***/
-#if !defined INCLUDED_quod_cache_h_
-#define INCLUDED_quod_cache_h_
+#if !defined INCLUDED_um_apfd_h_
+#define INCLUDED_um_apfd_h_
 
-/* cache structure */
-typedef struct {
-	struct sl1t_s bid[1];
-	struct sl1t_s ask[1];
-#if defined HAVE_LIBFIXC_FIX_H
-	fixc_msg_t msg;
-	fixc_msg_t ins;
-#else  /* !HAVE_LIBFIXC_FIX_H */
-	const char *sd;
-	size_t sdsz;
-	const char *instrmt;
-	size_t instrmtsz;
-#endif	/* HAVE_LIBFIXC_FIX_H */
-} *quod_cache_t;
+#include "gq.h"
 
-extern quod_cache_t quod_cache;
+extern void *logerr;
 
-#endif	/* INCLUDED_quod_cache_h_ */
+typedef struct pfa_s *pfa_t;
+typedef struct pfi_s *pfi_t;
+
+/* one account item */
+struct pfa_s {
+	struct gq_item_s i;
+
+	/* account name */
+	char acct[64];
+	/* positions */
+	struct gq_ll_s poss[1];
+};
+
+/* one portfolio item */
+struct pfi_s {
+	struct gq_item_s i;
+
+	/* symbol, not as long as usual */
+	char sym[64];
+	double lqty;
+	double sqty;
+
+	unsigned int last_seen;
+};
+
+#endif	/* INCLUDED_um_apfd_h_ */

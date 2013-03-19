@@ -49,19 +49,26 @@
 # include <libfixc/fixml-comp.h>
 # include <libfixc/fixml-attr.h>
 #endif	/* HAVE_LIBFIXC_FIX_H */
-#define DEFINE_GORY_STUFF
-#if defined HAVE_UTERUS_UTERUS_H
-# include <uterus/uterus.h>
-# include <uterus/m30.h>
-#elif defined HAVE_UTERUS_H
-# include <uterus.h>
-# include <m30.h>
-#else
-# error uterus headers are mandatory
-#endif	/* HAVE_UTERUS_UTERUS_H || HAVE_UTERUS_H */
-#include "um-quod.h"
+#if defined WEB_ASP_QUOTREQ
+# define WEB_ASP_SECDEF
+# define DEFINE_GORY_STUFF
+# if defined HAVE_UTERUS_UTERUS_H
+#  include <uterus/uterus.h>
+#  include <uterus/m30.h>
+# elif defined HAVE_UTERUS_H
+#  include <uterus.h>
+#  include <m30.h>
+# else
+#  error uterus headers are mandatory
+# endif	/* HAVE_UTERUS_UTERUS_H || HAVE_UTERUS_H */
+# include "um-quod.h"
+# include "quod-cache.h"
+#endif	/* WEB_ASP_QUOTREQ */
+#if defined WEB_ASP_REQFORPOSS
+# include "um-apfd.h"
+# include "gq.h"
+#endif	/* WEB_ASP_REQFORPOSS */
 #include "web.h"
-#include "quod-cache.h"
 #include "nifty.h"
 
 #if defined DEBUG_FLAG
@@ -69,30 +76,6 @@
 #else  /* !DEBUG_FLAG */
 # define WEB_DEBUG(args...)
 #endif	/* DEBUG_FLAG */
-
-/* web services */
-typedef enum {
-	WEBSVC_F_UNK,
-	WEBSVC_F_SECDEF,
-	WEBSVC_F_QUOTREQ,
-	WEBSVC_F_POSRPT,
-} websvc_f_t;
-
-struct websvc_s {
-	websvc_f_t ty;
-
-	union {
-		struct {
-			uint16_t idx;
-		} secdef;
-
-		struct {
-			uint16_t idx;
-		} quotreq;
-
-
-	};
-};
 
 
 /* helpers */
@@ -108,6 +91,31 @@ __find_idx(const char *str)
 	}
 #define MASS_QUOT	(0xffff)
 	return MASS_QUOT;
+}
+
+static size_t
+__find_ac(const char **tgt, const char *str)
+{
+	char *p;
+
+	if ((p = strstr(str, "ac="))) {
+		*tgt = p + 3;
+		if ((p = strchr(*tgt, '&')) != NULL) {
+			;
+		} else if ((p = strchr(*tgt, ' ')) != NULL) {
+			;
+		} else if ((p = strchr(*tgt, '\n')) != NULL) {
+			if (p[-1] == '\r') {
+				p--;
+			}
+		} else {
+			goto bugger;
+		}
+		*p = '\0';
+		return p - *tgt;
+	}
+bugger:
+	return 0UL;
 }
 
 /* date and time funs, could use libdut from dateutils */
@@ -197,7 +205,7 @@ ffff_gmtime(struct tm *tm, const time_t t)
 	return;
 }
 
-static size_t
+static __attribute__((unused)) size_t
 ffff_strfdtu(char *restrict buf, size_t bsz, time_t sec, unsigned int usec)
 {
 	struct tm tm[1];
@@ -246,7 +254,8 @@ websvc_unk(char *restrict tgt, size_t tsz, struct websvc_s UNUSED(sd))
 
 
 /* secdef service */
-#if defined HAVE_LIBFIXC_FIX_H
+#if defined WEB_ASP_SECDEF
+# if defined HAVE_LIBFIXC_FIX_H
 static void
 __secdef1(fixc_msg_t msg, uint16_t idx)
 {
@@ -312,7 +321,7 @@ websvc_secdef(char *restrict tgt, size_t tsz, struct websvc_s sd)
 	return nrndr;
 }
 
-#else  /* !HAVE_LIBFIXC_FIX_H */
+# else  /* !HAVE_LIBFIXC_FIX_H */
 static const char fixml_pre[] = "\
 <?xml version=\"1.0\" encoding=\"utf-8\"?>\n\
 <FIXML xmlns=\"http://www.fixprotocol.org/FIXML-5-0-SP2\">\n\
@@ -374,11 +383,13 @@ websvc_secdef(char *restrict tgt, size_t tsz, struct websvc_s sd)
 	idx += sizeof(fixml_post) - 1;
 	return idx;
 }
-#endif	/* HAVE_LIBFIXC_FIX_H */
+# endif	/* HAVE_LIBFIXC_FIX_H */
+#endif	/* WEB_ASP_SECDEF */
 
 
 /* quotreq service */
-#if defined HAVE_LIBFIXC_FIX_H
+#if defined WEB_ASP_QUOTREQ
+# if defined HAVE_LIBFIXC_FIX_H
 static void
 __quotreq1(fixc_msg_t msg, uint16_t idx, struct timeval now)
 {
@@ -520,7 +531,7 @@ websvc_quotreq(char *restrict tgt, size_t tsz, struct websvc_s sd)
 	return idx;
 }
 
-#else  /* !HAVE_LIBFIXC_FIX_H */
+# else  /* !HAVE_LIBFIXC_FIX_H */
 static size_t
 __quotreq1(char *restrict tgt, size_t tsz, uint16_t idx, struct timeval now)
 {
@@ -632,40 +643,93 @@ websvc_quotreq(char *restrict tgt, size_t tsz, struct websvc_s sd)
 	idx += sizeof(fixml_post) - 1;
 	return idx;
 }
-#endif	/* HAVE_LIBFIXC_FIX_H */
+# endif	/* HAVE_LIBFIXC_FIX_H */
+#endif	/* WEB_ASP_QUOTREQ */
 
 
-static websvc_f_t
-websvc_from_request(struct websvc_s *tgt, const char *req, size_t UNUSED(len))
+/* reqforposs service */
+#if defined WEB_ASP_REQFORPOSS
+# if defined HAVE_LIBFIXC_FIX_H
+static void
+__posrpt1(fixc_msg_t msg, const struct pfi_s *pos, const char *ac, size_t acz)
 {
-	static const char get_slash[] = "GET /";
-	websvc_f_t res = WEBSVC_F_UNK;
-	const char *p;
+	static char p[32];
+	static const struct fixc_fld_s msgtyp = {
+		.tag = 35,
+		.typ = FIXC_TYP_MSGTYP,
+		.mtyp = (fixc_msgt_t)FIXML_MSG_PositionReport,
+	};
+	size_t z;
 
-	if ((p = strstr(req, get_slash))) {
-		p += sizeof(get_slash) - 1;
+	/* the message type */
+	fixc_add_fld(msg, msgtyp);
 
-#define TAG_MATCHES_P(p, x)				\
-		(strncmp(p, x, sizeof(x) - 1) == 0)
+	/* nopartyid */
+	fixc_add_tag(msg, (fixc_attr_t)453/*NoPartyID*/, "1", 1);
+	fixc_add_tag(msg, (fixc_attr_t)448/*PtyID*/, ac, acz);
+	fixc_add_tag(msg, (fixc_attr_t)447/*PtyIDSrc*/, "D", 1);
+	fixc_add_tag(msg, (fixc_attr_t)452/*PtyIDRole*/, "27", 2);
 
-#define SECDEF_TAG	"secdef"
-		if (TAG_MATCHES_P(p, SECDEF_TAG)) {
-			WEB_DEBUG("secdef query\n");
-			res = WEBSVC_F_SECDEF;
-			tgt->secdef.idx =
-				__find_idx(p + sizeof(SECDEF_TAG) - 1);
+	/* there's no instrm block, so just pass on the symbol */
+	z = strlen(pos->sym);
+	fixc_add_tag(msg, (fixc_attr_t)55/*Sym*/, pos->sym, z);
 
-#define QUOTREQ_TAG	"quotreq"
-		} else if (TAG_MATCHES_P(p, QUOTREQ_TAG)) {
-			WEB_DEBUG("quotreq query\n");
-			res = WEBSVC_F_QUOTREQ;
-			tgt->quotreq.idx =
-				__find_idx(p + sizeof(QUOTREQ_TAG) - 1);
-		}
-	}
-	return tgt->ty = res;
+	/* quantities */
+	fixc_add_tag(msg, (fixc_attr_t)702/*NoPositions*/, "2", 1);
+	fixc_add_tag(msg, (fixc_attr_t)703/*PosType*/, "ALC", 3);
+
+	z = snprintf(p, sizeof(p), "%.6f", pos->lqty);
+	fixc_add_tag(msg, (fixc_attr_t)704/*LongQty*/, p, z);
+	z = snprintf(p, sizeof(p), "%.6f", pos->sqty);
+	fixc_add_tag(msg, (fixc_attr_t)705/*ShortQty*/, p, z);
+	return;
 }
 
+static size_t
+websvc_reqforposs(char *restrict tgt, size_t tsz, struct websvc_s sd)
+{
+	size_t idx = 0;
+	struct timeval now[1];
+	fixc_msg_t msg;
+	const struct gq_ll_s *poss;
+
+	WEB_DEBUG("printing reqforposs ac %s\n", sd.reqforposs.ac);
+
+	if ((poss = sd.reqforposs.poss) == NULL) {
+		return 0;
+	}
+
+	/* get current time */
+	gettimeofday(now, NULL);
+
+	/* start a fix msg for that */
+	msg = make_fixc_msg((fixc_msgt_t)FIXC_MSGT_BATCH);
+
+	/* loop over positions */
+	for (gq_item_t i = poss->i1st; i; i = i->next) {
+		const struct pfi_s *pos = (const void*)i;
+		__posrpt1(msg, pos, sd.reqforposs.ac, sd.reqforposs.acz);
+	}
+
+	/* render the whole shebang */
+	idx = fixc_render_fixml(tgt, tsz, msg);
+	/* start a fix msg for that */
+	free_fixc(msg);
+	return idx;
+}
+
+# else  /* !HAVE_LIBFIXC_FIX_H */
+static size_t
+websvc_reqforposs(
+	char *restrict UNUSED(tgt), size_t UNUSED(tsz),
+	struct websvc_s UNUSED(sd))
+{
+	return 0UL;
+}
+# endif	/* HAVE_LIBFIXC_FIX_H */
+#endif	/* WEB_ASP_REQFORPOSS */
+
+
 static void
 paste_clen(char *restrict buf, size_t bsz, size_t len)
 {
@@ -696,8 +760,48 @@ paste_clen(char *restrict buf, size_t bsz, size_t len)
 }
 
 
+struct websvc_s
+websvc(const char *req, size_t UNUSED(len))
+{
+	static const char get_slash[] = "GET /";
+	struct websvc_s res = {WEBSVC_F_UNK};
+	const char *p;
+
+	if ((p = strstr(req, get_slash))) {
+		p += sizeof(get_slash) - 1;
+
+#define TAG_MATCHES_P(p, x)				\
+		(strncmp(p, x, sizeof(x) - 1) == 0)
+
+#define SECDEF_TAG	"secdef"
+		if (TAG_MATCHES_P(p, SECDEF_TAG)) {
+			WEB_DEBUG("secdef query\n");
+			res.ty = WEBSVC_F_SECDEF;
+			res.secdef.idx =
+				__find_idx(p + sizeof(SECDEF_TAG) - 1);
+
+#define QUOTREQ_TAG	"quotreq"
+		} else if (TAG_MATCHES_P(p, QUOTREQ_TAG)) {
+			WEB_DEBUG("quotreq query\n");
+			res.ty = WEBSVC_F_QUOTREQ;
+			res.quotreq.idx =
+				__find_idx(p + sizeof(QUOTREQ_TAG) - 1);
+
+#define REQFORPOSS_TAG	"reqforposs"
+		} else if (TAG_MATCHES_P(p, REQFORPOSS_TAG)) {
+			WEB_DEBUG("reqforposs query\n");
+			res.ty = WEBSVC_F_REQFORPOSS;
+			res.reqforposs.acz =
+				__find_ac(
+					&res.reqforposs.ac,
+					p + sizeof(REQFORPOSS_TAG) - 1);
+		}
+	}
+	return res;
+}
+
 size_t
-web(const char **restrict tgt, const char *buf, size_t bsz)
+web(const char **restrict tgt, struct websvc_s ws)
 {
 	/* the final \n will be subst'd later on */
 #define HDR		"\
@@ -712,19 +816,33 @@ Content-Length: "
 	char *rsp = __rsp + sizeof(BUF_INIT) - 1;
 	const size_t rsp_len = sizeof(__rsp) - (sizeof(BUF_INIT) - 1);
 	size_t cont_len;
-	struct websvc_s voodoo;
 
-	switch (websvc_from_request(&voodoo, buf, bsz)) {
+	switch (ws.ty) {
 	default:
 	case WEBSVC_F_UNK:
-		cont_len = websvc_unk(rsp, rsp_len, voodoo);
+		cont_len = websvc_unk(rsp, rsp_len, ws);
 		break;
 
 	case WEBSVC_F_SECDEF:
-		cont_len = websvc_secdef(rsp, rsp_len, voodoo);
+#if defined WEB_ASP_SECDEF
+		cont_len = websvc_secdef(rsp, rsp_len, ws);
+#else  /* !WEB_ASP_SECDEF */
+		cont_len = 0UL;
+#endif	/* WEB_ASP_SECDEF */
 		break;
 	case WEBSVC_F_QUOTREQ:
-		cont_len = websvc_quotreq(rsp, rsp_len, voodoo);
+#if defined WEB_ASP_QUOTREQ
+		cont_len = websvc_quotreq(rsp, rsp_len, ws);
+#else  /* !WEB_ASP_QUOTREQ */
+		cont_len = 0UL;
+#endif	/* WEB_ASP_QUOTREQ */
+		break;
+	case WEBSVC_F_REQFORPOSS:
+#if defined WEB_ASP_REQFORPOSS
+		cont_len = websvc_reqforposs(rsp, rsp_len, ws);
+#else  /* !WEB_ASP_REQFORPOSS */
+		cont_len = 0UL;
+#endif	/* WEB_ASP_REQFORPOSS */
 		break;
 	}
 

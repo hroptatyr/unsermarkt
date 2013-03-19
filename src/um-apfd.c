@@ -802,7 +802,7 @@ dccp_data_cb(EV_P_ ev_io *w, int UNUSED(re))
 		buf[sizeof(buf) - 1] = '\0';
 	}
 
-	if ((ws = websvc(buf, (size_t)nrd)).ty != WEBSVC_F_REQFORPOSS &&
+	if ((ws = websvc(buf, (size_t)nrd)).ty == WEBSVC_F_REQFORPOSS &&
 	    (rsz = web(&rsp, ws)) > 0) {
 		size_t nwr = 0;
 

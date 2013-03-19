@@ -161,7 +161,6 @@ __pr_snap(char *tgt, scom_t st)
 }
 
 static size_t
-__attribute__((noinline))
 __pr_cdl(char *tgt, scom_t st)
 {
 	const_scdl_t cdl = (const void*)st;

@@ -337,13 +337,13 @@ __secdef1(char *restrict tgt, size_t tsz, uint16_t idx)
 {
 	size_t res = 0UL;
 
-	if (cache[idx - 1].sd && tsz) {
-		res = cache[idx - 1].sdsz;
+	if (quod_cache[idx - 1].sd && tsz) {
+		res = quod_cache[idx - 1].sdsz;
 
 		if (tsz < (size_t)res) {
 			res = tsz - 1;
 		}
-		memcpy(tgt, cache[idx - 1].sd, res);
+		memcpy(tgt, quod_cache[idx - 1].sd, res);
 		tgt[res] = '\0';
 	}
 	return res;
@@ -542,10 +542,10 @@ __quotreq1(char *restrict tgt, size_t tsz, uint16_t idx, struct timeval now)
 	static char txn[32];
 	static struct timeval now_cch;
 	const char *sym = ute_idx2sym(uctx, idx);
-	const_sl1t_t b = cache[idx - 1].bid;
-	const_sl1t_t a = cache[idx - 1].ask;
-	const char *instrmt = cache[idx - 1].instrmt;
-	size_t instrmtsz = cache[idx - 1].instrmtsz;
+	const_sl1t_t b = quod_cache[idx - 1].bid;
+	const_sl1t_t a = quod_cache[idx - 1].ask;
+	const char *instrmt = quod_cache[idx - 1].instrmt;
+	size_t instrmtsz = quod_cache[idx - 1].instrmtsz;
 	int len;
 
 	/* find the more recent quote out of bid and ask */

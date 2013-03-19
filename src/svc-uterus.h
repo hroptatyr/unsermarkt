@@ -57,6 +57,7 @@
 #endif	/* WORDS_BIGENDIAN */
 /* command to dispatch meta info */
 #define UTE_QMETA	0x7572
+#define UTE_ALLOC	(UTE_CMD + 0x02)
 
 /**
  * Message we pass around on UTE_QMETA channel. */
@@ -92,6 +93,17 @@ um_pack_sl1t(ud_sock_t s, const_sl1t_t q)
 	return ud_pack_msg(
 		s, (struct ud_msg_s){
 			.svc = UTE_CMD,
+			.data = q,
+			.dlen = sizeof(*q),
+		});
+}
+
+static inline int
+um_pack_alloc(ud_sock_t s, const_sl1t_t q)
+{
+	return ud_pack_msg(
+		s, (struct ud_msg_s){
+			.svc = UTE_ALLOC,
 			.data = q,
 			.dlen = sizeof(*q),
 		});

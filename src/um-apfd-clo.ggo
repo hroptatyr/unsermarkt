@@ -1,0 +1,18 @@
+args "--unamed-opts --no-handle-error --long-help -a um_args_info -f um_parser"
+package "um-apfd"
+usage "um-apfd [OPTION]..."
+description "Dump and cache portfolio updates off unserding beef channels.
+If a websvc port is specified the cache can be queried."
+
+option "daemonise" d
+	"Detach from tty and runs as daemon"
+	optional
+
+section "Network options"
+option "beef" -
+	"Multicast payload channels, can be used multiple times"
+	int optional multiple
+
+option "websvc-port" -
+	"Port for dccp and web services"
+	int optional

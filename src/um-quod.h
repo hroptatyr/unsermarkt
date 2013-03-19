@@ -39,6 +39,5 @@
 
 extern void *logerr;
 extern void *uctx;
-extern void *cache;
 
 #endif	/* INCLUDED_um_quod_h_ */

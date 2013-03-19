@@ -1,4 +1,4 @@
-/*** web.h -- quote snapper web services
+/*** um-apfd.h -- portfolio snapper web services
  *
  * Copyright (C) 2012-2013 Sebastian Freundt
  *
@@ -34,40 +34,36 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  ***/
-#if !defined INCLUDED_web_h_
-#define INCLUDED_web_h_
+#if !defined INCLUDED_um_apfd_h_
+#define INCLUDED_um_apfd_h_
 
-/* web services */
-typedef enum {
-	WEBSVC_F_UNK,
-	WEBSVC_F_SECDEF,
-	WEBSVC_F_QUOTREQ,
-	WEBSVC_F_REQFORPOSS,
-} websvc_f_t;
+#include "gq.h"
 
-struct websvc_s {
-	websvc_f_t ty;
+extern void *logerr;
 
-	union {
-		struct {
-			uint16_t idx;
-		} secdef;
+typedef struct pfa_s *pfa_t;
+typedef struct pfi_s *pfi_t;
 
-		struct {
-			uint16_t idx;
-		} quotreq;
+/* one account item */
+struct pfa_s {
+	struct gq_item_s i;
 
-		struct {
-			const char *ac;
-			size_t acz;
-			/* filled in by apfd */
-			const void *poss;
-		} reqforposs;
-	};
+	/* account name */
+	char acct[64];
+	/* positions */
+	struct gq_ll_s poss[1];
 };
 
-
-extern struct websvc_s websvc(const char *buf, size_t bsz);
-extern size_t web(const char **restrict tgt, struct websvc_s);
+/* one portfolio item */
+struct pfi_s {
+	struct gq_item_s i;
 
-#endif	/* INCLUDED_web_h_ */
+	/* symbol, not as long as usual */
+	char sym[64];
+	double lqty;
+	double sqty;
+
+	unsigned int last_seen;
+};
+
+#endif	/* INCLUDED_um_apfd_h_ */

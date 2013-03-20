@@ -687,7 +687,7 @@ snarf_pos_rpt(const struct ud_msg_s *msg, const struct ud_auxmsg_s *aux)
 		size_t sz;
 		uint16_t id;
 		apfd_cache_t pos;
-		const char *q;
+		const char *tmp;
 
 		if ((az = find_fix_fld(&ac, p, fix_acct)) == 0) {
 			UMAD_DEBUG("no acct\n");
@@ -727,9 +727,9 @@ snarf_pos_rpt(const struct ud_msg_s *msg, const struct ud_auxmsg_s *aux)
 		/* find the cache cell */
 		pos = &CACHE(id);
 
-		if (find_fix_fld(&q, p, fix_lqty)) {
-			q += sizeof(fix_lqty) - 1;
-			pos->lng->w[0] = ffff_m62_get_s(&q).u;
+		if (find_fix_fld(&tmp, p, fix_lqty)) {
+			tmp += sizeof(fix_lqty) - 1;
+			pos->lng->w[0] = ffff_m62_get_s(&tmp).u;
 			sl1t_set_stmp_sec(pos->lng, tv->tv_sec);
 			sl1t_set_stmp_msec(pos->lng, tv->tv_usec / 1000);
 			sl1t_set_ttf(pos->lng, SL1T_TTF_G64);
@@ -737,9 +737,9 @@ snarf_pos_rpt(const struct ud_msg_s *msg, const struct ud_auxmsg_s *aux)
 			ute_add_tick(uctx, AS_SCOM(pos->lng));
 		}
 
-		if (find_fix_fld(&q, p, fix_sqty)) {
-			q += sizeof(fix_sqty) - 1;
-			pos->shrt->w[0] = ffff_m62_get_s(&q).u;
+		if (find_fix_fld(&tmp, p, fix_sqty)) {
+			tmp += sizeof(fix_sqty) - 1;
+			pos->shrt->w[0] = ffff_m62_get_s(&tmp).u;
 			sl1t_set_stmp_sec(pos->shrt, tv->tv_sec);
 			sl1t_set_stmp_msec(pos->shrt, tv->tv_usec / 1000);
 			sl1t_set_ttf(pos->shrt, SL1T_TTF_G64);

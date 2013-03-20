@@ -1216,9 +1216,9 @@ dccp_data_cb(EV_P_ ev_io *w, int UNUSED(re))
 {
 	static char buf[65536];
 	struct websvc_s ws;
-	const char *rsp;
-	size_t rsz;
+	struct webrsp_s wr;
 	ssize_t nrd;
+	size_t nwr;
 
 	if ((nrd = read(w->fd, buf, sizeof(buf))) < 0) {
 		goto clo;
@@ -1229,14 +1229,23 @@ dccp_data_cb(EV_P_ ev_io *w, int UNUSED(re))
 		buf[sizeof(buf) - 1] = '\0';
 	}
 
-	if ((ws = websvc(buf, (size_t)nrd)).ty != WEBSVC_F_UNK &&
-	    (rsz = web(&rsp, ws)) > 0) {
-		size_t nwr = 0;
+	ws = websvc(buf, (size_t)nrd);
+	wr = web(ws);
 
-		for (ssize_t tmp;
-		     (tmp = send(w->fd, rsp + nwr, rsz - nwr, 0)) > 0 &&
-			     (nwr += tmp) < rsz;);
-	}
+	/* send header */
+	nwr = 0;
+	for (ssize_t tmp;
+	     (tmp = send(w->fd, wr.hdr + nwr, wr.hdz - nwr, 0)) > 0 &&
+		     (nwr += tmp) < wr.hdz;);
+
+	/* send beef */
+	nwr = 0;
+	for (ssize_t tmp;
+	     (tmp = send(w->fd, wr.cnt + nwr, wr.cnz - nwr, 0)) > 0 &&
+		     (nwr += tmp) < wr.cnz;);
+
+	/* free resources */
+	free_webrsp(wr);
 clo:
 	ev_qio_shut(EV_A_ w);
 	return;

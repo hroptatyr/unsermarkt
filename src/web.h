@@ -64,8 +64,16 @@ struct websvc_s {
 	};
 };
 
+struct webrsp_s {
+	const char *hdr;
+	size_t hdz;
+	const char *cnt;
+	size_t cnz;
+};
+
 
 extern struct websvc_s websvc(const char *buf, size_t bsz);
-extern size_t web(const char **restrict tgt, struct websvc_s);
+extern struct webrsp_s web(struct websvc_s);
+extern void free_webrsp(struct webrsp_s);
 
 #endif	/* INCLUDED_web_h_ */

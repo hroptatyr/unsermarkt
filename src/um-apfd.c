@@ -586,7 +586,6 @@ snarf_pos_rpt(const struct ud_msg_s *msg, const struct ud_auxmsg_s *UNUSED(aux))
 			sl1t_set_stmp_sec(&l, tv->tv_sec);
 			sl1t_set_stmp_msec(&l, tv->tv_usec / 1000);
 			sl1t_set_ttf(&l, SL1T_TTF_G64);
-			sl1t_set_tblidx(&l, id);
 			break;
 		case 705:
 			/* @short */
@@ -594,7 +593,6 @@ snarf_pos_rpt(const struct ud_msg_s *msg, const struct ud_auxmsg_s *UNUSED(aux))
 			sl1t_set_stmp_sec(&s, tv->tv_sec);
 			sl1t_set_stmp_msec(&s, tv->tv_usec / 1000);
 			sl1t_set_ttf(&s, SL1T_TTF_G64);
-			sl1t_set_tblidx(&s, id);
 			break;
 		default:
 			break;
@@ -627,6 +625,10 @@ snarf_pos_rpt(const struct ud_msg_s *msg, const struct ud_auxmsg_s *UNUSED(aux))
 	/* find the cache cell */
 	pos = &CACHE(id);
 
+	/* reset the id's now that we've got them */
+	sl1t_set_tblidx(&l, id);
+	sl1t_set_tblidx(&s, id);
+
 	if (LIKELY(l.hdr->sec != 0U)) {
 		*pos->lng = l;
 		ute_add_tick(uctx, AS_SCOM(&l));
@@ -635,6 +637,8 @@ snarf_pos_rpt(const struct ud_msg_s *msg, const struct ud_auxmsg_s *UNUSED(aux))
 
 	if (LIKELY(s.hdr->sec != 0U)) {
 		*pos->shrt = s;
+		/* custom coding, always set high bit */
+		s.w[0] |= (1UL << 61);
 		ute_add_tick(uctx, AS_SCOM(&s));
 		res++;
 	}
@@ -683,7 +687,7 @@ snarf_pos_rpt(const struct ud_msg_s *msg, const struct ud_auxmsg_s *aux)
 		size_t sz;
 		uint16_t id;
 		apfd_cache_t pos;
-		const char *q;
+		const char *tmp;
 
 		if ((az = find_fix_fld(&ac, p, fix_acct)) == 0) {
 			UMAD_DEBUG("no acct\n");
@@ -723,9 +727,9 @@ snarf_pos_rpt(const struct ud_msg_s *msg, const struct ud_auxmsg_s *aux)
 		/* find the cache cell */
 		pos = &CACHE(id);
 
-		if (find_fix_fld(&q, p, fix_lqty)) {
-			q += sizeof(fix_lqty) - 1;
-			pos->lng->w[0] = ffff_m62_get_s(&q).u;
+		if (find_fix_fld(&tmp, p, fix_lqty)) {
+			tmp += sizeof(fix_lqty) - 1;
+			pos->lng->w[0] = ffff_m62_get_s(&tmp).u;
 			sl1t_set_stmp_sec(pos->lng, tv->tv_sec);
 			sl1t_set_stmp_msec(pos->lng, tv->tv_usec / 1000);
 			sl1t_set_ttf(pos->lng, SL1T_TTF_G64);
@@ -733,9 +737,9 @@ snarf_pos_rpt(const struct ud_msg_s *msg, const struct ud_auxmsg_s *aux)
 			ute_add_tick(uctx, AS_SCOM(pos->lng));
 		}
 
-		if (find_fix_fld(&q, p, fix_sqty)) {
-			q += sizeof(fix_sqty) - 1;
-			pos->shrt->w[0] = ffff_m62_get_s(&q).u;
+		if (find_fix_fld(&tmp, p, fix_sqty)) {
+			tmp += sizeof(fix_sqty) - 1;
+			pos->shrt->w[0] = ffff_m62_get_s(&tmp).u;
 			sl1t_set_stmp_sec(pos->shrt, tv->tv_sec);
 			sl1t_set_stmp_msec(pos->shrt, tv->tv_usec / 1000);
 			sl1t_set_ttf(pos->shrt, SL1T_TTF_G64);
@@ -903,9 +907,9 @@ dccp_data_cb(EV_P_ ev_io *w, int UNUSED(re))
 {
 	static char buf[65536];
 	struct websvc_s ws;
-	const char *rsp;
-	size_t rsz;
+	struct webrsp_s wr;
 	ssize_t nrd;
+	size_t nwr;
 
 	if ((nrd = read(w->fd, buf, sizeof(buf))) < 0) {
 		goto clo;
@@ -916,14 +920,23 @@ dccp_data_cb(EV_P_ ev_io *w, int UNUSED(re))
 		buf[sizeof(buf) - 1] = '\0';
 	}
 
-	if ((ws = websvc(buf, (size_t)nrd)).ty == WEBSVC_F_REQFORPOSS &&
-	    (rsz = web(&rsp, ws)) > 0) {
-		size_t nwr = 0;
+	ws = websvc(buf, (size_t)nrd);
+	wr = web(ws);
 
-		for (ssize_t tmp;
-		     (tmp = send(w->fd,rsp + nwr, rsz - nwr, 0)) > 0 &&
-			     (nwr += tmp) < rsz;);
-	}
+	/* send header */
+	nwr = 0;
+	for (ssize_t tmp;
+	     (tmp = send(w->fd, wr.hdr + nwr, wr.hdz - nwr, 0)) > 0 &&
+		     (nwr += tmp) < wr.hdz;);
+
+	/* send beef */
+	nwr = 0;
+	for (ssize_t tmp;
+	     (tmp = send(w->fd, wr.cnt + nwr, wr.cnz - nwr, 0)) > 0 &&
+		     (nwr += tmp) < wr.cnz;);
+
+	/* free resources */
+	free_webrsp(wr);
 clo:
 	ev_qio_shut(EV_A_ w);
 	return;

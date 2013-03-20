@@ -637,6 +637,8 @@ snarf_pos_rpt(const struct ud_msg_s *msg, const struct ud_auxmsg_s *UNUSED(aux))
 
 	if (LIKELY(s.hdr->sec != 0U)) {
 		*pos->shrt = s;
+		/* custom coding, always set high bit */
+		s.w[0] |= (1UL << 61);
 		ute_add_tick(uctx, AS_SCOM(&s));
 		res++;
 	}

@@ -722,6 +722,11 @@ __posrpt1(fixc_msg_t msg, uint16_t idx, struct timeval now)
 	/* the message type */
 	fixc_add_fld(msg, msgtyp);
 
+	/* rpt id */
+	fixc_add_tag(msg, (fixc_attr_t)721/*RptID*/, vtm, vtz);
+	/* business day we're talking */
+	fixc_add_tag(msg, (fixc_attr_t)715/*BizDT*/, txn, 10);
+
 	/* nopartyid */
 	fixc_add_tag(msg, (fixc_attr_t)453/*NoPartyID*/, "1", 1);
 	fixc_add_tag(msg, (fixc_attr_t)448/*PtyID*/, ac, az);
@@ -775,6 +780,9 @@ __posrpt1(fixc_msg_t msg, uint16_t idx, struct timeval now)
 	fixc_add_tag(msg, (fixc_attr_t)704/*LongQty*/, p, z);
 	z = ffff_m62_s(p, (m62_t)s->w[0]);
 	fixc_add_tag(msg, (fixc_attr_t)705/*ShortQty*/, p, z);
+
+	/* also bang the more recent of long and short as QtyDt */
+	fixc_add_tag(msg, (fixc_attr_t)976/*QtyDt*/, txn, txz);
 	return;
 }
 

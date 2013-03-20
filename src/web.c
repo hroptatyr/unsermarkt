@@ -818,17 +818,13 @@ websvc_reqforposs(char **restrict tgt, size_t tsz, struct websvc_s sd)
 
 
 static void
-paste_clen(char *restrict buf, size_t bsz, size_t len)
+paste_clen(char *restrict buf, size_t len)
 {
 /* print ascii repr of LEN at BUF. */
 	buf[0] = ' ';
 	buf[1] = ' ';
 	buf[2] = ' ';
 	buf[3] = ' ';
-
-	if (UNLIKELY(len > bsz)) {
-		len = 0;
-	}
 
 	buf[4] = (len % 10U) + '0';
 	if ((len /= 10U)) {
@@ -939,7 +935,7 @@ Content-Length: "
 	}
 
 	/* prepare the header */
-	paste_clen(__rsp + sizeof(HDR) - 1, sizeof(__rsp), cont_len);
+	paste_clen(__rsp + sizeof(HDR) - 1, cont_len);
 
 	res.hdr = __rsp;
 	res.hdz = sizeof(BUF_INIT) - 1;

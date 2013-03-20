@@ -586,7 +586,6 @@ snarf_pos_rpt(const struct ud_msg_s *msg, const struct ud_auxmsg_s *UNUSED(aux))
 			sl1t_set_stmp_sec(&l, tv->tv_sec);
 			sl1t_set_stmp_msec(&l, tv->tv_usec / 1000);
 			sl1t_set_ttf(&l, SL1T_TTF_G64);
-			sl1t_set_tblidx(&l, id);
 			break;
 		case 705:
 			/* @short */
@@ -594,7 +593,6 @@ snarf_pos_rpt(const struct ud_msg_s *msg, const struct ud_auxmsg_s *UNUSED(aux))
 			sl1t_set_stmp_sec(&s, tv->tv_sec);
 			sl1t_set_stmp_msec(&s, tv->tv_usec / 1000);
 			sl1t_set_ttf(&s, SL1T_TTF_G64);
-			sl1t_set_tblidx(&s, id);
 			break;
 		default:
 			break;
@@ -626,6 +624,10 @@ snarf_pos_rpt(const struct ud_msg_s *msg, const struct ud_auxmsg_s *UNUSED(aux))
 
 	/* find the cache cell */
 	pos = &CACHE(id);
+
+	/* reset the id's now that we've got them */
+	sl1t_set_tblidx(&l, id);
+	sl1t_set_tblidx(&s, id);
 
 	if (LIKELY(l.hdr->sec != 0U)) {
 		*pos->lng = l;

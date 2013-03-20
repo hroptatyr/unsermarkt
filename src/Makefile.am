@@ -75,6 +75,7 @@ um_apfd_SOURCES = um-apfd.c um-apfd.h
 um_apfd_SOURCES += um-apfd-clo.ggo
 um_apfd_SOURCES += gq.c gq.h
 um_apfd_SOURCES += web.c web.h
+um_apfd_SOURCES += apfd-cache.h
 um_apfd_CPPFLAGS = $(AM_CPPFLAGS) -D_GNU_SOURCE
 um_apfd_CPPFLAGS += -DWEB_ASP_REQFORPOSS
 um_apfd_CPPFLAGS += $(libev_CFLAGS)

@@ -49,24 +49,26 @@
 # include <libfixc/fixml-comp.h>
 # include <libfixc/fixml-attr.h>
 #endif	/* HAVE_LIBFIXC_FIX_H */
+#define DEFINE_GORY_STUFF
+#if defined HAVE_UTERUS_UTERUS_H
+# include <uterus/uterus.h>
+# include <uterus/m30.h>
+# include <uterus/m62.h>
+#elif defined HAVE_UTERUS_H
+# include <uterus.h>
+# include <m30.h>
+# include <m62.h>
+#else
+# error uterus headers are mandatory
+#endif	/* HAVE_UTERUS_UTERUS_H || HAVE_UTERUS_H */
 #if defined WEB_ASP_QUOTREQ
 # define WEB_ASP_SECDEF
-# define DEFINE_GORY_STUFF
-# if defined HAVE_UTERUS_UTERUS_H
-#  include <uterus/uterus.h>
-#  include <uterus/m30.h>
-# elif defined HAVE_UTERUS_H
-#  include <uterus.h>
-#  include <m30.h>
-# else
-#  error uterus headers are mandatory
-# endif	/* HAVE_UTERUS_UTERUS_H || HAVE_UTERUS_H */
 # include "um-quod.h"
 # include "quod-cache.h"
 #endif	/* WEB_ASP_QUOTREQ */
 #if defined WEB_ASP_REQFORPOSS
 # include "um-apfd.h"
-# include "gq.h"
+# include "apfd-cache.h"
 #endif	/* WEB_ASP_REQFORPOSS */
 #include "web.h"
 #include "nifty.h"
@@ -220,7 +222,7 @@ ffff_strfdtu(char *restrict buf, size_t bsz, time_t sec, unsigned int usec)
 
 /* unknown service */
 static size_t
-websvc_unk(char *restrict tgt, size_t tsz, struct websvc_s UNUSED(sd))
+websvc_unk(char **restrict tgt, size_t tsz, struct websvc_s UNUSED(sd))
 {
 	static const char rsp[] = "\
 <!DOCTYPE html>\n\
@@ -248,7 +250,7 @@ websvc_unk(char *restrict tgt, size_t tsz, struct websvc_s UNUSED(sd))
 	if (tsz < sizeof(rsp)) {
 		return 0;
 	}
-	memcpy(tgt, rsp, sizeof(rsp));
+	memcpy(*tgt, rsp, sizeof(rsp));
 	return sizeof(rsp) - 1;
 }
 
@@ -288,11 +290,11 @@ __secdef1(fixc_msg_t msg, uint16_t idx)
 }
 
 static size_t
-websvc_secdef(char *restrict tgt, size_t tsz, struct websvc_s sd)
+websvc_secdef(char **restrict tgt, size_t UNUSED(tsz), struct websvc_s sd)
 {
-	size_t nrndr = 0;
 	size_t nsy = ute_nsyms(uctx);
 	fixc_msg_t msg;
+	struct fixc_rndr_s r;
 
 	WEB_DEBUG("printing secdef idx %hu\n", sd.secdef.idx);
 
@@ -315,10 +317,11 @@ websvc_secdef(char *restrict tgt, size_t tsz, struct websvc_s sd)
 	}
 
 	/* render the whole shebang */
-	nrndr = fixc_render_fixml(tgt, tsz, msg);
-	/* start a fix msg for that */
+	r = fixc_render_fixml_rndr(msg);
 	free_fixc(msg);
-	return nrndr;
+	/* get ready for the harvest */
+	*tgt = r.str;
+	return r.len;
 }
 
 # else  /* !HAVE_LIBFIXC_FIX_H */
@@ -350,7 +353,7 @@ __secdef1(char *restrict tgt, size_t tsz, uint16_t idx)
 }
 
 static size_t
-websvc_secdef(char *restrict tgt, size_t tsz, struct websvc_s sd)
+websvc_secdef(char **restrict tgt, size_t tsz, struct websvc_s sd)
 {
 	size_t idx = 0;
 	size_t nsy = ute_nsyms(uctx);
@@ -366,13 +369,13 @@ websvc_secdef(char *restrict tgt, size_t tsz, struct websvc_s sd)
 	idx += sizeof(fixml_pre) - 1;
 
 	if (sd.secdef.idx <= nsy) {
-		idx += __secdef1(tgt + idx, tsz - idx, sd.secdef.idx);
+		idx += __secdef1(*tgt + idx, tsz - idx, sd.secdef.idx);
 	} else if (sd.quotreq.idx == MASS_QUOT) {
 		memcpy(tgt + idx, fixml_batch_pre, sizeof(fixml_batch_pre));
 		idx += sizeof(fixml_batch_pre) - 1;
 		/* loop over instruments */
 		for (size_t i = 1; i <= nsy; i++) {
-			idx += __secdef1(tgt + idx, tsz - idx, i);
+			idx += __secdef1(*tgt + idx, tsz - idx, i);
 		}
 		memcpy(tgt + idx, fixml_batch_post, sizeof(fixml_batch_post));
 		idx += sizeof(fixml_batch_post) - 1;
@@ -495,12 +498,12 @@ __quotreq1(fixc_msg_t msg, uint16_t idx, struct timeval now)
 }
 
 static size_t
-websvc_quotreq(char *restrict tgt, size_t tsz, struct websvc_s sd)
+websvc_quotreq(char **restrict tgt, size_t UNUSED(tsz), struct websvc_s sd)
 {
-	size_t idx = 0;
 	size_t nsy = ute_nsyms(uctx);
 	struct timeval now[1];
 	fixc_msg_t msg;
+	struct fixc_rndr_s r;
 
 	WEB_DEBUG("printing quotreq idx %hu\n", sd.quotreq.idx);
 
@@ -525,10 +528,11 @@ websvc_quotreq(char *restrict tgt, size_t tsz, struct websvc_s sd)
 	}
 
 	/* render the whole shebang */
-	idx = fixc_render_fixml(tgt, tsz, msg);
-	/* start a fix msg for that */
+	r = fixc_render_fixml_rndr(msg);
 	free_fixc(msg);
-	return idx;
+	/* get ready for the harvest */
+	*tgt = r.str;
+	return r.len;
 }
 
 # else  /* !HAVE_LIBFIXC_FIX_H */
@@ -606,7 +610,7 @@ TxnTm=\"%s\" ValidUntilTm=\"%s\">",
 }
 
 static size_t
-websvc_quotreq(char *restrict tgt, size_t tsz, struct websvc_s sd)
+websvc_quotreq(char **restrict tgt, size_t tsz, struct websvc_s sd)
 {
 	size_t idx = 0;
 	size_t nsy = ute_nsyms(uctx);
@@ -626,13 +630,13 @@ websvc_quotreq(char *restrict tgt, size_t tsz, struct websvc_s sd)
 	idx += sizeof(fixml_pre) - 1;
 
 	if (sd.quotreq.idx < nsy) {
-		idx += __quotreq1(tgt + idx, tsz - idx, sd.quotreq.idx, *now);
+		idx += __quotreq1(*tgt + idx, tsz - idx, sd.quotreq.idx, *now);
 	} else if (sd.quotreq.idx == MASS_QUOT) {
 		memcpy(tgt + idx, fixml_batch_pre, sizeof(fixml_batch_pre));
 		idx += sizeof(fixml_batch_pre) - 1;
 		/* loop over instruments */
 		for (size_t i = 1; i <= nsy; i++) {
-			idx += __quotreq1(tgt + idx, tsz - idx, i, *now);
+			idx += __quotreq1(*tgt + idx, tsz - idx, i, *now);
 		}
 		memcpy(tgt + idx, fixml_batch_post, sizeof(fixml_batch_post));
 		idx += sizeof(fixml_batch_post) - 1;
@@ -651,53 +655,146 @@ websvc_quotreq(char *restrict tgt, size_t tsz, struct websvc_s sd)
 #if defined WEB_ASP_REQFORPOSS
 # if defined HAVE_LIBFIXC_FIX_H
 static void
-__posrpt1(fixc_msg_t msg, const struct pfi_s *pos, const char *ac, size_t acz)
+__posrpt1(fixc_msg_t msg, uint16_t idx, struct timeval now)
 {
 	static char p[32];
+	static char vtm[32];
+	static char txn[32];
+	static char sbuf[64U + 64U];
+	static size_t txz, vtz;
 	static const struct fixc_fld_s msgtyp = {
 		.tag = 35,
 		.typ = FIXC_TYP_MSGTYP,
 		.mtyp = (fixc_msgt_t)FIXML_MSG_PositionReport,
 	};
+	static struct timeval now_cch;
+	const_sl1t_t l = apfd_cache[idx].lng;
+	const_sl1t_t s = apfd_cache[idx].shrt;
 	size_t z;
+	const char *ac;
+	size_t az;
+	const char *sym;
+	size_t ssz;
+
+	/* massage the sym name */
+	sym = ute_idx2sym(uctx, idx);
+	ssz = strlen(sym);
+	memcpy(sbuf, sym, ssz);
+	sbuf[ssz] = '\0';
+	{
+		char *q;
+		if ((q = strchr(sbuf, '/')) != NULL) {
+			*q = '\0';
+			ac = sbuf;
+			az = q++ - sbuf;
+			sym = q;
+			ssz -= q - sbuf;
+		} else {
+			ac = NULL;
+			az = 0UL;
+			sym = sbuf;
+		}
+	}
+
+	/* find the more recent quote out of bid and ask */
+	{
+		time_t ls = sl1t_stmp_sec(l);
+		unsigned int lms = sl1t_stmp_msec(l);
+		time_t ss = sl1t_stmp_sec(s);
+		unsigned int sms = sl1t_stmp_msec(s);
+
+		if (ls <= ss) {
+			ls = ss;
+			lms = sms;
+		}
+		if (UNLIKELY(ls == 0)) {
+			return;
+		}
+
+		txz = ffff_strfdtu(txn, sizeof(txn), ls, lms * 1000);
+	}
+
+	if (now_cch.tv_sec != now.tv_sec) {
+		vtz = ffff_strfdtu(vtm, sizeof(vtm), now.tv_sec, now.tv_usec);
+		now_cch = now;
+	}
 
 	/* the message type */
 	fixc_add_fld(msg, msgtyp);
 
+	/* rpt id */
+	fixc_add_tag(msg, (fixc_attr_t)721/*RptID*/, vtm, vtz);
+	/* business day we're talking */
+	fixc_add_tag(msg, (fixc_attr_t)715/*BizDT*/, txn, 10);
+
 	/* nopartyid */
 	fixc_add_tag(msg, (fixc_attr_t)453/*NoPartyID*/, "1", 1);
-	fixc_add_tag(msg, (fixc_attr_t)448/*PtyID*/, ac, acz);
+	fixc_add_tag(msg, (fixc_attr_t)448/*PtyID*/, ac, az);
 	fixc_add_tag(msg, (fixc_attr_t)447/*PtyIDSrc*/, "D", 1);
 	fixc_add_tag(msg, (fixc_attr_t)452/*PtyIDRole*/, "27", 2);
 
-	/* there's no instrm block, so just pass on the symbol */
-	z = strlen(pos->sym);
-	fixc_add_tag(msg, (fixc_attr_t)55/*Sym*/, pos->sym, z);
+	/* see if there's an instrm block */
+	if (apfd_cache[idx].ins) {
+		/* fixc_add_msg(msg, cache[idx].ins); */
+		fixc_msg_t ins = apfd_cache[idx].ins;
+
+		for (size_t i = 0; i < ins->nflds; i++) {
+			struct fixc_fld_s fld = ins->flds[i];
+			struct fixc_tag_data_s d = fixc_get_tag_data(ins, i);
+			size_t mi = msg->nflds;
+
+			fixc_add_tag(msg, (fixc_attr_t)fld.tag, d.s, d.z);
+			/* bang .cnt and .tpc */
+			msg->flds[mi].tpc = fld.tpc;
+			msg->flds[mi].cnt = fld.cnt;
+		}
+	} else {
+		/* have to mimick the instr somehow */
+		static char buf[8];
+		size_t mi;
+
+		mi = msg->nflds;
+		fixc_add_tag(msg, (fixc_attr_t)FIXML_ATTR_Symbol, sym, ssz);
+		msg->flds[mi].tpc = FIXML_COMP_Instrument;
+		msg->flds[mi].cnt = 0;
+
+		mi = msg->nflds;
+		ssz = snprintf(buf, sizeof(buf), "%hu", idx);
+		fixc_add_tag(msg, (fixc_attr_t)FIXML_ATTR_SecurityID, buf, ssz);
+		msg->flds[mi].tpc = FIXML_COMP_Instrument;
+		msg->flds[mi].cnt = 1;
+
+		mi = msg->nflds;
+		fixc_add_tag(
+			msg, (fixc_attr_t)FIXML_ATTR_SecurityIDSource,
+			"100", 3);
+		msg->flds[mi].tpc = FIXML_COMP_Instrument;
+		msg->flds[mi].cnt = 2;
+	}
 
 	/* quantities */
 	fixc_add_tag(msg, (fixc_attr_t)702/*NoPositions*/, "2", 1);
-	fixc_add_tag(msg, (fixc_attr_t)703/*PosType*/, "ALC", 3);
+	fixc_add_tag(msg, (fixc_attr_t)703/*PosType*/, "TOT", 3);
 
-	z = snprintf(p, sizeof(p), "%.6f", pos->lqty);
+	z = ffff_m62_s(p, (m62_t)l->w[0]);
 	fixc_add_tag(msg, (fixc_attr_t)704/*LongQty*/, p, z);
-	z = snprintf(p, sizeof(p), "%.6f", pos->sqty);
+	z = ffff_m62_s(p, (m62_t)s->w[0]);
 	fixc_add_tag(msg, (fixc_attr_t)705/*ShortQty*/, p, z);
+
+	/* also bang the more recent of long and short as QtyDt */
+	fixc_add_tag(msg, (fixc_attr_t)976/*QtyDt*/, txn, txz);
 	return;
 }
 
 static size_t
-websvc_reqforposs(char *restrict tgt, size_t tsz, struct websvc_s sd)
+websvc_reqforposs(char **restrict tgt, size_t UNUSED(tsz), struct websvc_s sd)
 {
-	size_t idx = 0;
 	struct timeval now[1];
+	size_t nsy = ute_nsyms(uctx);
 	fixc_msg_t msg;
-	const struct gq_ll_s *poss;
+	struct fixc_rndr_s r;
 
 	WEB_DEBUG("printing reqforposs ac %s\n", sd.reqforposs.ac);
-
-	if ((poss = sd.reqforposs.poss) == NULL) {
-		return 0;
-	}
 
 	/* get current time */
 	gettimeofday(now, NULL);
@@ -706,42 +803,36 @@ websvc_reqforposs(char *restrict tgt, size_t tsz, struct websvc_s sd)
 	msg = make_fixc_msg((fixc_msgt_t)FIXC_MSGT_BATCH);
 
 	/* loop over positions */
-	for (gq_item_t i = poss->i1st; i; i = i->next) {
-		const struct pfi_s *pos = (const void*)i;
-		__posrpt1(msg, pos, sd.reqforposs.ac, sd.reqforposs.acz);
+	for (size_t i = 1; i <= nsy; i++) {
+		__posrpt1(msg, i, *now);
 	}
 
 	/* render the whole shebang */
-	idx = fixc_render_fixml(tgt, tsz, msg);
-	/* start a fix msg for that */
+	r = fixc_render_fixml_rndr(msg);
 	free_fixc(msg);
-	return idx;
+	/* get ready for the harvest */
+	*tgt = r.str;
+	return r.len;
 }
 
 # else  /* !HAVE_LIBFIXC_FIX_H */
 static size_t
-websvc_reqforposs(
-	char *restrict UNUSED(tgt), size_t UNUSED(tsz),
-	struct websvc_s UNUSED(sd))
+websvc_reqforposs(char **restrict tgt, size_t tsz, struct websvc_s sd)
 {
-	return 0UL;
+	return websvc_unk(tgt, tsz, sd);
 }
 # endif	/* HAVE_LIBFIXC_FIX_H */
 #endif	/* WEB_ASP_REQFORPOSS */
 
 
 static void
-paste_clen(char *restrict buf, size_t bsz, size_t len)
+paste_clen(char *restrict buf, size_t len)
 {
 /* print ascii repr of LEN at BUF. */
 	buf[0] = ' ';
 	buf[1] = ' ';
 	buf[2] = ' ';
 	buf[3] = ' ';
-
-	if (UNLIKELY(len > bsz)) {
-		len = 0;
-	}
 
 	buf[4] = (len % 10U) + '0';
 	if ((len /= 10U)) {
@@ -800,8 +891,8 @@ websvc(const char *req, size_t UNUSED(len))
 	return res;
 }
 
-size_t
-web(const char **restrict tgt, struct websvc_s ws)
+struct webrsp_s
+web(struct websvc_s ws)
 {
 	/* the final \n will be subst'd later on */
 #define HDR		"\
@@ -812,44 +903,76 @@ Content-Length: "
 #define BUF_INIT	HDR CLEN_SPEC "\r\n\r\n"
 	/* hdr is a format string and hdr_len is as wide as the result printed
 	 * later on */
+#if defined HAVE_LIBFIXC_FIX_H
+	static char __rsp[4096] = BUF_INIT;
+#else  /* !HAVE_LIBFIXC_FIX_H */
 	static char __rsp[65536] = BUF_INIT;
+#endif	/* HAVE_LIBFIXC_FIX_H */
 	char *rsp = __rsp + sizeof(BUF_INIT) - 1;
 	const size_t rsp_len = sizeof(__rsp) - (sizeof(BUF_INIT) - 1);
 	size_t cont_len;
+	struct webrsp_s res;
 
 	switch (ws.ty) {
 	default:
 	case WEBSVC_F_UNK:
-		cont_len = websvc_unk(rsp, rsp_len, ws);
+		cont_len = websvc_unk(&rsp, rsp_len, ws);
 		break;
 
 	case WEBSVC_F_SECDEF:
 #if defined WEB_ASP_SECDEF
-		cont_len = websvc_secdef(rsp, rsp_len, ws);
+		cont_len = websvc_secdef(&rsp, rsp_len, ws);
 #else  /* !WEB_ASP_SECDEF */
-		cont_len = 0UL;
+		cont_len = websvc_unk(&rsp, rsp_len, ws);
 #endif	/* WEB_ASP_SECDEF */
 		break;
 	case WEBSVC_F_QUOTREQ:
 #if defined WEB_ASP_QUOTREQ
-		cont_len = websvc_quotreq(rsp, rsp_len, ws);
+		cont_len = websvc_quotreq(&rsp, rsp_len, ws);
 #else  /* !WEB_ASP_QUOTREQ */
-		cont_len = 0UL;
+		cont_len = websvc_unk(&rsp, rsp_len, ws);
 #endif	/* WEB_ASP_QUOTREQ */
 		break;
 	case WEBSVC_F_REQFORPOSS:
 #if defined WEB_ASP_REQFORPOSS
-		cont_len = websvc_reqforposs(rsp, rsp_len, ws);
+		cont_len = websvc_reqforposs(&rsp, rsp_len, ws);
 #else  /* !WEB_ASP_REQFORPOSS */
-		cont_len = 0UL;
+		cont_len = websvc_unk(&rsp, rsp_len, ws);
 #endif	/* WEB_ASP_REQFORPOSS */
 		break;
 	}
 
 	/* prepare the header */
-	paste_clen(__rsp + sizeof(HDR) - 1, sizeof(__rsp), cont_len);
-	*tgt = __rsp;
-	return sizeof(BUF_INIT) - 1 + cont_len;
+	paste_clen(__rsp + sizeof(HDR) - 1, cont_len);
+
+	res.hdr = __rsp;
+	res.hdz = sizeof(BUF_INIT) - 1;
+	/* in the libfixc case this will be an exploded struct fixc_rndr_s */
+	res.cnt = rsp;
+	res.cnz = cont_len;
+	return res;
+}
+
+#if defined HAVE_LIBFIXC_FIX_H
+static inline void*
+unconst(union {const void *c; void *p;} __attribute__((transparent_union)) p)
+{
+	return p.p;
+}
+#endif	/* HAVE_LIBFIXC_FIX_H */
+
+void
+free_webrsp(struct webrsp_s rsp)
+{
+#if defined HAVE_LIBFIXC_FIX_H
+	if (rsp.hdr + rsp.hdz != rsp.cnt) {
+		/* must come from a fixc alloc'ing renderer */
+		fixc_free_rndr((struct fixc_rndr_s){unconst(rsp.cnt), rsp.cnz});
+	}
+#else  /* HAVE_LIBFIXC_FIX_H */
+	(void)rsp;
+#endif	/* HAVE_LIBFIXC_FIX_H */
+	return;
 }
 
 /* web.c ends here */

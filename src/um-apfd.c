@@ -78,6 +78,22 @@
 
 #include <unserding/unserding.h>
 
+#define DEFINE_GORY_STUFF
+#if defined HAVE_UTERUS_UTERUS_H
+# include <uterus/uterus.h>
+# include <uterus/m30.h>
+# include <uterus/m62.h>
+#elif defined HAVE_UTERUS_H
+# include <uterus.h>
+# include <m30.h>
+# include <m62.h>
+#else
+# error uterus headers are mandatory
+#endif	/* HAVE_UTERUS_UTERUS_H || HAVE_UTERUS_H */
+#if !defined SL1T_TTF_G64
+# define SL1T_TTF_G64		(15)
+#endif	/* !SL1T_TTF_G64 */
+
 #if defined HAVE_LIBFIXC_FIX_H
 # include <libfixc/fix.h>
 # include <libfixc/fixml-msg.h>
@@ -90,6 +106,7 @@
 #include "ud-sock.h"
 #include "gq.h"
 #include "web.h"
+#include "apfd-cache.h"
 
 #if defined __INTEL_COMPILER
 # pragma warning (disable:981)
@@ -172,6 +189,13 @@ struct ev_io_i_s {
 	size_t rsz;
 };
 
+struct pos_s {
+	double lqty;
+	double sqty;
+
+	unsigned int last_seen;
+};
+
 /* children need access to beef resources */
 static ev_io *beef = NULL;
 static size_t nbeef = 0;
@@ -202,6 +226,7 @@ fini_cli(void)
 	return;
 }
 
+#if !defined HAVE_LIBFIXC_FIX_H
 static void
 resz_cli(size_t nu)
 {
@@ -287,6 +312,7 @@ add_cli(struct key_s k)
 	/* queue needs no init'ing, we use lazy adding */
 	return idx + 1;
 }
+#endif	/* !HAVE_LIBFIXC_FIX_H */
 
 static void
 prune_cli(cli_t c)
@@ -344,120 +370,6 @@ prune_clis(void)
 	/* let everyone know how many clis we've got */
 	ncli = nu_ncli;
 	return;
-}
-
-
-/* account handling */
-struct gq_s ac_pool[1];
-struct gq_ll_s accts[1];
-
-static pfa_t
-pop_pfa(cli_t UNUSED(c))
-{
-	pfa_t res;
-	gq_t q = ac_pool;
-
-	if (q->free->i1st == NULL) {
-		assert(q->free->ilst == NULL);
-		UMAD_DEBUG("ac pool resize +%u\n", 16U);
-		init_gq(q, 16U, sizeof(*res));
-		UMAD_DEBUG("ac pool resize ->%zu\n", q->nitems / sizeof(*res));
-	}
-	/* get us a new portfolio item */
-	res = (void*)gq_pop_head(q->free);
-	memset(res, 0, sizeof(*res));
-	return res;
-}
-
-static pfa_t
-find_ac(cli_t UNUSED(c), const char *ac, size_t az)
-{
-	gq_ll_t q = accts;
-	pfa_t res;
-
-	if (UNLIKELY(az > sizeof(res->acct))) {
-		az = sizeof(res->acct) - 1;
-	}
-
-	for (gq_item_t i = q->i1st; i; i = i->next) {
-		res = (void*)i;
-
-		if (memcmp(res->acct, ac, az) == 0) {
-			return res;
-		}
-	}
-	return NULL;
-}
-
-static pfa_t
-add_ac(cli_t c, const char *ac, size_t az)
-{
-	pfa_t res;
-
-	if (UNLIKELY((res = pop_pfa(c)) == NULL)) {
-		return NULL;
-	}
-	if (az > sizeof(res->acct)) {
-		az = sizeof(res->acct) - 1;
-	}
-	/* all's fine, copy the acct and the sym */
-	memcpy(res->acct, ac, az);
-	res->acct[az] = '\0';
-	/* and shove it onto our acct list */
-	gq_push_tail(accts, (gq_item_t)res);
-	return res;
-}
-
-
-/* position handling */
-struct gq_s pos_pool[1];
-
-static pfi_t
-pop_pfi(void)
-{
-	pfi_t res;
-	gq_t q = pos_pool;
-
-	if (q->free->i1st == NULL) {
-		assert(q->free->ilst == NULL);
-		UMAD_DEBUG("pos pool resize +%u\n", 64U);
-		init_gq(q, 64U, sizeof(*res));
-		UMAD_DEBUG("pos pool resize ->%zu\n", q->nitems / sizeof(*res));
-	}
-	/* get us a new portfolio item */
-	res = (void*)gq_pop_head(q->free);
-	memset(res, 0, sizeof(*res));
-	return res;
-}
-
-static pfi_t
-find_pos(const struct pfa_s ac[static 1], const char *sym, size_t sz)
-{
-	for (gq_item_t i = ac->poss->i1st; i; i = i->next) {
-		pfi_t pos = (void*)i;
-
-		if (memcmp(pos->sym, sym, sz) == 0) {
-			return pos;
-		}
-	}
-	return NULL;
-}
-
-static pfi_t
-add_pos(struct pfa_s ac[static 1], const char *sym, size_t sz)
-{
-	pfi_t res;
-
-	if (UNLIKELY((res = pop_pfi()) == NULL)) {
-		return NULL;
-	}
-
-	/* all's fine, copy the acct and the sym */
-	memcpy(res->sym, sym, sz);
-	res->sym[sz] = '\0';
-	/* and shove it onto our poss list */
-	gq_push_tail(ac->poss, (gq_item_t)res);
-	return res;
 }
 
 
@@ -542,6 +454,7 @@ free_io(ev_io_i_t io)
 
 
 /* fix guts */
+#if !defined HAVE_LIBFIXC_FIX_H
 static size_t
 find_fix_fld(const char **p, const char *msg, const char *key)
 {
@@ -577,22 +490,164 @@ find_fix_eofld(const char *msg, const char *key)
 	}
 	return cand + clen;
 }
+#endif	/* !HAVE_LIBFIXC_FIX_H */
 
-static double
-find_fix_dbl(const char *msg, const char *fld, size_t nfld)
+
+/* allocation cache */
+apfd_cache_t apfd_cache = NULL;
+static size_t cache_alsz = 0UL;
+#define CACHE(x)	(apfd_cache[x])
+/* backing ute file */
+utectx_t uctx = NULL;
+static const char *u_fn = NULL;
+static size_t u_nt = 0;
+/* number of ticks ignored due to missing symbols */
+static size_t ign = 0;
+
+static void
+clean_up_cache(void)
 {
-	size_t tmp;
-	double res = 0.0;
-	const char *p;
-
-	if ((tmp = find_fix_fld(&p, msg, fld))) {
-		const char *cursor = p + nfld;
-
-		res = strtod(cursor, NULL);
-	}
-	return res;
+	UMAD_DEBUG("cleaning up cache\n");
+	munmap(apfd_cache, cache_alsz);
+	return;
 }
 
+static void
+check_cache(unsigned int tgtid)
+{
+	static const size_t pgsz = 4096U;
+	static size_t ncache = 0;
+
+	if (UNLIKELY(tgtid > ncache)) {
+		/* resize */
+		size_t nx64k = (tgtid * sizeof(CACHE(0)) + pgsz) & ~(pgsz - 1);
+
+		if (UNLIKELY(apfd_cache == NULL)) {
+			apfd_cache = mmap(NULL, nx64k, PROT_MEM, MAP_MEM, -1, 0);
+			atexit(clean_up_cache);
+		} else {
+			size_t olsz = ncache * sizeof(CACHE(0));
+			apfd_cache =
+				mremap(apfd_cache, olsz, nx64k, MREMAP_MAYMOVE);
+		}
+
+		ncache = (cache_alsz = nx64k) / sizeof(CACHE(0));
+	}
+	return;
+}
+
+#if defined HAVE_LIBFIXC_FIX_H
+static int
+snarf_pos_rpt(const struct ud_msg_s *msg, const struct ud_auxmsg_s *UNUSED(aux))
+{
+/* process them posrpts */
+	static char sbuf[64U + 64U];
+	fixc_msg_t f;
+	struct timeval tv[1];
+	const char *ac = NULL;
+	size_t az = 0UL;
+	const char *sym = NULL;
+	size_t sz = 0UL;
+	struct sl1t_s l = {0};
+	struct sl1t_s s = {0};
+	apfd_cache_t pos;
+	uint16_t id;
+	int res = 0;
+
+	/* what's the wallclock time */
+	gettimeofday(tv, NULL);
+
+	if (UNLIKELY((f = make_fixc_from_fix(msg->data, msg->dlen)) == NULL)) {
+		return 0;
+	} else if (UNLIKELY(f->f35.typ != FIXC_TYP_MSGTYP ||
+			f->f35.mtyp != FIXML_MSG_PositionReport)) {
+		/* what about batch? */
+		goto out;
+	}
+
+	for (size_t i = 0; i < f->nflds; i++) {
+		const struct fixc_fld_s *fld = f->flds + i;
+		const char *val = f->pr + fld->off;
+
+		switch (f->flds[i].tag) {
+		case 1:
+			/* account name */
+			ac = val;
+			az = strlen(val);
+			break;
+		case 55:
+			/* symbol name */
+			sym = val;
+			sz = strlen(val);
+			break;
+		case 704:
+			/* @long */
+			l.w[0] = ffff_m62_get_s(&val).u;
+			sl1t_set_stmp_sec(&l, tv->tv_sec);
+			sl1t_set_stmp_msec(&l, tv->tv_usec / 1000);
+			sl1t_set_ttf(&l, SL1T_TTF_G64);
+			break;
+		case 705:
+			/* @short */
+			s.w[0] = ffff_m62_get_s(&val).u;
+			sl1t_set_stmp_sec(&s, tv->tv_sec);
+			sl1t_set_stmp_msec(&s, tv->tv_usec / 1000);
+			sl1t_set_ttf(&s, SL1T_TTF_G64);
+			break;
+		default:
+			break;
+		}
+	}
+
+	/* we don't want no steenkin buffer overfloes */
+	if (UNLIKELY(az >= sizeof(sbuf) / 2 - 1)) {
+		az = sizeof(sbuf) / 2 - 1 - 1;
+	}
+	if (UNLIKELY(sz >= sizeof(sbuf) / 2 - 1)) {
+		sz = sizeof(sbuf) / 2 - 1;
+	}
+	/* roll a symbol */
+	memcpy(sbuf, ac, az);
+	sbuf[az] = '/';
+	memcpy(sbuf + az + 1, sym, sz);
+	sbuf[az + 1 + sz] = '\0';
+
+	/* try and have ute assign us an id */
+	if ((id = ute_sym2idx(uctx, sbuf)) == 0) {
+		/* big bugger */
+		goto out;
+	}
+
+	UMAD_DEBUG("banging  %s -> %hu\n", sbuf, id);
+	/* make sure the cache is wide enough */
+	check_cache(id);
+
+	/* find the cache cell */
+	pos = &CACHE(id);
+
+	/* reset the id's now that we've got them */
+	sl1t_set_tblidx(&l, id);
+	sl1t_set_tblidx(&s, id);
+
+	if (LIKELY(l.hdr->sec != 0U)) {
+		*pos->lng = l;
+		ute_add_tick(uctx, AS_SCOM(&l));
+		res++;
+	}
+
+	if (LIKELY(s.hdr->sec != 0U)) {
+		*pos->shrt = s;
+		/* custom coding, always set high bit */
+		s.w[0] |= (1UL << 61);
+		ute_add_tick(uctx, AS_SCOM(&s));
+		res++;
+	}
+
+out:
+	free_fixc(f);
+	return res;
+}
+#else  /* !HAVE_LIBFIXC_FIX_H */
 static int
 snarf_pos_rpt(const struct ud_msg_s *msg, const struct ud_auxmsg_s *aux)
 {
@@ -603,7 +658,7 @@ snarf_pos_rpt(const struct ud_msg_s *msg, const struct ud_auxmsg_s *aux)
 	static const char fix_acct[] = "1=";
 	static const char fix_lqty[] = "704=";
 	static const char fix_sqty[] = "705=";
-	time_t now;
+	struct timeval tv[1];
 	cli_t c;
 	int res = 0;
 
@@ -620,16 +675,19 @@ snarf_pos_rpt(const struct ud_msg_s *msg, const struct ud_auxmsg_s *aux)
 	}
 
 	/* what's the wallclock time */
-	now = time(NULL);
-	for (const char *p = msg->data, *const ep = p + msg->dlen;
-	     p && p < ep && (p = find_fix_eofld(p, fix_pos_rpt));
+	gettimeofday(tv, NULL);
+
+	for (const char *p = msg->data, *q, *const ep = p + msg->dlen;
+	     p && p < ep && (q = find_fix_eofld(p, fix_pos_rpt));
 	     p = find_fix_eofld(p, fix_chksum)) {
-		struct pfa_s *apf = NULL;
-		struct pfi_s *pos = NULL;
+		static char sbuf[64U + 64U];
 		const char *ac;
 		size_t az;
 		const char *sym;
 		size_t sz;
+		uint16_t id;
+		apfd_cache_t pos;
+		const char *tmp;
 
 		if ((az = find_fix_fld(&ac, p, fix_acct)) == 0) {
 			UMAD_DEBUG("no acct\n");
@@ -646,39 +704,120 @@ snarf_pos_rpt(const struct ud_msg_s *msg, const struct ud_auxmsg_s *aux)
 		sym += sizeof(fix_inssym) - 1;
 		sz -= sizeof(fix_inssym) - 1;
 		/* we don't want no steenkin buffer overfloes */
-		if (UNLIKELY(az >= sizeof(apf->acct))) {
-			az = sizeof(apf->acct) - 1;
+		if (UNLIKELY(az >= sizeof(sbuf) / 2 - 1)) {
+			az = sizeof(sbuf) / 2 - 1 - 1;
 		}
-		if (UNLIKELY(sz >= sizeof(pos->sym))) {
-			sz = sizeof(pos->sym) - 1;
+		if (UNLIKELY(sz >= sizeof(sbuf) / 2 - 1)) {
+			sz = sizeof(sbuf) / 2 - 1;
 		}
-		if ((apf = find_ac(c, ac, az)) != NULL) {
-			if ((pos = find_pos(apf, sym, sz)) == NULL) {
-				goto add_pos;
-			}
-		} else if ((apf = add_ac(c, ac, az)) != NULL) {
-		add_pos:
-			if (UNLIKELY((pos = add_pos(apf, sym, sz)) == NULL)) {
-				continue;
-			}
+		/* roll a symbol */
+		memcpy(sbuf, ac, az);
+		sbuf[az] = '/';
+		memcpy(sbuf + az + 1, sym, sz);
+		sbuf[az + 1 + sz] = '\0';
+		/* try and have ute assign us an id */
+		if ((id = ute_sym2idx(uctx, sbuf)) == 0) {
+			/* big bugger */
+			continue;
 		}
 
-		/* find the long quantity */
-		pos->lqty = find_fix_dbl(p, fix_lqty, sizeof(fix_lqty) - 1);
-		pos->sqty = find_fix_dbl(p, fix_sqty, sizeof(fix_sqty) - 1);
-		pos->last_seen = now;
+		/* make sure the cache is wide enough */
+		check_cache(id);
+
+		/* find the cache cell */
+		pos = &CACHE(id);
+
+		if (find_fix_fld(&tmp, p, fix_lqty)) {
+			tmp += sizeof(fix_lqty) - 1;
+			pos->lng->w[0] = ffff_m62_get_s(&tmp).u;
+			sl1t_set_stmp_sec(pos->lng, tv->tv_sec);
+			sl1t_set_stmp_msec(pos->lng, tv->tv_usec / 1000);
+			sl1t_set_ttf(pos->lng, SL1T_TTF_G64);
+			sl1t_set_tblidx(pos->lng, id);
+			ute_add_tick(uctx, AS_SCOM(pos->lng));
+		}
+
+		if (find_fix_fld(&tmp, p, fix_sqty)) {
+			tmp += sizeof(fix_sqty) - 1;
+			pos->shrt->w[0] = ffff_m62_get_s(&tmp).u;
+			sl1t_set_stmp_sec(pos->shrt, tv->tv_sec);
+			sl1t_set_stmp_msec(pos->shrt, tv->tv_usec / 1000);
+			sl1t_set_ttf(pos->shrt, SL1T_TTF_G64);
+			sl1t_set_tblidx(pos->shrt, id);
+			ute_add_tick(uctx, AS_SCOM(pos->shrt));
+		}
+
 		res++;
 	}
 
 	/* leave a last_seen note */
-	CLI(c)->last_seen = now;
+	CLI(c)->last_seen = tv->tv_sec;
 	return res;
 }
+#endif	/* HAVE_LIBFIXC_FIX_H */
 
 static void
 rotate_outfile(EV_P)
 {
-	return;
+	struct tm tm[1];
+	static char nu_fn[256];
+	char *n = nu_fn;
+	time_t now;
+
+	fprintf(logerr, "rotate...\n");
+
+	/* get a recent time stamp */
+	now = time(NULL);
+	gmtime_r(&now, tm);
+	strncpy(n, u_fn, sizeof(nu_fn));
+	n += strlen(u_fn);
+	*n++ = '-';
+	strftime(n, sizeof(nu_fn) - (n - nu_fn), "%Y-%m-%dT%H:%M:%S.ute\0", tm);
+	ute_set_fn(uctx, nu_fn);
+
+	/* magic */
+	switch (fork()) {
+	case -1:
+		fprintf(logerr, "cannot fork :O\n");
+		return;
+
+	default: {
+		/* i am the parent */
+		utectx_t nu = ute_open(u_fn, UO_CREAT | UO_RDWR | UO_TRUNC);
+		ign = 0;
+		ute_clone_slut(nu, uctx);
+
+		/* free resources */
+		ute_free(uctx);
+		/* nu u is nu */
+		uctx = nu;
+		return;
+	}
+
+	case 0:
+		/* i am the child, just update the file name and nticks
+		 * and let unroll do the work */
+		u_fn = nu_fn;
+		/* let libev know we're a fork */
+		ev_loop_fork(EV_DEFAULT);
+
+		/* close everything but the ute file */
+		for (size_t i = 0; i < nbeef; i++) {
+			int fd = beef[i].fd;
+
+			/* just close the descriptor, as opposed to
+			 * calling ud_mcast_fini() on it */
+			ev_io_stop(EV_A_ beef + i);
+			close(fd);
+		}
+		/* pretend we're through with the beef */
+		nbeef = 0;
+
+		/* then exit */
+		ev_unloop(EV_A_ EVUNLOOP_ALL);
+		return;
+	}
+	/* not reached */
 }
 
 /* fdfs */
@@ -768,10 +907,9 @@ dccp_data_cb(EV_P_ ev_io *w, int UNUSED(re))
 {
 	static char buf[65536];
 	struct websvc_s ws;
-	const struct pfa_s *ac;
-	const char *rsp;
-	size_t rsz;
+	struct webrsp_s wr;
 	ssize_t nrd;
+	size_t nwr;
 
 	if ((nrd = read(w->fd, buf, sizeof(buf))) < 0) {
 		goto clo;
@@ -782,25 +920,23 @@ dccp_data_cb(EV_P_ ev_io *w, int UNUSED(re))
 		buf[sizeof(buf) - 1] = '\0';
 	}
 
-	if ((ws = websvc(buf, (size_t)nrd)).ty != WEBSVC_F_REQFORPOSS) {
-		/* wouldn't know how to handle shit */
-		goto clo;
-	}
-	/* otherwise ws.rfp.ac points to the portfolio in question */
-	if ((ac = find_ac(0, ws.reqforposs.ac, ws.reqforposs.acz)) == NULL) {
-		;
-	} else {
-		/* yay */
-		ws.reqforposs.poss = ac->poss;
+	ws = websvc(buf, (size_t)nrd);
+	wr = web(ws);
 
-		if ((rsz = web(&rsp, ws)) > 0) {
-			size_t nwr = 0;
+	/* send header */
+	nwr = 0;
+	for (ssize_t tmp;
+	     (tmp = send(w->fd, wr.hdr + nwr, wr.hdz - nwr, 0)) > 0 &&
+		     (nwr += tmp) < wr.hdz;);
 
-			for (ssize_t tmp;
-			     (tmp = send(w->fd,rsp + nwr, rsz - nwr, 0)) > 0 &&
-				     (nwr += tmp) < rsz;);
-		}
-	}
+	/* send beef */
+	nwr = 0;
+	for (ssize_t tmp;
+	     (tmp = send(w->fd, wr.cnt + nwr, wr.cnz - nwr, 0)) > 0 &&
+		     (nwr += tmp) < wr.cnz;);
+
+	/* free resources */
+	free_webrsp(wr);
 clo:
 	ev_qio_shut(EV_A_ w);
 	return;
@@ -1061,6 +1197,28 @@ main(int argc, char *argv[])
 	/* init cli space */
 	init_cli();
 
+	/* init ute */
+	if (!argi->output_given && !argi->into_given) {
+		if ((uctx = ute_mktemp(UO_RDWR)) == NULL) {
+			res = 1;
+			goto past_ute;
+		}
+		u_fn = strdup(ute_fn(uctx));
+	} else {
+		int u_fl = UO_CREAT | UO_RDWR;
+
+		if (argi->output_given) {
+			u_fn = argi->output_arg;
+			u_fl |= UO_TRUNC;
+		} else if (argi->into_given) {
+			u_fn = argi->into_arg;
+		}
+		if ((uctx = ute_open(u_fn, u_fl)) == NULL) {
+			res = 1;
+			goto past_ute;
+		}
+	}
+
 	if (argi->daemonise_given && detach() < 0) {
 		perror("daemonisation failed");
 		res = 1;
@@ -1075,6 +1233,19 @@ main(int argc, char *argv[])
 	ev_loop(EV_A_ 0);
 
 past_loop:
+	/* close the file, might take a while due to sorting */
+	if (uctx) {
+		/* get the number of ticks */
+		u_nt = ute_nticks(uctx);
+		/* deal with the file */
+		ute_close(uctx);
+	}
+	/* print name and stats */
+	fprintf(logerr, "dumped %zu ticks, %zu ignored\n", u_nt, ign);
+	fputs(u_fn, stdout);
+	fputc('\n', stdout);
+
+past_ute:
 	/* detaching beef channels */
 	for (size_t i = 0; i < nbeef; i++) {
 		ud_sock_t s;

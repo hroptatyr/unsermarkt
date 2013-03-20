@@ -798,7 +798,14 @@ websvc_reqforposs(char *restrict tgt, size_t tsz, struct websvc_s sd)
 	}
 
 	/* render the whole shebang */
-	idx = fixc_render_fixml(tgt, tsz, msg);
+	{
+		struct fixc_rndr_s r = fixc_render_fixml_rndr(msg);
+		if (r.len <= tsz) {
+			memcpy(tgt, r.str, r.len);
+			idx = r.len;
+		}
+		fixc_free_rndr(r);
+	}
 	/* start a fix msg for that */
 	free_fixc(msg);
 	return idx;

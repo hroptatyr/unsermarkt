@@ -222,7 +222,7 @@ ffff_strfdtu(char *restrict buf, size_t bsz, time_t sec, unsigned int usec)
 
 /* unknown service */
 static size_t
-websvc_unk(char *restrict tgt, size_t tsz, struct websvc_s UNUSED(sd))
+websvc_unk(char **restrict tgt, size_t tsz, struct websvc_s UNUSED(sd))
 {
 	static const char rsp[] = "\
 <!DOCTYPE html>\n\
@@ -250,7 +250,7 @@ websvc_unk(char *restrict tgt, size_t tsz, struct websvc_s UNUSED(sd))
 	if (tsz < sizeof(rsp)) {
 		return 0;
 	}
-	memcpy(tgt, rsp, sizeof(rsp));
+	memcpy(*tgt, rsp, sizeof(rsp));
 	return sizeof(rsp) - 1;
 }
 
@@ -290,11 +290,11 @@ __secdef1(fixc_msg_t msg, uint16_t idx)
 }
 
 static size_t
-websvc_secdef(char *restrict tgt, size_t tsz, struct websvc_s sd)
+websvc_secdef(char **restrict tgt, size_t UNUSED(tsz), struct websvc_s sd)
 {
-	size_t nrndr = 0;
 	size_t nsy = ute_nsyms(uctx);
 	fixc_msg_t msg;
+	struct fixc_rndr_s r;
 
 	WEB_DEBUG("printing secdef idx %hu\n", sd.secdef.idx);
 
@@ -317,10 +317,11 @@ websvc_secdef(char *restrict tgt, size_t tsz, struct websvc_s sd)
 	}
 
 	/* render the whole shebang */
-	nrndr = fixc_render_fixml(tgt, tsz, msg);
-	/* start a fix msg for that */
+	r = fixc_render_fixml_rndr(msg);
 	free_fixc(msg);
-	return nrndr;
+	/* get ready for the harvest */
+	*tgt = r.str;
+	return r.len;
 }
 
 # else  /* !HAVE_LIBFIXC_FIX_H */
@@ -352,7 +353,7 @@ __secdef1(char *restrict tgt, size_t tsz, uint16_t idx)
 }
 
 static size_t
-websvc_secdef(char *restrict tgt, size_t tsz, struct websvc_s sd)
+websvc_secdef(char **restrict tgt, size_t tsz, struct websvc_s sd)
 {
 	size_t idx = 0;
 	size_t nsy = ute_nsyms(uctx);
@@ -368,13 +369,13 @@ websvc_secdef(char *restrict tgt, size_t tsz, struct websvc_s sd)
 	idx += sizeof(fixml_pre) - 1;
 
 	if (sd.secdef.idx <= nsy) {
-		idx += __secdef1(tgt + idx, tsz - idx, sd.secdef.idx);
+		idx += __secdef1(*tgt + idx, tsz - idx, sd.secdef.idx);
 	} else if (sd.quotreq.idx == MASS_QUOT) {
 		memcpy(tgt + idx, fixml_batch_pre, sizeof(fixml_batch_pre));
 		idx += sizeof(fixml_batch_pre) - 1;
 		/* loop over instruments */
 		for (size_t i = 1; i <= nsy; i++) {
-			idx += __secdef1(tgt + idx, tsz - idx, i);
+			idx += __secdef1(*tgt + idx, tsz - idx, i);
 		}
 		memcpy(tgt + idx, fixml_batch_post, sizeof(fixml_batch_post));
 		idx += sizeof(fixml_batch_post) - 1;
@@ -497,12 +498,12 @@ __quotreq1(fixc_msg_t msg, uint16_t idx, struct timeval now)
 }
 
 static size_t
-websvc_quotreq(char *restrict tgt, size_t tsz, struct websvc_s sd)
+websvc_quotreq(char **restrict tgt, size_t UNUSED(tsz), struct websvc_s sd)
 {
-	size_t idx = 0;
 	size_t nsy = ute_nsyms(uctx);
 	struct timeval now[1];
 	fixc_msg_t msg;
+	struct fixc_rndr_s r;
 
 	WEB_DEBUG("printing quotreq idx %hu\n", sd.quotreq.idx);
 
@@ -527,10 +528,11 @@ websvc_quotreq(char *restrict tgt, size_t tsz, struct websvc_s sd)
 	}
 
 	/* render the whole shebang */
-	idx = fixc_render_fixml(tgt, tsz, msg);
-	/* start a fix msg for that */
+	r = fixc_render_fixml_rndr(msg);
 	free_fixc(msg);
-	return idx;
+	/* get ready for the harvest */
+	*tgt = r.str;
+	return r.len;
 }
 
 # else  /* !HAVE_LIBFIXC_FIX_H */
@@ -608,7 +610,7 @@ TxnTm=\"%s\" ValidUntilTm=\"%s\">",
 }
 
 static size_t
-websvc_quotreq(char *restrict tgt, size_t tsz, struct websvc_s sd)
+websvc_quotreq(char **restrict tgt, size_t tsz, struct websvc_s sd)
 {
 	size_t idx = 0;
 	size_t nsy = ute_nsyms(uctx);
@@ -628,13 +630,13 @@ websvc_quotreq(char *restrict tgt, size_t tsz, struct websvc_s sd)
 	idx += sizeof(fixml_pre) - 1;
 
 	if (sd.quotreq.idx < nsy) {
-		idx += __quotreq1(tgt + idx, tsz - idx, sd.quotreq.idx, *now);
+		idx += __quotreq1(*tgt + idx, tsz - idx, sd.quotreq.idx, *now);
 	} else if (sd.quotreq.idx == MASS_QUOT) {
 		memcpy(tgt + idx, fixml_batch_pre, sizeof(fixml_batch_pre));
 		idx += sizeof(fixml_batch_pre) - 1;
 		/* loop over instruments */
 		for (size_t i = 1; i <= nsy; i++) {
-			idx += __quotreq1(tgt + idx, tsz - idx, i, *now);
+			idx += __quotreq1(*tgt + idx, tsz - idx, i, *now);
 		}
 		memcpy(tgt + idx, fixml_batch_post, sizeof(fixml_batch_post));
 		idx += sizeof(fixml_batch_post) - 1;
@@ -777,12 +779,12 @@ __posrpt1(fixc_msg_t msg, uint16_t idx, struct timeval now)
 }
 
 static size_t
-websvc_reqforposs(char *restrict tgt, size_t tsz, struct websvc_s sd)
+websvc_reqforposs(char **restrict tgt, size_t UNUSED(tsz), struct websvc_s sd)
 {
-	size_t idx = 0;
 	struct timeval now[1];
 	size_t nsy = ute_nsyms(uctx);
 	fixc_msg_t msg;
+	struct fixc_rndr_s r;
 
 	WEB_DEBUG("printing reqforposs ac %s\n", sd.reqforposs.ac);
 
@@ -798,26 +800,18 @@ websvc_reqforposs(char *restrict tgt, size_t tsz, struct websvc_s sd)
 	}
 
 	/* render the whole shebang */
-	{
-		struct fixc_rndr_s r = fixc_render_fixml_rndr(msg);
-		if (r.len <= tsz) {
-			memcpy(tgt, r.str, r.len);
-			idx = r.len;
-		}
-		fixc_free_rndr(r);
-	}
-	/* start a fix msg for that */
+	r = fixc_render_fixml_rndr(msg);
 	free_fixc(msg);
-	return idx;
+	/* get ready for the harvest */
+	*tgt = r.str;
+	return r.len;
 }
 
 # else  /* !HAVE_LIBFIXC_FIX_H */
 static size_t
-websvc_reqforposs(
-	char *restrict UNUSED(tgt), size_t UNUSED(tsz),
-	struct websvc_s UNUSED(sd))
+websvc_reqforposs(char **restrict tgt, size_t tsz, struct websvc_s sd)
 {
-	return 0UL;
+	return websvc_unk(tgt, tsz, sd);
 }
 # endif	/* HAVE_LIBFIXC_FIX_H */
 #endif	/* WEB_ASP_REQFORPOSS */
@@ -893,8 +887,8 @@ websvc(const char *req, size_t UNUSED(len))
 	return res;
 }
 
-size_t
-web(const char **restrict tgt, struct websvc_s ws)
+struct webrsp_s
+web(struct websvc_s ws)
 {
 	/* the final \n will be subst'd later on */
 #define HDR		"\
@@ -905,44 +899,76 @@ Content-Length: "
 #define BUF_INIT	HDR CLEN_SPEC "\r\n\r\n"
 	/* hdr is a format string and hdr_len is as wide as the result printed
 	 * later on */
+#if defined HAVE_LIBFIXC_FIX_H
+	static char __rsp[4096] = BUF_INIT;
+#else  /* !HAVE_LIBFIXC_FIX_H */
 	static char __rsp[65536] = BUF_INIT;
+#endif	/* HAVE_LIBFIXC_FIX_H */
 	char *rsp = __rsp + sizeof(BUF_INIT) - 1;
 	const size_t rsp_len = sizeof(__rsp) - (sizeof(BUF_INIT) - 1);
 	size_t cont_len;
+	struct webrsp_s res;
 
 	switch (ws.ty) {
 	default:
 	case WEBSVC_F_UNK:
-		cont_len = websvc_unk(rsp, rsp_len, ws);
+		cont_len = websvc_unk(&rsp, rsp_len, ws);
 		break;
 
 	case WEBSVC_F_SECDEF:
 #if defined WEB_ASP_SECDEF
-		cont_len = websvc_secdef(rsp, rsp_len, ws);
+		cont_len = websvc_secdef(&rsp, rsp_len, ws);
 #else  /* !WEB_ASP_SECDEF */
-		cont_len = 0UL;
+		cont_len = websvc_unk(&rsp, rsp_len, ws);
 #endif	/* WEB_ASP_SECDEF */
 		break;
 	case WEBSVC_F_QUOTREQ:
 #if defined WEB_ASP_QUOTREQ
-		cont_len = websvc_quotreq(rsp, rsp_len, ws);
+		cont_len = websvc_quotreq(&rsp, rsp_len, ws);
 #else  /* !WEB_ASP_QUOTREQ */
-		cont_len = 0UL;
+		cont_len = websvc_unk(&rsp, rsp_len, ws);
 #endif	/* WEB_ASP_QUOTREQ */
 		break;
 	case WEBSVC_F_REQFORPOSS:
 #if defined WEB_ASP_REQFORPOSS
-		cont_len = websvc_reqforposs(rsp, rsp_len, ws);
+		cont_len = websvc_reqforposs(&rsp, rsp_len, ws);
 #else  /* !WEB_ASP_REQFORPOSS */
-		cont_len = 0UL;
+		cont_len = websvc_unk(&rsp, rsp_len, ws);
 #endif	/* WEB_ASP_REQFORPOSS */
 		break;
 	}
 
 	/* prepare the header */
 	paste_clen(__rsp + sizeof(HDR) - 1, sizeof(__rsp), cont_len);
-	*tgt = __rsp;
-	return sizeof(BUF_INIT) - 1 + cont_len;
+
+	res.hdr = __rsp;
+	res.hdz = sizeof(BUF_INIT) - 1;
+	/* in the libfixc case this will be an exploded struct fixc_rndr_s */
+	res.cnt = rsp;
+	res.cnz = cont_len;
+	return res;
+}
+
+#if defined HAVE_LIBFIXC_FIX_H
+static inline void*
+unconst(union {const void *c; void *p;} __attribute__((transparent_union)) p)
+{
+	return p.p;
+}
+#endif	/* HAVE_LIBFIXC_FIX_H */
+
+void
+free_webrsp(struct webrsp_s rsp)
+{
+#if defined HAVE_LIBFIXC_FIX_H
+	if (rsp.hdr + rsp.hdz != rsp.cnt) {
+		/* must come from a fixc alloc'ing renderer */
+		fixc_free_rndr((struct fixc_rndr_s){unconst(rsp.cnt), rsp.cnz});
+	}
+#else  /* HAVE_LIBFIXC_FIX_H */
+	(void)rsp;
+#endif	/* HAVE_LIBFIXC_FIX_H */
+	return;
 }
 
 /* web.c ends here */

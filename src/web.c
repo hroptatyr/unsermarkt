@@ -365,24 +365,24 @@ websvc_secdef(char **restrict tgt, size_t tsz, struct websvc_s sd)
 	}
 
 	/* copy pre */
-	memcpy(tgt + idx, fixml_pre, sizeof(fixml_pre));
+	memcpy(*tgt + idx, fixml_pre, sizeof(fixml_pre));
 	idx += sizeof(fixml_pre) - 1;
 
 	if (sd.secdef.idx <= nsy) {
 		idx += __secdef1(*tgt + idx, tsz - idx, sd.secdef.idx);
 	} else if (sd.quotreq.idx == MASS_QUOT) {
-		memcpy(tgt + idx, fixml_batch_pre, sizeof(fixml_batch_pre));
+		memcpy(*tgt + idx, fixml_batch_pre, sizeof(fixml_batch_pre));
 		idx += sizeof(fixml_batch_pre) - 1;
 		/* loop over instruments */
 		for (size_t i = 1; i <= nsy; i++) {
 			idx += __secdef1(*tgt + idx, tsz - idx, i);
 		}
-		memcpy(tgt + idx, fixml_batch_post, sizeof(fixml_batch_post));
+		memcpy(*tgt + idx, fixml_batch_post, sizeof(fixml_batch_post));
 		idx += sizeof(fixml_batch_post) - 1;
 	}
 
 	/* copy post */
-	memcpy(tgt + idx, fixml_post, sizeof(fixml_post));
+	memcpy(*tgt + idx, fixml_post, sizeof(fixml_post));
 	idx += sizeof(fixml_post) - 1;
 	return idx;
 }
@@ -626,24 +626,24 @@ websvc_quotreq(char **restrict tgt, size_t tsz, struct websvc_s sd)
 	gettimeofday(now, NULL);
 
 	/* copy pre */
-	memcpy(tgt + idx, fixml_pre, sizeof(fixml_pre));
+	memcpy(*tgt + idx, fixml_pre, sizeof(fixml_pre));
 	idx += sizeof(fixml_pre) - 1;
 
 	if (sd.quotreq.idx < nsy) {
 		idx += __quotreq1(*tgt + idx, tsz - idx, sd.quotreq.idx, *now);
 	} else if (sd.quotreq.idx == MASS_QUOT) {
-		memcpy(tgt + idx, fixml_batch_pre, sizeof(fixml_batch_pre));
+		memcpy(*tgt + idx, fixml_batch_pre, sizeof(fixml_batch_pre));
 		idx += sizeof(fixml_batch_pre) - 1;
 		/* loop over instruments */
 		for (size_t i = 1; i <= nsy; i++) {
 			idx += __quotreq1(*tgt + idx, tsz - idx, i, *now);
 		}
-		memcpy(tgt + idx, fixml_batch_post, sizeof(fixml_batch_post));
+		memcpy(*tgt + idx, fixml_batch_post, sizeof(fixml_batch_post));
 		idx += sizeof(fixml_batch_post) - 1;
 	}
 
 	/* copy post */
-	memcpy(tgt + idx, fixml_post, sizeof(fixml_post));
+	memcpy(*tgt + idx, fixml_post, sizeof(fixml_post));
 	idx += sizeof(fixml_post) - 1;
 	return idx;
 }

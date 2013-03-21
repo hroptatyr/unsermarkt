@@ -164,7 +164,7 @@ PKG_CHECK_MODULES([sqlite], [sqlite3 >= 3.7],
 AM_CONDITIONAL([HAVE_SQLITE], [test "${have_sqlite}" = "yes"])
 
 ## check for libfixc
-PKG_CHECK_MODULES([fixc], [libfixc], [have_fixc="yes"], [have_fixc="no"])
+PKG_CHECK_MODULES([fixc], [libfixc >= 0.1.1], [have_fixc="yes"], [have_fixc="no"])
 if test "${have_fixc}" = "yes"; then
 	## check for the header
 	SXE_DUMP_LIBS

@@ -116,27 +116,6 @@ if test "${have_uterus}" = "yes"; then
 fi
 AM_CONDITIONAL([HAVE_UTERUS], [test "${have_uterus}" = "yes"])
 
-## check for sqlite3 libs
-PKG_CHECK_MODULES([sqlite], [sqlite3 >= 3.7],
-	[have_sqlite="yes"], [have_sqlite="no"])
-AM_CONDITIONAL([HAVE_SQLITE], [test "${have_sqlite}" = "yes"])
-
-## check for mxml
-PKG_CHECK_MODULES([mxml], [mxml >= 2.7],
-	[have_mxml="yes"], [have_mxml="no"])
-if test "${have_mxml}" = "yes"; then
-	## check for the header
-	SXE_DUMP_LIBS
-	CPPFLAGS="${CPPFLAGS} ${mxml_CFLAGS}"
-	AC_CHECK_HEADERS([mxml.h])
-	SXE_RESTORE_LIBS
-
-	if test "${ac_cv_header_mxml_h}" != "yes"; then
-		have_mxml="no"
-	fi
-fi
-AM_CONDITIONAL([HAVE_MXML], [test "${have_mxml}" = "yes"])
-
 ## check for expat
 PKG_CHECK_MODULES([expat], [expat >= 2.0], [have_expat="yes"], [have_expat="no"])
 if test "${have_expat}" = "yes"; then
@@ -158,11 +137,6 @@ if test -z "${GPERF}"; then
 fi
 AC_ARG_VAR([GPERF], [full path to the gperf tool])
 
-## check for sqlite3 libs
-PKG_CHECK_MODULES([sqlite], [sqlite3 >= 3.7],
-	[have_sqlite="yes"], [have_sqlite="no"])
-AM_CONDITIONAL([HAVE_SQLITE], [test "${have_sqlite}" = "yes"])
-
 ## check for libfixc
 PKG_CHECK_MODULES([fixc], [libfixc >= 0.1.1], [have_fixc="yes"], [have_fixc="no"])
 if test "${have_fixc}" = "yes"; then
@@ -177,6 +151,8 @@ if test "${have_fixc}" = "yes"; then
 	fi
 fi
 AM_CONDITIONAL([HAVE_FIXC], [test "${have_fixc}" = "yes"])
+
+AX_LIB_READLINE
 
 ## check for libtool
 SXE_CHECK_LIBTOOL

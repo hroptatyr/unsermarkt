@@ -152,6 +152,8 @@ if test "${have_fixc}" = "yes"; then
 fi
 AM_CONDITIONAL([HAVE_FIXC], [test "${have_fixc}" = "yes"])
 
+AX_LIB_READLINE
+
 ## check for libtool
 SXE_CHECK_LIBTOOL
 

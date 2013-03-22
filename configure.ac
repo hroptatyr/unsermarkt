@@ -116,11 +116,6 @@ if test "${have_uterus}" = "yes"; then
 fi
 AM_CONDITIONAL([HAVE_UTERUS], [test "${have_uterus}" = "yes"])
 
-## check for sqlite3 libs
-PKG_CHECK_MODULES([sqlite], [sqlite3 >= 3.7],
-	[have_sqlite="yes"], [have_sqlite="no"])
-AM_CONDITIONAL([HAVE_SQLITE], [test "${have_sqlite}" = "yes"])
-
 ## check for expat
 PKG_CHECK_MODULES([expat], [expat >= 2.0], [have_expat="yes"], [have_expat="no"])
 if test "${have_expat}" = "yes"; then
@@ -141,11 +136,6 @@ if test -z "${GPERF}"; then
 	GPERF="gperf"
 fi
 AC_ARG_VAR([GPERF], [full path to the gperf tool])
-
-## check for sqlite3 libs
-PKG_CHECK_MODULES([sqlite], [sqlite3 >= 3.7],
-	[have_sqlite="yes"], [have_sqlite="no"])
-AM_CONDITIONAL([HAVE_SQLITE], [test "${have_sqlite}" = "yes"])
 
 ## check for libfixc
 PKG_CHECK_MODULES([fixc], [libfixc >= 0.1.1], [have_fixc="yes"], [have_fixc="no"])

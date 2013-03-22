@@ -66,8 +66,25 @@
 # define EV_P  struct ev_loop *loop __attribute__((unused))
 #endif	/* HAVE_EV_H */
 
-#include <readline/readline.h>
-#include <readline/history.h>
+#if defined HAVE_LIBREADLINE
+# if defined HAVE_READLINE_READLINE_H
+#  include <readline/readline.h>
+# elif defined HAVE_READLINE_H
+#  include <readline.h>
+# endif	 /* * */
+#else  /* !HAVE_LIBREADLINE */
+/* what's our strategy here? */
+#endif	/* HAVE_LIBREADLINE */
+
+#if defined HAVE_READLINE_HISTORY
+# if defined HAVE_READLINE_HISTORY_H
+#  include <readline/history.h>
+# elif defined HAVE_HISTORY_H
+#  include <history.h>
+# endif	 /* * */
+#else  /* !HAVE_READLINE_HISTORY */
+/* we've got no backup plan */
+#endif	/* HAVE_READLINE_HISTORY */
 
 #include <unserding/unserding.h>
 

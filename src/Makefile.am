@@ -31,6 +31,7 @@ um_quomon_CPPFLAGS += $(uterus_CFLAGS)
 um_quomon_LDFLAGS = $(AM_LDFLAGS)
 um_quomon_LDFLAGS += $(AM_LDFLAGS) -lncurses
 um_quomon_LDFLAGS += $(unserding_LIBS)
+um_quomon_LDFLAGS += $(uterus_LIBS)
 um_quomon_LDFLAGS += $(libev_LIBS)
 um_quomon_LDFLAGS += -lreadline
 um_quomon_LDFLAGS += -static libsvc-uterus.la
@@ -110,6 +111,7 @@ um_netdania_CPPFLAGS += $(unserding_CFLAGS) -DUD_NEW_API
 um_netdania_CPPFLAGS += $(libev_CFLAGS)
 um_netdania_LDFLAGS = $(AM_LDFLAGS)
 um_netdania_LDFLAGS += $(unserding_LIBS)
+um_netdania_LDFLAGS += $(uterus_LIBS)
 um_netdania_LDFLAGS += $(libev_LIBS)
 um_netdania_LDFLAGS += -static libsvc-uterus.la
 endif  ## HAVE_LIBEV

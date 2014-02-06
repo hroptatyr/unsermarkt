@@ -923,7 +923,7 @@ snarf_data(const struct ud_msg_s *msg, const struct ud_auxmsg_s *aux)
 	/* find the cli associated */
 	{
 		struct key_s k = {
-			.id = scom_thdr_tblidx(AS_SCOM(msg->data)),
+			.id = (uint16_t)scom_thdr_tblidx(AS_SCOM(msg->data)),
 			.sa = (my_sockaddr_t)aux->src,
 		};
 		if ((c = find_cli(k)) == 0) {

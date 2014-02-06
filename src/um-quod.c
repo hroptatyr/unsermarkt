@@ -847,7 +847,7 @@ snarf_meta(const struct ud_msg_s *msg, const struct ud_auxmsg_s *aux)
 		.sa = (const void*)aux->src,
 	};
 	int peruse_uri = 0;
-	uint16_t id;
+	unsigned int id;
 	cli_t c;
 
 	if (UNLIKELY(um_chck_brag(brg, msg) < 0)) {
@@ -871,13 +871,13 @@ snarf_meta(const struct ud_msg_s *msg, const struct ud_auxmsg_s *aux)
 		;
 	} else if (CLI(c)->tgtid) {
 		/* known but the wrong id */
-		UMQD_DEBUG("reass %hu -> %hu\n", CLI(c)->tgtid, id);
-		CLI(c)->tgtid = id;
+		UMQD_DEBUG("reass %hu -> %u\n", CLI(c)->tgtid, id);
+		CLI(c)->tgtid = (uint16_t)id;
 		peruse_uri = 1;
 	} else /*if (CLI(c)->tgtid == 0)*/ {
 		/* unknown */
-		UMQD_DEBUG("ass'ing %s -> %hu\n", CLI(c)->sym, id);
-		CLI(c)->tgtid = id;
+		UMQD_DEBUG("ass'ing %s -> %u\n", CLI(c)->sym, id);
+		CLI(c)->tgtid = (uint16_t)id;
 		ute_bang_symidx(uctx, CLI(c)->sym, CLI(c)->tgtid);
 		peruse_uri = 1;
 	}
@@ -895,7 +895,7 @@ snarf_meta(const struct ud_msg_s *msg, const struct ud_auxmsg_s *aux)
 
 		memcpy(fi->uri, brg->uri, brg->urilen);
 		fi->uri[brg->urilen] = '\0';
-		fi->idx = id;
+		fi->idx = (uint16_t)id;
 		UMQD_DEBUG("checking out %s ...\n", fi->uri);
 		push_uri(fi);
 	}

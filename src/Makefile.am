@@ -33,7 +33,7 @@ um_quomon_LDFLAGS += $(AM_LDFLAGS) -lncurses
 um_quomon_LDFLAGS += $(unserding_LIBS)
 um_quomon_LDFLAGS += $(uterus_LIBS)
 um_quomon_LDFLAGS += $(libev_LIBS)
-um_quomon_LDFLAGS += -lreadline
+um_quomon_LDFLAGS += $(readline_LIBS)
 um_quomon_LDFLAGS += -static libsvc-uterus.la
 BUILT_SOURCES += um-quomon-clo.c um-quomon-clo.h
 
@@ -48,7 +48,7 @@ um_apfmon_LDFLAGS = $(AM_LDFLAGS)
 um_apfmon_LDFLAGS += $(AM_LDFLAGS) -lncurses
 um_apfmon_LDFLAGS += $(unserding_LIBS)
 um_apfmon_LDFLAGS += $(libev_LIBS)
-um_apfmon_LDFLAGS += -lreadline
+um_apfmon_LDFLAGS += $(readline_LIBS)
 BUILT_SOURCES += um-apfmon-clo.c um-apfmon-clo.h
 
 bin_PROGRAMS += um-quod
@@ -146,6 +146,7 @@ svc_uterus_la_CPPFLAGS = $(AM_CPPFLAGS) -DUNSERMON_DSO
 svc_uterus_la_CPPFLAGS += $(unserding_CFLAGS) -DUD_NEW_API
 svc_uterus_la_CPPFLAGS += $(uterus_CFLAGS)
 svc_uterus_la_LDFLAGS = $(AM_LDFLAGS) $(XCCLDFLAGS) $(AM_MODFLAGS)
+svc_uterus_la_LDFLAGS += $(uterus_LIBS)
 
 unsermod_LTLIBRARIES += libsvc-uterus.la
 unserinc_HEADERS += svc-uterus.h

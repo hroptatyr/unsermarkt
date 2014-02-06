@@ -184,6 +184,13 @@ struct ev_io_i_s {
 static ev_io *beef = NULL;
 static size_t nbeef = 0;
 
+/* default ute open mode */
+#if defined UO_STREAM
+static const int ute_oflags = UO_RDWR | UO_CREAT | UO_STREAM;
+#else  /* !UO_STREAM */
+static const int ute_oflags = UO_RDWR | UO_CREAT;
+#endif	/* UO_STREAM */
+
 
 #if !defined HAVE_UTE_FREE
 /* for the moment we provide compatibility with uterus v0.2.2 */
@@ -985,7 +992,7 @@ rotate_outfile(EV_P)
 
 	default: {
 		/* i am the parent */
-		utectx_t nu = ute_open(u_fn, UO_CREAT | UO_RDWR | UO_TRUNC);
+		utectx_t nu = ute_open(u_fn, ute_oflags | UO_TRUNC);
 		ign = 0;
 		ute_clone_slut(nu, uctx);
 
@@ -1516,13 +1523,13 @@ main(int argc, char *argv[])
 
 	/* init ute */
 	if (!argi->output_given && !argi->into_given) {
-		if ((uctx = ute_mktemp(UO_RDWR)) == NULL) {
+		if ((uctx = ute_mktemp(ute_oflags)) == NULL) {
 			res = 1;
 			goto past_ute;
 		}
 		u_fn = strdup(ute_fn(uctx));
 	} else {
-		int u_fl = UO_CREAT | UO_RDWR;
+		int u_fl = ute_oflags;
 
 		if (argi->output_given) {
 			u_fn = argi->output_arg;

@@ -9,17 +9,16 @@ ifelse([]version[], [], [0.2.1], []version[])[]dnl
 popdef([version])dnl
 ])
 AC_INIT([unsermarkt], [GIT_VERSION_GEN], [https://github.com/hroptatyr/unsermarkt])
-AC_CONFIG_AUX_DIR([.])
+AC_CONFIG_AUX_DIR([build-aux])
 AC_CONFIG_HEADER([src/config.h])
 AC_CONFIG_MACRO_DIR([m4])
-AC_CONFIG_SRCDIR([src/])
 
 dnl -------------------------------------------------------------------------
 dnl Local copyright notices.
 dnl -------------------------------------------------------------------------
 
-AC_COPYRIGHT(
-[#### Configuration script for unsermarkt.
+AC_COPYRIGHT([dnl
+#### Configuration script for unsermarkt.
 #### Copyright (C) 2008-2013 Sebastian Freundt
 
 ### Don't edit this script!
@@ -158,6 +157,7 @@ AX_LIB_READLINE
 SXE_CHECK_LIBTOOL
 
 AC_CONFIG_FILES([Makefile])
+AC_CONFIG_FILES([build-aux/Makefile])
 AC_CONFIG_FILES([src/Makefile])
 AC_CONFIG_FILES([unsermarkt.pc])
 AC_OUTPUT

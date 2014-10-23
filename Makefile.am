@@ -7,7 +7,6 @@ ACLOCAL_AMFLAGS = -I m4
 EXTRA_DIST =
 
 SUBDIRS =
-EXTRA_DIST = $(BUILT_SOURCES) $(doc_DATA)
 DISTCLEANFILES =
 BUILT_SOURCES =
 
@@ -15,6 +14,7 @@ SUBDIRS += build-aux
 SUBDIRS += src
 
 doc_DATA = README
+EXTRA_DIST += $(doc_DATA)
 
 pkgconfigdir = @libdir@/pkgconfig
 pkgconfig_DATA =
@@ -26,6 +26,7 @@ DISTCLEANFILES += version.mk
 EXTRA_DIST += version.mk.in
 
 BUILT_SOURCES += .version
+EXTRA_DIST += $(BUILT_SOURCES)
 
 ## pkg-config rule
 unsermarkt.pc: .version unsermarkt.pc.in

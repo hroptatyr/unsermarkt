@@ -1,0 +1,7 @@
+Usage: um-apfmon [OPTION]... BEEF-CHANNEL...
+
+Monitor portfolios on unserding beef channels.
+
+      --fps=NUM   Rerender the screen NUM times a second.  (default=`10')
+
+  -p, --port=INT  Multicast control channel port  (default=`8653')

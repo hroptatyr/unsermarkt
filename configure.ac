@@ -77,6 +77,9 @@ AC_CHECK_HEADERS([sys/time.h])
 ## date time
 SXE_CHECK_METRONOME
 
+## check if yuck is globally available
+AX_CHECK_YUCK
+
 ## event loop
 AC_CHECK_LIBEV
 AM_CONDITIONAL([HAVE_LIBEV], [test "${ax_cv_feat_libev}" = "yes"])

@@ -1,0 +1,7 @@
+Usage: um-quomon [OPTION]... BEEF-CHANNEL...
+
+Monitor quotes on unserding beef channels.
+
+      --fps=NUM   Rerender the screen NUM times a second.  (default=`10')
+
+  -p, --port=INT  Multicast control channel port  (default=`8653')

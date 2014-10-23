@@ -1005,22 +1005,7 @@ prune_cb(EV_P_ ev_timer *w, int UNUSED(r))
 }
 
 
-#if defined __INTEL_COMPILER
-# pragma warning (disable:593)
-# pragma warning (disable:181)
-#elif defined __GNUC__
-# pragma GCC diagnostic ignored "-Wswitch"
-# pragma GCC diagnostic ignored "-Wswitch-enum"
-#endif /* __INTEL_COMPILER */
-#include "um-apfd-clo.h"
-#include "um-apfd-clo.c"
-#if defined __INTEL_COMPILER
-# pragma warning (default:593)
-# pragma warning (default:181)
-#elif defined __GNUC__
-# pragma GCC diagnostic warning "-Wswitch"
-# pragma GCC diagnostic warning "-Wswitch-enum"
-#endif	/* __INTEL_COMPILER */
+#include "um-apfd.yucc"
 
 static pid_t
 detach(void)
@@ -1063,10 +1048,10 @@ detach(void)
 int
 main(int argc, char *argv[])
 {
+	/* args */
+	yuck_t argi[1U];
 	/* use the default event loop unless you have special needs */
 	struct ev_loop *loop;
-	/* args */
-	struct um_args_info argi[1];
 	/* ev goodies */
 	ev_signal sigint_watcher[1];
 	ev_signal sighup_watcher[1];
@@ -1076,14 +1061,21 @@ main(int argc, char *argv[])
 	ev_prepare prp[1];
 	ev_timer prune[1];
 	ev_io dccp[2];
-	int res = 0;
+	int rc = 0;
 
 	/* big assignment for logging purposes */
 	logerr = stderr;
 
 	/* parse the command line */
-	if (um_parser(argc, argv, argi)) {
-		exit(1);
+	if (yuck_parse(argi, argc, argv)) {
+		rc = 1;
+		goto out;
+	}
+
+	if (argi->output_arg && argi->into_arg) {
+		fputs("only one of --output and --into can be given\n", logerr);
+		rc = 1;
+		goto out;
 	}
 
 	/* initialise the main loop */
@@ -1111,7 +1103,7 @@ main(int argc, char *argv[])
 	ev_timer_start(EV_A_ prune);
 
 	/* make some room for the control channel and the beef chans */
-	nbeef = argi->beef_given + 1;
+	nbeef = argi->beef_nargs + 1;
 	beef = malloc(nbeef * sizeof(*beef));
 
 	/* attach a multicast listener for control messages */
@@ -1126,10 +1118,18 @@ main(int argc, char *argv[])
 	}
 
 	/* go through all beef channels */
-	for (unsigned int i = 0; i < argi->beef_given; i++) {
+	for (size_t i = 0U; i < argi->beef_nargs; i++) {
+		char *p;
+		long unsigned int port = strtoul(argi->beef_args[i], &p, 0);
+
+		if (UNLIKELY(!port || *p)) {
+			/* garbled input */
+			continue;
+		}
+
 		struct ud_sockopt_s opt = {
 			UD_SUB,
-			.port = (uint16_t)argi->beef_arg[i],
+			.port = (uint16_t)port,
 		};
 		ud_sock_t s;
 
@@ -1141,18 +1141,15 @@ main(int argc, char *argv[])
 	}
 
 	/* make a channel for http/dccp requests */
-	if (argi->websvc_port_given) {
+	if (argi->websvc_port_arg) {
+		long unsigned int p = strtoul(argi->websvc_port_arg, NULL, 0);
 		struct sockaddr_in6 sa = {
 			.sin6_family = AF_INET6,
 			.sin6_addr = in6addr_any,
-			.sin6_port = 0,
+			.sin6_port = htons((short unsigned int)p),
 		};
 		socklen_t sa_len = sizeof(sa);
 		int s;
-
-		if (argi->websvc_port_given) {
-			sa.sin6_port = htons(argi->websvc_port_arg);
-		}
 
 		if ((s = make_dccp()) < 0) {
 			/* just to indicate we have no socket */
@@ -1198,30 +1195,30 @@ main(int argc, char *argv[])
 	init_cli();
 
 	/* init ute */
-	if (!argi->output_given && !argi->into_given) {
+	if (!argi->output_arg && !argi->into_arg) {
 		if ((uctx = ute_mktemp(UO_RDWR)) == NULL) {
-			res = 1;
+			rc = 1;
 			goto past_ute;
 		}
 		u_fn = strdup(ute_fn(uctx));
 	} else {
 		int u_fl = UO_CREAT | UO_RDWR;
 
-		if (argi->output_given) {
+		if (argi->output_arg) {
 			u_fn = argi->output_arg;
 			u_fl |= UO_TRUNC;
-		} else if (argi->into_given) {
+		} else if (argi->into_arg) {
 			u_fn = argi->into_arg;
 		}
 		if ((uctx = ute_open(u_fn, u_fl)) == NULL) {
-			res = 1;
+			rc = 1;
 			goto past_ute;
 		}
 	}
 
-	if (argi->daemonise_given && detach() < 0) {
+	if (argi->daemonise_flag && detach() < 0) {
 		perror("daemonisation failed");
-		res = 1;
+		rc = 1;
 		goto past_loop;
 	}
 
@@ -1264,11 +1261,12 @@ past_ute:
 	/* destroy the default evloop */
 	ev_default_destroy();
 
+out:
 	/* kick the config context */
-	um_parser_free(argi);
+	yuck_free(argi);
 
 	/* unloop was called, so exit */
-	return res;
+	return rc;
 }
 
 /* um-apfd.c ends here */

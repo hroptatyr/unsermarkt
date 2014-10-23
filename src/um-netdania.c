@@ -875,30 +875,15 @@ keep_alive_cb(EV_P_ ev_timer *w, int UNUSED(revents))
 }
 
 
-#if defined __INTEL_COMPILER
-# pragma warning (disable:593)
-# pragma warning (disable:181)
-#elif defined __GNUC__
-# pragma GCC diagnostic ignored "-Wswitch"
-# pragma GCC diagnostic ignored "-Wswitch-enum"
-#endif /* __INTEL_COMPILER */
-#include "um-netdania-clo.h"
-#include "um-netdania-clo.c"
-#if defined __INTEL_COMPILER
-# pragma warning (default:593)
-# pragma warning (default:181)
-#elif defined __GNUC__
-# pragma GCC diagnostic warning "-Wswitch"
-# pragma GCC diagnostic warning "-Wswitch-enum"
-#endif	/* __INTEL_COMPILER */
+#include "um-netdania.yucc"
 
 int
 main(int argc, char *argv[])
 {
+	/* args */
+	yuck_t argi[1U];
 	/* use the default event loop unless you have special needs */
 	struct ev_loop *loop;
-	/* args */
-	struct nd_args_info argi[1];
 	/* ev goodies */
 	ev_signal sigint_watcher[1];
 	ev_signal sighup_watcher[1];
@@ -912,11 +897,11 @@ main(int argc, char *argv[])
 	int nd_sock;
 
 	/* parse the command line */
-	if (nd_parser(argc, argv, argi)) {
+	if (yuck_parse(argi, argc, argv)) {
 		exit(1);
 	}
 	/* start with the context assignments */
-	rawp = argi->raw_given;
+	rawp = argi->raw_flag;
 
 	/* initialise the main loop */
 	loop = ev_default_loop(EVFLAG_AUTO);
@@ -936,12 +921,14 @@ main(int argc, char *argv[])
 
 	/* attach to the beef channel */
 	{
-		struct ud_sockopt_s opt = {UD_PUB};
+		struct ud_sockopt_s opt = {UD_PUB, .port = 7868U/*ND*/};
 
-		if (argi->beef_given) {
-			opt.port = (short unsigned int)argi->beef_arg;
-		} else {
-			opt.port = 7868U/*ND*/;
+		if (argi->beef_arg) {
+			long unsigned int tmp;
+
+			if ((tmp = strtoul(argi->beef_arg, NULL, 0))) {
+				opt.port = (short unsigned int)tmp;
+			}
 		}
 
 		if ((s = ud_socket(opt)) == NULL) {
@@ -960,7 +947,7 @@ main(int argc, char *argv[])
 	ev_io_start(EV_A_ beef);
 
 	/* quickly perform the subscription */
-	subs_nd(nd_sock, argi->inputs, argi->inputs_num);
+	subs_nd(nd_sock, argi->args, argi->nargs);
 
 	/* set a timer to see if we lack quotes */
 	ev_timer_init(keep_alive, keep_alive_cb, MAX_AGE, MAX_AGE);
@@ -982,7 +969,7 @@ nopub:
 	ev_default_destroy();
 
 	/* kick the config context */
-	nd_parser_free(argi);
+	yuck_free(argi);
 
 	/* unloop was called, so exit */
 	return 0;

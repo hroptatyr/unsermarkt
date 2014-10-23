@@ -661,22 +661,7 @@ build_hops(graph_t g)
 
 
 
-#if defined __INTEL_COMPILER
-# pragma warning (disable:593)
-# pragma warning (disable:181)
-#elif defined __GNUC__
-# pragma GCC diagnostic ignored "-Wswitch"
-# pragma GCC diagnostic ignored "-Wswitch-enum"
-#endif /* __INTEL_COMPILER */
-#include "xross-quo-clo.h"
-#include "xross-quo-clo.c"
-#if defined __INTEL_COMPILER
-# pragma warning (default:593)
-# pragma warning (default:181)
-#elif defined __GNUC__
-# pragma GCC diagnostic warning "-Wswitch"
-# pragma GCC diagnostic warning "-Wswitch-enum"
-#endif	/* __INTEL_COMPILER */
+#include "xross-quo.yucc"
 
 static pid_t
 detach(void)
@@ -719,23 +704,23 @@ detach(void)
 int
 main(int argc, char *argv[])
 {
+	/* args */
+	yuck_t argi[1U];
 	/* use the default event loop unless you have special needs */
 	struct ev_loop *loop;
-	/* args */
-	struct xq_args_info argi[1];
 	/* ev goodies */
 	ev_signal sigint_watcher[1];
 	ev_signal sighup_watcher[1];
 	ev_signal sigterm_watcher[1];
 	ev_signal sigpipe_watcher[1];
 	ev_timer prune[1];
-	int res = 0;
+	int rc = 0;
 
 	/* big assignment for logging purposes */
 	logerr = stderr;
 
 	/* parse the command line */
-	if (xq_parser(argc, argv, argi)) {
+	if (yuck_parse(argi, argc, argv)) {
 		exit(1);
 	}
 
@@ -760,7 +745,7 @@ main(int argc, char *argv[])
 	ev_timer_start(EV_A_ prune);
 
 	/* make some room for the control channel and the beef chans */
-	nbeef = argi->beef_given + 1;
+	nbeef = argi->beef_nargs + 1;
 	beef = malloc(nbeef * sizeof(*beef));
 
 	/* generate the graph we're talking */
@@ -783,18 +768,21 @@ main(int argc, char *argv[])
 	}
 
 	/* go through all beef channels */
-	for (unsigned int i = 0; i < argi->beef_given; i++) {
+	for (size_t i = 0U; i < argi->beef_nargs; i++) {
 		struct ud_sockopt_s opt = {UD_PUBSUB};
+		long unsigned int tmp;
 		ud_sock_t s;
 
-		opt.port = (short unsigned int)argi->beef_arg[i];
-		if (LIKELY((s = ud_socket(opt)) != NULL)) {
+		if ((tmp = strtoul(argi->beef_args[i], NULL, 0),
+		     !(opt.port = (short unsigned int)tmp))) {
+			;
+		} else if (LIKELY((s = ud_socket(opt)) != NULL)) {
 			beef[i + 1].data = s;
 			ev_io_init(beef + i + 1, mon_beef_cb, s->fd, EV_READ);
 			ev_io_start(EV_A_ beef + i + 1);
 		}
 	}
-	if (argi->beef_given) {
+	if (argi->beef_nargs) {
 		/* for simplicity use the first beef channel for
 		 * dissemination of crosses */
 		ute_out_ch = beef[1].data;
@@ -803,9 +791,9 @@ main(int argc, char *argv[])
 	/* init cli space */
 	init_cli();
 
-	if (argi->daemonise_given && detach() < 0) {
+	if (argi->daemonise_flag && detach() < 0) {
 		perror("daemonisation failed");
-		res = 1;
+		rc = 1;
 		goto past_loop;
 	}
 
@@ -833,10 +821,10 @@ past_loop:
 	ev_default_destroy();
 
 	/* kick the config context */
-	xq_parser_free(argi);
+	yuck_free(argi);
 
 	/* unloop was called, so exit */
-	return res;
+	return rc;
 }
 
 /* xross-quo.c ends here */

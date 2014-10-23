@@ -342,47 +342,36 @@ post_work(const struct xmit_s *UNUSED(ctx))
 }
 
 
-#if defined __INTEL_COMPILER
-# pragma warning (disable:593)
-# pragma warning (disable:181)
-#elif defined __GNUC__
-# pragma GCC diagnostic ignored "-Wswitch"
-# pragma GCC diagnostic ignored "-Wswitch-enum"
-#endif /* __INTEL_COMPILER */
-#include "um-xmit-clo.h"
-#include "um-xmit-clo.c"
-#if defined __INTEL_COMPILER
-# pragma warning (default:593)
-# pragma warning (default:181)
-#elif defined __GNUC__
-# pragma GCC diagnostic warning "-Wswitch"
-# pragma GCC diagnostic warning "-Wswitch-enum"
-#endif	/* __INTEL_COMPILER */
+#include "um-xmit.yucc"
 
 int
 main(int argc, char *argv[])
 {
-	struct gengetopt_args_info argi[1];
+	yuck_t argi[1U];
 	struct xmit_s ctx[1];
 	short unsigned int port = 8584;
-	int res = 0;
+	int rc = 0;
 
 	/* parse the command line */
-	if (cmdline_parser(argc, argv, argi)) {
-		res = 1;
+	if (yuck_parse(argi, argc, argv)) {
+		rc = 1;
 		goto out;
-	} else if (argi->inputs_num < 1) {
+	} else if (!argi->nargs) {
 		error(0, "need input file");
-		res = 1;
-		goto fr_out;
-	} else if ((ctx->ute = ute_open(argi->inputs[0], UO_RDONLY)) == NULL) {
-		error(0, "cannot open file '%s'", argi->inputs[0]);
-		res = 1;
-		goto fr_out;
+		rc = 1;
+		goto out;
+	} else if ((ctx->ute = ute_open(argi->args[0U], UO_RDONLY)) == NULL) {
+		error(0, "cannot open file '%s'", argi->args[0U]);
+		rc = 1;
+		goto out;
 	}
 
-	if (argi->beef_given) {
-		port = (short unsigned int)argi->beef_arg;
+	if (argi->beef_arg) {
+		long unsigned int tmp;
+
+		if ((tmp = strtoul(argi->beef_arg, NULL, 0))) {
+			port = (short unsigned int)tmp;
+		}
 	}
 
 	/* set signal handler */
@@ -410,8 +399,9 @@ main(int argc, char *argv[])
 	/* the actual work */
 	switch (setjmp(jb)) {
 	case 0:
-		ctx->speed = argi->speed_arg;
-		ctx->restampp = argi->restamp_given;
+		ctx->speed = argi->speed_arg
+			? (float)strtod(argi->speed_arg, NULL) ?: 1.f : 1.f;
+		ctx->restampp = argi->restamp_flag;
 		ctx->nsyms = ute_nsyms(ctx->ute);
 		if (pre_work(ctx) == 0) {
 			/* do the actual work */
@@ -420,7 +410,7 @@ main(int argc, char *argv[])
 	case SIGINT:
 	default:
 		if (post_work(ctx) < 0) {
-			res = 1;
+			rc = 1;
 		}
 		printf("sent %zu ticks in %u packets\n", nt, pno);
 		break;	
@@ -437,11 +427,10 @@ ut_out:
 	/* and close the file */
 	ute_close(ctx->ute);
 
-fr_out:
-	/* free up command line parser resources */
-	cmdline_parser_free(argi);
 out:
-	return res;
+	/* free up command line parser resources */
+	yuck_free(argi);
+	return rc;
 }
 
 /* um-xmit.c ends here */

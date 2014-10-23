@@ -1,0 +1,7 @@
+Usage: um-netdania [OPTION]... SYMBOL...
+
+Subscribe to SYMBOLs on the netdania_fxa data feed.
+
+      --raw       Display uninterpreted feed
+
+      --beef=INT  Multicast payload channels, default 7868

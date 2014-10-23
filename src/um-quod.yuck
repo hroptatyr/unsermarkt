@@ -1,0 +1,13 @@
+Usage: um-quod [OPTION]...
+
+Dump and cache quotes off unserding beef channels.
+If a websvc port is specified the cache can be queried.
+If an output or into file is specified the quotes will be dumped.
+
+  -d, --daemonise        Detach from tty and runs as daemon
+
+  -o, --output=FILE      Write result to specified output file
+      --into=FILE        Write result into ute file FILE
+
+      --beef=INT...      Multicast payload channels, can be used multiple times
+      --websvc-port=INT  Port for dccp and web services

@@ -926,32 +926,17 @@ fini_rl(void)
 }
 
 
-#if defined __INTEL_COMPILER
-# pragma warning (disable:593)
-# pragma warning (disable:181)
-#elif defined __GNUC__
-# pragma GCC diagnostic ignored "-Wswitch"
-# pragma GCC diagnostic ignored "-Wswitch-enum"
-#endif /* __INTEL_COMPILER */
-#include "um-apfmon-clo.h"
-#include "um-apfmon-clo.c"
-#if defined __INTEL_COMPILER
-# pragma warning (default:593)
-# pragma warning (default:181)
-#elif defined __GNUC__
-# pragma GCC diagnostic warning "-Wswitch"
-# pragma GCC diagnostic warning "-Wswitch-enum"
-#endif	/* __INTEL_COMPILER */
+#include "um-apfmon.yucc"
 
 int
 main(int argc, char *argv[])
 {
+	/* args */
+	yuck_t argi[1U];
 	/* use the default event loop unless you have special needs */
 	struct ev_loop *loop;
 	ev_io *beef = NULL;
 	size_t nbeef = 0;
-	/* args */
-	struct umam_args_info argi[1];
 	/* ev goodies */
 	ev_signal sigint_watcher[1];
 	ev_signal sighup_watcher[1];
@@ -959,13 +944,15 @@ main(int argc, char *argv[])
 	ev_signal sigpipe_watcher[1];
 	ev_signal sigwinch_watcher[1];
 	ev_timer render[1];
+	int rc = 0;
 
 	/* big assignment for logging purposes */
 	logerr = fopen("/tmp/um-apfmon.log", "a");
 
 	/* parse the command line */
-	if (umam_parser(argc, argv, argi)) {
-		exit(1);
+	if (yuck_parse(argi, argc, argv)) {
+		rc = 1;
+		goto out;
 	}
 
 	/* initialise the main loop */
@@ -988,13 +975,16 @@ main(int argc, char *argv[])
 	ev_signal_start(EV_A_ sigwinch_watcher);
 	/* initialise a timer */
 	{
-		double slp = 1.0 / (double)argi->fps_arg;
+		double fps = argi->fps_arg
+			? strtod(argi->fps_arg, NULL) ?: 10.
+			: 10.;
+		double slp = 1.0 / fps;
 		ev_timer_init(render, render_cb, slp, slp);
 		ev_timer_start(EV_A_ render);
 	}
 
 	/* make some room for the control channel and the beef chans */
-	nbeef = argi->beef_given + 1 + 1;
+	nbeef = argi->nargs + 1U + 1U;
 	beef = malloc(nbeef * sizeof(*beef));
 
 	/* attach a multicast listener
@@ -1012,10 +1002,18 @@ main(int argc, char *argv[])
 	}
 
 	/* go through all beef channels */
-	for (unsigned int i = 0; i < argi->beef_given; i++) {
+	for (size_t i = 0U; i < argi->nargs; i++) {
+		char *p;
+		long unsigned int port = strtoul(argi->args[i], &p, 0);
+
+		if (UNLIKELY(!port || *p)) {
+			/* garbled input */
+			continue;
+		}
+
 		struct ud_sockopt_s opt = {
 			UD_SUB,
-			.port = (uint16_t)argi->beef_arg[i],
+			.port = (uint16_t)port,
 		};
 		ud_sock_t s;
 
@@ -1033,7 +1031,7 @@ main(int argc, char *argv[])
 
 	/* watch the terminal */
 	{
-		ev_io *keyp = beef + 1 + argi->beef_given;
+		ev_io *keyp = beef + 1 + argi->nargs;
 		ev_io_init(keyp, keypress_cb, STDOUT_FILENO, EV_READ);
 		ev_io_start(EV_A_ keyp);
 	}
@@ -1070,14 +1068,15 @@ main(int argc, char *argv[])
 	/* destroy the default evloop */
 	ev_default_destroy();
 
-	/* kick the config context */
-	umam_parser_free(argi);
-
 	/* close log file */
 	fclose(logerr);
 
+out:
+	/* kick the config context */
+	yuck_free(argi);
+
 	/* unloop was called, so exit */
-	return 0;
+	return rc;
 }
 
 /* um-apfmon.c ends here */

@@ -1,0 +1,9 @@
+Usage: um-xmit [OPTION]... FILE
+
+Transmit FILE through unserding network in a replay fashion.
+
+  -p, --port=INT     Multicast control channel port  (default=`8653')
+      --beef=INT     Multicast payload channel  (default determined by network)
+
+      --speed=FLOAT  Slow down transmission by this factor  (default=`1.0')
+      --restamp      Use current time stamps when transmitting ute scoms

@@ -43,9 +43,6 @@ AC_CHECK_SIZEOF([int])
 ## check for byteorder utils
 AC_CHECK_HEADERS([endian.h sys/endian.h byteorder.h byteswap.h])
 
-## parser goodness
-SXE_CHECK_PARSER_LEXER
-
 AC_CHECK_HEADERS([stdbool.h])
 AC_CHECK_HEADERS([fcntl.h])
 

@@ -1,4 +1,5 @@
 ### Makefile.am
+include $(top_builddir)/version.mk
 
 AM_CPPFLAGS = -D_POSIX_C_SOURCE=200112L -D_XOPEN_SOURCE=600 -D_BSD_SOURCE
 AM_LDFLAGS =
@@ -16,6 +17,9 @@ BUILT_SOURCES =
 CLEANFILES =
 EXTRA_DIST = $(BUILT_SOURCES)
 SUFFIXES =
+
+CLEANFILES += version.c
+EXTRA_DIST += version.c.in
 
 noinst_HEADERS += boobs.h
 noinst_HEADERS += nifty.h
@@ -155,6 +159,13 @@ libsvc_uterus_la_CPPFLAGS += $(unserding_CFLAGS) -DUD_NEW_API
 libsvc_uterus_la_CPPFLAGS += $(uterus_CFLAGS)
 libsvc_uterus_la_LDFLAGS = $(AM_LDFLAGS) $(XCCLDFLAGS)
 libsvc_uterus_la_LDFLAGS += $(unserding_LIBS)
+
+
+## version rules
+version.c: version.c.in $(top_builddir)/.version
+	$(AM_V_GEN) PATH="$(top_builddir)/build-aux:$${PATH}" \
+		yuck$(EXEEXT) scmver --ignore-noscm --force -o $@ \
+			--use-reference --reference $(top_builddir)/.version $<
 
 ## yuck rule
 SUFFIXES += .yuck

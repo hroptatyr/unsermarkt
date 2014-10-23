@@ -1421,7 +1421,7 @@ main(int argc, char *argv[])
 
 	/* make some room for the control channel and the beef chans */
 	nbeef = argi->beef_nargs + 1U;
-	beef = malloc(nbeef * sizeof(*beef));
+	beef = calloc(nbeef, sizeof(*beef));
 
 	/* attach a multicast listener for control messages */
 	{
@@ -1561,7 +1561,7 @@ past_loop:
 
 past_ute:
 	/* detaching beef channels */
-	for (size_t i = 0; i < nbeef; i++) {
+	for (size_t i = 0U; i < nbeef; i++) {
 		ud_sock_t s;
 
 		if ((s = beef[i].data) != NULL) {

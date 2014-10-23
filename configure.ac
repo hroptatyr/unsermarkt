@@ -23,7 +23,7 @@ AC_COPYRIGHT([dnl
 ###     autoreconf
 ])
 
-AM_INIT_AUTOMAKE([foreign dist-xz])
+AM_INIT_AUTOMAKE([foreign dist-xz color-tests parallel-tests])
 m4_ifdef([AM_SILENT_RULES], [AM_SILENT_RULES([yes])])
 
 AX_YUCK_SCMVER([version.mk])
@@ -42,9 +42,6 @@ AC_CHECK_SIZEOF([int])
 
 ## check for byteorder utils
 AC_CHECK_HEADERS([endian.h sys/endian.h byteorder.h byteswap.h])
-
-## parser goodness
-SXE_CHECK_PARSER_LEXER
 
 AC_CHECK_HEADERS([stdbool.h])
 AC_CHECK_HEADERS([fcntl.h])

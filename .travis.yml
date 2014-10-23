@@ -20,8 +20,9 @@ before_script:
 script:
   - mkdir \=build
   - cd \=build
-  - ../configure $OPTIONS
-  - make clean all check distcheck
+  - ../configure $OPTIONS || { cat config.log; false; }
+  - make clean all check || { cat test/test-suite.log; false; }
+  - make distcheck
 
 ## whitelist
 branches:

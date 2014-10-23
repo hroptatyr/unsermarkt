@@ -34,8 +34,9 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  ***/
-
-#include "config.h"
+#if defined HAVE_CONFIG_H
+# include "config.h"
+#endif	/* HAVE_CONFIG_H */
 #include <stdlib.h>
 #include <stdio.h>
 #include <stddef.h>
@@ -74,6 +75,7 @@
 # endif	 /* * */
 #else  /* !HAVE_LIBREADLINE */
 /* what's our strategy here? */
+extern void add_history(const char*);
 #endif	/* HAVE_LIBREADLINE */
 
 #if defined HAVE_READLINE_HISTORY
@@ -84,6 +86,7 @@
 # endif	 /* * */
 #else  /* !HAVE_READLINE_HISTORY */
 /* we've got no backup plan */
+extern void add_history(const char*);
 #endif	/* HAVE_READLINE_HISTORY */
 
 #include <unserding/unserding.h>

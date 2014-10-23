@@ -21,3 +21,8 @@ libltdl/
 build/
 ylwrap
 debian/
+.rsync-filter
+.version
+texinfo.tex
+*.info
+test-driver

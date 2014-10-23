@@ -3,12 +3,7 @@ dnl Autoconf startup.
 dnl -------------------------------------------------------------------------
 
 AC_PREREQ([2.63])
-m4_define([GIT_VERSION_GEN], [dnl
-pushdef([version], [m4_esyscmd([./git-version-gen])])dnl
-ifelse([]version[], [], [0.2.1], []version[])[]dnl
-popdef([version])dnl
-])
-AC_INIT([unsermarkt], [GIT_VERSION_GEN], [https://github.com/hroptatyr/unsermarkt])
+AC_INIT([unsermarkt], [0.2.2.GIT], [https://github.com/hroptatyr/unsermarkt])
 AC_CONFIG_AUX_DIR([build-aux])
 AC_CONFIG_HEADER([src/config.h])
 AC_CONFIG_MACRO_DIR([m4])
@@ -31,8 +26,8 @@ AC_COPYRIGHT([dnl
 AM_INIT_AUTOMAKE([foreign dist-xz])
 m4_ifdef([AM_SILENT_RULES], [AM_SILENT_RULES([yes])])
 
-## initialise our cool message nest levels
-SXE_INIT_MSG_LEVEL
+AX_YUCK_SCMVER([version.mk])
+AC_CONFIG_LINKS([GNUmakefile:GNUmakefile])
 
 ## the build chain
 AC_PROG_CC([icc gcc tcc cc])
@@ -162,7 +157,6 @@ SXE_CHECK_LIBTOOL
 AC_CONFIG_FILES([Makefile])
 AC_CONFIG_FILES([build-aux/Makefile])
 AC_CONFIG_FILES([src/Makefile])
-AC_CONFIG_FILES([unsermarkt.pc])
 AC_OUTPUT
 
 dnl configure.ac ends here

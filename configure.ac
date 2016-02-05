@@ -26,9 +26,6 @@ AC_COPYRIGHT([dnl
 AM_INIT_AUTOMAKE([foreign dist-xz color-tests parallel-tests])
 m4_ifdef([AM_SILENT_RULES], [AM_SILENT_RULES([yes])])
 
-AX_YUCK_SCMVER([version.mk])
-AC_CONFIG_LINKS([GNUmakefile:GNUmakefile])
-
 ## the build chain
 AC_PROG_CC([icc gcc tcc cc])
 SXE_CHECK_CC([c11 c1x c99 gnu99])
@@ -71,6 +68,8 @@ SXE_CHECK_METRONOME
 
 ## check if yuck is globally available
 AX_CHECK_YUCK
+AX_YUCK_SCMVER([version.mk])
+AC_CONFIG_LINKS([GNUmakefile:GNUmakefile])
 
 ## event loop
 AC_CHECK_LIBEV

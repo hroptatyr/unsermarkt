@@ -1,6 +1,6 @@
 /*** yuck.c -- generate umbrella commands
  *
- * Copyright (C) 2013-2014 Sebastian Freundt
+ * Copyright (C) 2013-2015 Sebastian Freundt
  *
  * Author:  Sebastian Freundt <freundt@ga-group.nl>
  *
@@ -117,14 +117,7 @@ struct opt_s {
 	unsigned int marg:1U;
 };
 
-#if !defined BOOTSTRAP && defined WITH_SCMVER
-static const char *yscm_strs[] = {
-	[YUCK_SCM_TARBALL] = "tarball",
-	[YUCK_SCM_GIT] = "git",
-	[YUCK_SCM_BZR] = "bzr",
-	[YUCK_SCM_HG] = "hg",
-};
-#elif !defined BOOTSTRAP
+#if !defined BOOTSTRAP && !defined WITH_SCMVER
 /* just forward declare this type so function signatures will work */
 struct yuck_version_s;
 #endif	/* WITH_SCMVER */
@@ -578,7 +571,7 @@ yield:
 			sp++;
 		}
 		if (!isspace(*sp)) {
-			/* dont know -x.SOMETHING? */
+			/* don't know -x.SOMETHING? */
 			return 0;
 		}
 		/* start over with the new option */
@@ -623,7 +616,7 @@ yield:
 		/* --option */
 		;
 	} else {
-		/* dont know what this is */
+		/* don't know what this is */
 		return 0;
 	}
 
@@ -667,7 +660,7 @@ yield:
 	;
 	/* space eater */
 	for (; sp < ep && isspace(*sp); sp++);
-	/* dont free but reset the old guy */
+	/* don't free but reset the old guy */
 	desc->n = 0U;
 desc:
 	with (size_t sz = llen - (sp - line)) {
@@ -1888,13 +1881,22 @@ flag -n|--use-reference requires -r|--reference parameter");
 		/* must populate v then */
 		*v = *ref;
 	} else if (reffn && yuck_version_cmp(v, ref)) {
+		/* version stamps differ */
 		if (argi->verbose_flag) {
 			errno = 0, error("scm version differs from reference");
 		}
-		/* version stamps differ */
-		yuck_version_write(argi->reference_arg, v);
-		/* reserve exit code 3 for `updated reference file' */
-		rc = 3;
+		/* try to update the reference file then */
+		if (yuck_version_write(argi->reference_arg, v) < 0) {
+			if (argi->verbose_flag) {
+				error("cannot write reference file");
+			}
+			/* degrade to using the reference file */
+			*v = *ref;
+			rc = 0;
+		} else {
+			/* reserve exit code 3 for `updated reference file' */
+			rc = 3;
+		}
 	} else if (reffn && !argi->force_flag) {
 		/* make sure the output file exists */
 		const char *const outfn = argi->output_arg;
@@ -1927,7 +1929,7 @@ flag -n|--use-reference requires -r|--reference parameter");
 			/* and we're finished with the intermediary */
 			fclose(outf);
 			/* macro massage, vtmpfn is the template file */
-			rc = run_m4(outfn, scmvfn, tmplfn, infn, NULL);
+			rc += run_m4(outfn, scmvfn, tmplfn, infn, NULL);
 
 			rm_intermediary(scmvfn, argi->keep_flag);
 		}

@@ -4,10 +4,10 @@ LANG = C
 LC_ALL = C
 
 ACLOCAL_AMFLAGS = -I m4
-EXTRA_DIST =
 
 SUBDIRS =
 DISTCLEANFILES =
+EXTRA_DIST = $(DISTCLEANFILES)
 BUILT_SOURCES =
 
 SUBDIRS += build-aux
@@ -23,10 +23,8 @@ EXTRA_DIST += unsermarkt.pc.in
 DISTCLEANFILES += $(pkgconfig_DATA)
 
 DISTCLEANFILES += version.mk
+DISTCLEANFILES += .version
 EXTRA_DIST += version.mk.in
-
-BUILT_SOURCES += .version
-EXTRA_DIST += $(BUILT_SOURCES)
 
 ## pkg-config rule
 unsermarkt.pc: .version unsermarkt.pc.in
@@ -34,10 +32,6 @@ unsermarkt.pc: .version unsermarkt.pc.in
 		yuck$(EXEEXT) scmver -n \
 			--reference .version $(srcdir)/unsermarkt.pc.in | \
 		$(SHELL) "$(builddir)/config.status" --file=- > $@
-
-## .version rule
-.version:
-	$(AM_V_GEN) echo "v$(VERSION)" > $@
 
 ## make sure .version is read-only in the dist
 dist-hook:
